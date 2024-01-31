@@ -1,0 +1,30 @@
+Metadata-Version: 2.1
+Name: invenio-record-importer
+Version: 0.0.1
+Summary: Bulk import records into an InvenioRDM instance
+Author-email: Mesh Research <scottia4@msu.edu>
+License: MIT
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: click
+Requires-Dist: isbnlib
+Requires-Dist: jsonlines
+Requires-Dist: python-iso639
+Requires-Dist: langdetect
+Requires-Dist: requests
+Requires-Dist: python-stdnum
+Requires-Dist: titlecase
+Requires-Dist: validators
+Requires-Dist: invenio_utilities_tuw
+Requires-Dist: pytest
+Requires-Dist: pytz
+Requires-Dist: python-dateutil
+
+# CORE Migrate
+
+Migration scripts to convert and move legacy Humanities Commons CORE deposits to the Knowledge Commons Repository InvenioRDM instance.
+
+## Copyright
+
+Copyright 2023 MESH Research. Released under the MIT license.

@@ -1,0 +1,13 @@
+click
+isbnlib
+jsonlines
+python-iso639
+langdetect
+requests
+python-stdnum
+titlecase
+validators
+invenio_utilities_tuw
+pytest
+pytz
+python-dateutil
