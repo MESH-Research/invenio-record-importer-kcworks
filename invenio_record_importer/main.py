@@ -33,7 +33,7 @@ from invenio_record_importer.record_loader import (
     load_records_into_invenio,
     delete_records_from_invenio,
 )
-from invenio_record_importer.fedora_fetcher import fetch_fedora_records
+from invenio_record_importer.legacy.fedora_fetcher import fetch_fedora_records
 from invenio_record_importer.utils import logger
 
 
@@ -116,39 +116,65 @@ def load_records(
 
     Notes:
 
-        This program must be run from the base knowledge_commons_repository directory. It will look for the exported records in the directory specified by the MIGRATION_SERVER_DATA_DIR environment variable. It will send requests to the knowledge_commons_repository instance specified by the MIGRATION_SERVER_DOMAIN environment variable.
+        This program must be run from the base knowledge_commons_repository
+        directory. It will look for the exported records in the directory
+        specified by the MIGRATION_SERVER_DATA_DIR environment variable. It
+        will send requests to the knowledge_commons_repository instance
+        specified by the MIGRATION_SERVER_DOMAIN environment variable.
 
-        The program must also be run inside the pipenv virtual environment for the knowledge_commons_repository instance. All of the commands must be preceded by `pipenv run` or the pipenv environment must first be activated with `pipenv shell`.
+        The program must also be run inside the pipenv virtual environment for
+        the knowledge_commons_repository instance. All of the commands must be
+        preceded by `pipenv run` or the pipenv environment must first be
+        activated with `pipenv shell`.
 
-        The operations involved require authenitcation as an admin user in the knowledge_commons_repository instance. This program will look for the admin user's api token in the MIGRATION_API_TOKEN environment variable.
-        Where it's necessary to invite this user to a community, the program will look for the community's id in the P_TOKEN environment variable.
+        The operations involved require authenitcation as an admin user in the
+        knowledge_commons_repository instance. This program will look for the
+        admin user's api token in the MIGRATION_API_TOKEN environment variable.
+        Where it's necessary to invite this user to a community, the program
+        will look for the community's id in the P_TOKEN environment variable.
 
-        Where necessary this program will create top-level domain communities, assign the records to the correct domain communities, create
+        Where necessary this program will create top-level domain communities,
+        assign the records to the correct domain communities, create
         new Invenio users corresponding to the users who uploaded the
         original deposits, and transfer ownership of the Invenio record to
         the correct users.
 
-        If a record with the same DOI already exists in Invenio, the program will try to update the existing record with any new metadata and/or files, creating a new draft of published records if necessary. Unpublished existing drafts will be submitted to the appropriate community and published. Alternately, if the --no-updates flag is set, the program will skip any records that match DOIs for records that already exist in Invenio.
+        If a record with the same DOI already exists in Invenio, the program
+        will try to update the existing record with any new metadata and/or
+        files, creating a new draft of published records if necessary.
+        Unpublished existing drafts will be submitted to the appropriate
+        community and published. Alternately, if the --no-updates flag is set,
+        the program will skip any records that match DOIs for records that
+        already exist in Invenio.
 
-        Since the operations involved are time-consuming, the program should be run as a background process (adding & to the end of the command). A running log of the program's progress will be written to the file core_migrate.log in the base core_migrate/logs directory. A record of all records that have been touched (a load attempt has been made) is recorded in the file core_migrate_touched_records.json in the base
-        core_migrate/logs directory. A record of all records that have failed
-        to load is recorded in the file core_migrate_failed_records.json in the
-        core_migrate/logs directory. If failed records are later successfully
-        repaired, they will be removed from the failed records file.
+        Since the operations involved are time-consuming, the program should
+        be run as a background process (adding & to the end of the command).
+        A running log of the program's progress will be written to the file
+        invenio_record_importer.log in the base invenio_record_importer/logs
+        directory. A record of all records that have been touched (a load
+        attempt has been made) is recorded in the file
+        invenio_record_importer_touched.json in the base
+        invenio_record_importer/logs directory. A record of all records that
+        have failed to load is recorded in the file
+        invenio_record_importer_failed.json in the
+        invenio_record_importer/logs directory. If failed records are later
+        successfully repaired, they will be removed from the failed records
+        file.
 
     Args:
 
         records (list, optional): A list of the provided positional arguments
             specifying which records to load. Defaults to [].
 
-            If no positional arguments are provided, all records will be loaded.
+            If no positional arguments are provided, all records will be
+            loaded.
 
-            If positional arguments are provided, they should be either integers
-            specifying the line numbers of the records to load, or source ids
-            specifying the ids of the records to load in the source system.
-            These will be interpreted as line numbers in the jsonl file of
-            records for import (beginning at 1) unless the --use-sourceids flag
-            is set.
+            If positional arguments are provided, they should be either
+            integers specifying the line numbers of the records to load,
+            or source ids specifying the ids of the records to load in
+            the source system. These will be interpreted as line numbers
+            in the jsonl file of records for import (beginning at 1)
+            unless the --use-sourceids flag is set.
 
             If a range is specified in the RECORDS by linking two integers with
             a hyphen, the program will load all records between the two

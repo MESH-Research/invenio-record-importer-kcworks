@@ -15,7 +15,6 @@ The main function `serialize_json` writes the output to a jsonl file, with
 one json object per line, separated by newlines.
 """
 
-from calendar import c
 from copy import deepcopy
 from datetime import datetime
 from pprint import pprint
@@ -1504,7 +1503,13 @@ def add_date_info(
         """
         try:
             return timefhuman(row["date"]).isoformat().split("T")[0]
-        except (ValueError, TypeError, IndexError):
+        except (
+            ValueError,
+            TypeError,
+            IndexError,
+            AssertionError,
+            AttributeError,
+        ):
             return date
 
     def is_seasonal_date(date: str) -> bool:
@@ -2519,7 +2524,7 @@ def serialize_json() -> tuple[list[dict], dict]:
     bad_data_dict: dict[str, list] = {}
     line_count: int = 0
 
-    with open(Path(DATA_DIR, "core-export-may-15-23.json")) as json_file:
+    with open(Path(DATA_DIR, "records-for-import.json")) as json_file:
         top_object = json.loads(json_file.read())
         for row in top_object:
             newrec = deepcopy(baserec)
@@ -2588,6 +2593,8 @@ def serialize_json() -> tuple[list[dict], dict]:
             # Uploaded file details
             newrec, bad_data_dict = add_file_info(newrec, row, bad_data_dict)
 
+            newrec["record_source"] = "knowledgeCommons"
+
             newrec_list.append(newrec)
             line_count += 1
 
@@ -2609,7 +2616,7 @@ def serialize_json() -> tuple[list[dict], dict]:
     # FIXME: make issn field multiple?
 
     with jsonlines.open(
-        Path(__file__).parent / "data" / "serialized_core_data.jsonl", mode="w"
+        Path(__file__).parent / "data" / "serialized_data.jsonl", mode="w"
     ) as output_file:
         for rec in newrec_list:
             output_file.write(rec)

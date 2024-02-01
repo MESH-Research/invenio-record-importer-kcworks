@@ -30,10 +30,10 @@ dependencies = [
 # test = ["coverage"]
 
 [project.scripts]
-invenio-record-importer = "invenio_record_importer.main:cli"
+importer = "invenio_record_importer.main:cli"
 
 [project.entry-points."flask.commands"]
-invenio-record-importer = "invenio_record_importer.main:cli"
+importer = "invenio_record_importer.main:cli"
 
 [tool.setuptools]
 # If there are data files included in your packages that need to be

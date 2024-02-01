@@ -5,6 +5,9 @@ name = "pypi"
 
 [packages]
 invenio-app-rdm = {version = "==12.0.0b2.dev9", extras = ["opensearch2", "postgresql"]}
+timefhuman = "*"
+halo = "*"
+jsonlines = "*"
 
 [dev-packages]
 

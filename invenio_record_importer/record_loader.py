@@ -1,6 +1,16 @@
 import arrow
 from halo import Halo
+from flask import current_app
+from invenio_access.permissions import system_identity
+
+# from invenio_access.utils import get_identity
 from invenio_accounts import current_accounts
+from invenio_accounts.models import User
+from invenio_db import db
+from invenio_oauthclient.models import UserIdentity
+from invenio_rdm_records.proxies import (
+    current_rdm_records_service as records_service,
+)
 import itertools
 import json
 from simplejson.errors import JSONDecodeError as SimpleJSONDecodeError
@@ -8,7 +18,6 @@ import jsonlines
 from pathlib import Path
 import requests
 from requests.exceptions import JSONDecodeError as RequestsJSONDecodeError
-import subprocess
 from traceback import format_exception, print_exc
 from typing import Optional, Union
 import os
@@ -24,7 +33,12 @@ from invenio_record_importer.config import (
     SERVER_PROTOCOL,
     API_TOKEN,
 )
-from invenio_record_importer.utils import logger, valid_date, compare_metadata
+from invenio_record_importer.utils import (
+    logger,
+    valid_date,
+    compare_metadata,
+    # generate_password,
+)
 
 
 def api_request(
@@ -550,131 +564,63 @@ def delete_invenio_draft_record(record_id: str) -> dict:
     return result
 
 
-def create_invenio_user(user_email: str) -> dict:
+def create_invenio_user(
+    user_email: str,
+    source_username: str = "",
+    full_name: str = "",
+    record_source: str = "",
+) -> dict:
     """
     Create a new user account in the Invenio instance
+
+    Parameters
+    ----------
+    user_email : str
+        The email address for the new user account
+    source_username : str
+        The username of the new user in the source service
+    full_name : str
+        The full name for the new user account
+    record_source : str
+        The name of the source service for the new user account
+        if the user's login will be handled by a SAML identity provider
     """
-    debug = GLOBAL_DEBUG or True
-    user_id: str
+    verbose = GLOBAL_DEBUG or True
     new_user_flag = True
-    # existing_user = subprocess.Popen(
-    #     [
-    #         "pipenv",
-    #         "run",
-    #         "invenio",
-    #         "shell",
-    #         "scripts/core-migrate/core_migrate/core_migrate_users.py",
-    #         "get-user-id",
-    #         user_email,
-    #     ],
-    #     stdout=subprocess.PIPE,
-    #     stderr=subprocess.PIPE,
-    #     universal_newlines=True,
-    # )
-    # stdout_eu, stderr_eu = existing_user.communicate()
-    # if debug:
-    #     pprint("****")
-    # if debug:
-    #     pprint(stdout_eu)
-    # if debug:
-    #     pprint(stderr_eu)
-    # if debug:
-    #     pprint(existing_user.returncode)
-    # if existing_user.returncode == 0 and "success" in stdout_eu:
-    #     user_id = re.search(r"success: user id is (\d+)\'\n", stdout_eu)[1]
-    #     print("Found existing user", user_id)
-    #     logger.info(f"    found existing user {user_id}...")
-    #     new_user_flag = False
+    active_user = None
+    idps = current_app.config.get("SSO_SAML_IDPS")
+    if not idps or record_source not in idps.keys():
+        raise RuntimeError(
+            f"record_source {record_source} not found in SSO_SAML_IDPS"
+        )
 
     existing_user = current_accounts.datastore.get_user_by_email(user_email)
     if existing_user:
-        user_id = existing_user.id
-        print("Found existing user", existing_user.id)
+        if verbose:
+            print("Found existing user", existing_user.id)
         logger.info(f"    found existing user {existing_user.id}...")
         new_user_flag = False
+        active_user = existing_user
 
     else:
-        make_user = subprocess.Popen(
-            [
-                "pipenv",
-                "run",
-                "invenio",
-                "users",
-                "create",
-                user_email,
-                "--password=password",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-        )
-        stdout, stderr = make_user.communicate()
-        if debug:
-            pprint("#####")
-        if debug:
-            pprint(stdout)
-        if debug:
-            pprint(stderr)
-        assert make_user.returncode in [0, 2]  # will be 2 if user exists
-        assert f"'email': '{user_email}'" in stdout
-
         # FIXME: make proper password here
-        make_user = current_accounts.datastore.create_user(
+        new_user = current_accounts.datastore.create_user(
             email=user_email,
-            password="password",
+            # password=generate_password(16),
             active=True,
-            confirmed_at=arrow.utcnow(),
-            profile={},
+            confirmed_at=arrow.utcnow().datetime,
+            user_profile={},
+            username=f"{record_source}-{source_username}",
         )
-
+        current_accounts.datastore.commit()
+        print(new_user)
+        assert new_user.id
         print("created new user...")
         logger.info(f"    created new user {user_email}...")
-        activate_user = subprocess.Popen(
-            ["pipenv", "run", "invenio", "users", "activate", user_email],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            universal_newlines=True,
-        )
-        stdout2, stderr2 = activate_user.communicate()
-        if debug:
-            pprint("&&&&")
-        if debug:
-            pprint(stdout2)
-        if debug:
-            pprint(stderr2)
-        assert activate_user.returncode == 0
-        print("activated new user...")
-        logger.info(f"    activated new user {user_email}...")
 
-        # user_confirmed = subprocess.Popen(
-        #     [
-        #         "pipenv",
-        #         "run",
-        #         "invenio",
-        #         "shell",
-        #         "scripts/core-migrate/core_migrate/core_migrate_users.py",
-        #         "get-user-id",
-        #         user_email,
-        #     ],
-        #     stdout=subprocess.PIPE,
-        #     stderr=subprocess.PIPE,
-        #     text=True,
-        #     universal_newlines=True,
-        # )
-        # stdout3, stderr3 = user_confirmed.communicate()
-        # if debug:
-        #     pprint("****")
-        # if debug:
-        #     pprint(stdout3)
-        # if debug:
-        #     pprint(stderr3)
-        # if debug:
-        #     pprint(user_confirmed.returncode)
-        # if user_confirmed.returncode == 0 and "success" in stdout3:
-        #     user_id = re.search(r"success: user id is (\d+)\'\n", stdout3)[1]
-        #     new_user_flag = True
-        #     logger.info(f"    confirmed new user, id {user_id}...")
+        if not new_user.active:
+            assert current_accounts.datastore.activate_user(new_user)
+            current_accounts.datastore.commit()
 
         user_confirmed = current_accounts.datastore.get_user_by_email(
             user_email
@@ -683,61 +629,99 @@ def create_invenio_user(user_email: str) -> dict:
             user_id = user_confirmed.id
             new_user_flag = True
             logger.info(f"    confirmed new user, id {user_id}...")
-        elif (
-            user_confirmed.returncode == 2
-            and "already associated with an account" in stdout3
-        ):
-            print("User already exists.")
-            logger.info(f"    user {user_email} already exists...")
         else:
             print("Error: Failed to create new user")
             logger.info(f"    failed to create user {user_email}...")
             print_exc()
+        active_user = user_confirmed
+    if full_name:
+        active_user.user_profile.full_name = full_name
+        current_accounts.datastore.commit()
+    if record_source and source_username:
+        existing_saml = UserIdentity.query.filter_by(
+            id_user=active_user.id,
+            method=record_source,
+            id=source_username,
+        ).one_or_none()
 
-    return {"user_id": user_id, "new_user": new_user_flag}
+        if not existing_saml:
+            UserIdentity.create(active_user, record_source, source_username)
+            db.session.commit()
+            logger.info(
+                f"    configured SAML login for {user_email} as"
+                f" {source_username} on {record_source}..."
+            )
+            assert UserIdentity.query.filter_by(
+                id_user=active_user.id,
+                method=record_source,
+                id=source_username,
+            ).one_or_none()
 
+            logger.info(active_user.external_identifiers)
+            assert any(
+                [
+                    a
+                    for a in active_user.external_identifiers
+                    if a.method == record_source
+                    and a.id == source_username
+                    and a.id_user == active_user.id
+                ]
+            )
+        else:
+            logger.info(
+                f"   found existing SAML login for {user_email},"
+                f" {existing_saml.method}, {existing_saml.id}..."
+            )
 
-def get_invenio_user(user_email: str) -> str:
-    """
-    Retrieve the user id of the user with the provided email address.
-    """
-    return create_invenio_user(user_email)["user_id"]
+    return {"user": active_user, "new_user": new_user_flag}
 
 
 def change_record_ownership(
-    record_id: str, old_owner_id: str, new_owner_id: str
+    record_id: str, new_owner: User, old_owner: User
 ) -> dict:
     """
     Change the owner of the specified record to a new user.
     """
     debug = GLOBAL_DEBUG or True
-    changed_ownership = subprocess.Popen(
-        [
-            "pipenv",
-            "run",
-            "invenio",
-            "shell",
-            "scripts/core-migrate/core_migrate/core_migrate_users.py",
-            "change-owner",
-            f"{record_id}",
-            f"{old_owner_id}",
-            f"{new_owner_id}",
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        universal_newlines=True,
-    )
-    stdout, stderr = changed_ownership.communicate()
+
     if debug:
-        print("&&&& change_record_ownership")
+        print("__________")
     if debug:
-        print(stdout)
-    if debug:
-        print(stderr)
-    if debug:
-        print(type(stderr))
-    return changed_ownership.returncode
+        print(f"Changing ownership of record {record_id}")
+
+    record = records_service.read(
+        id_=record_id, identity=system_identity
+    )._record
+    all_owners = [new_owner]
+
+    parent = record.parent
+    # logger.info(f"    parent is {parent}...")
+    parent.access.owners.clear()
+    for owner in all_owners:
+        parent.access.owners.add(owner)
+    parent.commit()
+    db.session.commit()
+
+    if records_service.indexer:
+        records_service.indexer.index(record)
+    # if debug:
+    #     print("final record is:")
+    # if debug:
+    #     pprint(
+    #         records_service.read(
+    #             id_=record_id, identity=system_identity
+    #         )._record
+    #     )
+    #     logger.info(
+    #         records_service.read(
+    #             id_=record_id, identity=system_identity
+    #         )._record
+    #     )
+    result = records_service.read(
+        id_=record_id, identity=system_identity
+    )._record
+
+    return result.parent.access.owned_by
 
 
 def create_invenio_community(community_label: str) -> dict:
@@ -879,7 +863,9 @@ def create_invenio_community(community_label: str) -> dict:
     return result
 
 
-def create_full_invenio_record(core_data: dict, no_updates: bool) -> dict:
+def create_full_invenio_record(
+    core_data: dict, no_updates: bool, record_source: Optional[str]
+) -> dict:
     """
     Create an invenio record with file uploads, ownership, communities.
     """
@@ -895,13 +881,6 @@ def create_full_invenio_record(core_data: dict, no_updates: bool) -> dict:
 
     submitted_data["access"] = {"records": "public", "files": "public"}
     submitted_data["files"] = {"enabled": True}
-
-    # domains = [
-    #     'ajs.hcommons.org', 'arlisna.hcommons.org', 'aseees.hcommons.org',
-    #     'caa.hcommons.org', 'commons.msu.edu', 'hastac.hcommons.org',
-    #     'hcommons.org', 'mla.hcommons.org', 'sah.hcommons.org',
-    #     'up.hcommons.org'
-    # ]
 
     # Create/find the necessary domain communities
     logger.info("    finding or creating community...")
@@ -1152,8 +1131,6 @@ def create_full_invenio_record(core_data: dict, no_updates: bool) -> dict:
                 args=f"{community_id}/invitations",
                 json_dict=invite,
                 token=os.environ["P_TOKEN"],
-                # token="ehdWRDeM9ZSkwxwTZEPDnbZCdWYIaDa4YXxRcFJ61oQLvWy5OK1czl"
-                # "IoVoxd",
             )
             print(send_invite)
 
@@ -1173,42 +1150,59 @@ def create_full_invenio_record(core_data: dict, no_updates: bool) -> dict:
     logger.info("    creating or finding the user (submitter)...")
     # TODO: Make sure this will be the same email used for SAML login
     new_owner_email = core_data["custom_fields"]["kcr:submitter_email"]
-    created_user = create_invenio_user(new_owner_email)
-    new_owner_id = created_user["user_id"]
+    new_owner_username = core_data["custom_fields"]["kcr:submitter_username"]
+    full_name = ""
+    for c in [
+        *core_data["metadata"].get("creators", []),
+        *core_data["metadata"].get("contributors", []),
+    ]:
+        for i in c["person_or_org"].get("identifiers", []):
+            if i["scheme"] == "hc_username":
+                full_name = c["person_or_org"]["name"]
+    new_owner_result = create_invenio_user(
+        new_owner_email, new_owner_username, full_name, record_source
+    )
+    new_owner = new_owner_result["user"]
 
     if (
         existing_record
         and existing_record["custom_fields"]["kcr:submitter_email"]
         == new_owner_email
         and str(existing_record["parent"]["access"]["owned_by"][0]["user"])
-        == str(new_owner_id)
+        == str(new_owner.id)
     ):
         logger.info("    skipping re-assigning ownership of the record ")
         logger.info(
             f"    (already belongs to {new_owner_email}, "
-            f"user {new_owner_id})..."
+            f"user {new_owner.id})..."
         )
     else:
-        result["created_user"] = created_user
+        result["created_user"] = new_owner
 
         # Change the ownership of the record
         logger.info(
             "    re-assigning ownership of the record to the "
             f"submitter ({new_owner_email}, "
-            f"{new_owner_id})..."
+            f"{new_owner.id})..."
         )
-        current_owner_id = get_invenio_user("scottia4@msu.edu")
+        current_owner = current_accounts.datastore.get_user_by_email(
+            "scottia4@msu.edu"
+        )
         changed_ownership = change_record_ownership(
-            draft_id, new_owner_id, current_owner_id
+            draft_id, new_owner, current_owner
         )
-        result.setdefault("changed_ownership", {})[
-            "return_code"
-        ] = changed_ownership
-        assert changed_ownership == 0
+        result.setdefault("changed_ownership", {})["owner"] = changed_ownership
         if debug:
             print("++++++++")
         if debug:
             pprint(changed_ownership)
+            logger.info(type(new_owner))
+            logger.info([new_owner])
+            logger.info(type(changed_ownership[0]))
+            logger.info(changed_ownership)
+        # Remember: changed_ownership is a list of Owner systemfield objects,
+        # not Users
+        assert [o.owner_id for o in changed_ownership] == [new_owner.id]
 
     result["existing_record"] = existing_record
     return result
@@ -1352,7 +1346,7 @@ def load_records_into_invenio(
         )
 
     with jsonlines.open(
-        Path(__file__).parent / "data" / "serialized_core_data.jsonl", "r"
+        Path(__file__).parent / "data" / "serialized_data.jsonl", "r"
     ) as json_source:
         # decide how to determine the record set
         if retry_failed:
@@ -1395,6 +1389,7 @@ def load_records_into_invenio(
             record_set = itertools.islice(json_source, *range_args)
 
         for rec in record_set:
+            record_source = rec.pop("record_source")
             if "jsonl_index" in rec.keys():
                 current_record = rec["jsonl_index"]
             else:
@@ -1415,7 +1410,9 @@ def load_records_into_invenio(
                 if r["scheme"] == "hclegacy-record-id"
             ][0]["identifier"]
             logger.info(f"....starting to load record {current_record}")
-            logger.info(f"    {rec_doi} {rec_hcid} {rec_recid}")
+            logger.info(
+                f"    DOI:{rec_doi} {rec_hcid} {rec_recid} {record_source}"
+            )
             spinner = Halo(
                 text=f"    Loading record {current_record}", spinner="dots"
             )
@@ -1429,7 +1426,9 @@ def load_records_into_invenio(
                         "core_record_id": rec_recid,
                     }
                 )
-                result = create_full_invenio_record(rec, no_updates)
+                result = create_full_invenio_record(
+                    rec, no_updates, record_source
+                )
                 print(f"    loaded record {current_record}")
                 successful_records += 1
                 if not result["existing_record"]:

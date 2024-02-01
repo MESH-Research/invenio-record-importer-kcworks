@@ -1,5 +1,5 @@
 [console_scripts]
-invenio-record-importer = invenio_record_importer.main:cli
+importer = invenio_record_importer.main:cli
 
 [flask.commands]
-invenio-record-importer = invenio_record_importer.main:cli
+importer = invenio_record_importer.main:cli

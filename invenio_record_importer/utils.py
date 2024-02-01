@@ -12,7 +12,7 @@ Utility functions for core-migrate
 """
 
 from datetime import datetime
-import unicodedata
+from flask_security.utils import hash_password
 from isbnlib import is_isbn10, is_isbn13, clean
 import logging
 from logging.handlers import RotatingFileHandler
@@ -21,6 +21,8 @@ import random
 import re
 import string
 from typing import Union
+import unicodedata
+from .config import GLOBAL_DEBUG
 
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,10 @@ def generate_random_string(length):
         random.choices(string.ascii_lowercase + string.digits, k=length)
     )
     return res
+
+
+def generate_password(length):
+    return hash_password(generate_random_string(48))
 
 
 def flatten_list(list_of_lists, flat_list=[]):
@@ -83,11 +89,7 @@ def valid_date(datestring: str) -> bool:
     try:
         datetime.fromisoformat(datestring.replace("Z", "+00:00"))
     except Exception:
-        # FIXME: parse some of these datestrings
-        # print(f'couldn\'t parse {datestring}')
         try:
-            # TODO: This only handles single years, year-months,
-            # or year-month-days. Do we need ranges?
             dtregex = (
                 r"^(?P<year>[0-9]{4})(-(?P<month>1[0-2]|0[1-9])"
                 r"(-(?P<day>3[0-1]|0[1-9]|[1-2][0-9]))?)?$"
@@ -108,6 +110,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
     return: A dictionary of differences between the two records
     rtype: dict
     """
+    VERBOSE = GLOBAL_DEBUG or False
     output = {"A": {}, "B": {}}
 
     def obj_list_compare(list_name, key, a, b, comparators):
@@ -136,9 +139,12 @@ def compare_metadata(A: dict, B: dict) -> dict:
                     out.setdefault("A", []).append(i_2)
                     out.setdefault("B", []).append(i)
 
-        print("&&&&&&")
-        print(a[list_name])
-        print(b[list_name])
+        if VERBOSE:
+            print("&&&&&&")
+        if VERBOSE:
+            print(a[list_name])
+        if VERBOSE:
+            print(b[list_name])
         return out
 
     def compare_people(list_a, list_b):
