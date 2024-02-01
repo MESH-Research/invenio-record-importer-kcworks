@@ -653,53 +653,53 @@ def _get_subject_from_jsonl(subject: str) -> str:
         "Philosophy": "1060777",
         "Ethics": "915833",
         "Religion": "1093763",
-        # 'Rhetoric': '',
-        # 'Portuguese literature',
-        # 'Biopolitics',
-        # 'Irish literature',
-        # 'Literature',
-        # 'Church history',
-        # 'British literature',
-        # 'Animal rights',
-        # 'Art criticism',
-        # 'Sculpture',
-        # 'Research libraries',
-        # 'Writing',
-        # 'Anthropology',
-        # 'Environmental sociology',
-        # 'Ethnomusicology',
-        # 'Film criticism',
-        # 'Continental philosophy',
-        # 'Critical geography',
-        # 'Earth sciences',
-        # 'Arts',
-        # 'Geography',
-        # 'History',
-        # 'Greek literature',
-        # 'Jewish literature',
-        # 'Spanish literature',
-        # 'Ethnic studies',
-        # 'Library science',
-        # 'Music',
-        # 'Psychiatry',
-        # 'Aesthetics',
-        # 'Ecocriticism',
-        # 'Economics',
-        # 'Intertextuality',
-        # 'American poetry',
-        # 'Beat literature',
-        # 'Dutch literature',
-        # 'Italian literature',
-        # 'Feminism',
-        # 'Music libraries',
-        # 'Musicology',
-        # 'Character',
-        # 'Sustainability',
-        # 'Cognitive science',
-        # 'Polish language',
-        # 'Postmodernism',
-        # 'Neoliberalism',
-        # 'Imperialism'
+        "Rhetoric": "1096948",
+        "Portuguese literature": "1072577",
+        "Biopolitics": "832668",
+        "Irish literature": "979030",
+        "Literature": "999953",
+        "Church history": "860740",
+        "British literature": "839082",
+        "Animal rights": "809364",
+        "Art criticism": "815492",
+        "Sculpture": "1109483",
+        "Research libraries": "1095327",
+        "Writing": "1181638",
+        "Anthropology": "810196",
+        "Environmental sociology": "1749638",
+        "Ethnomusicology": "916186",
+        "Film criticism": "924259",
+        "Continental philosophy": "1765182",
+        "Critical geography": "2031407",
+        "Earth sciences": "900729",
+        # 'Arts': '',
+        "Geography": "940469",
+        "History": "1411628",
+        "Greek literature": "947441",
+        "Jewish literature": "982834",
+        "Spanish literature": "1128568",
+        # "Ethnic studies": "",
+        "Library science": "997916",
+        "Music": "1030269",
+        "Psychiatry": "1081152",
+        "Aesthetics": "798702",
+        "Ecocriticism": "901428",
+        "Economics": "902116",
+        "Intertextuality": "977562",
+        "American poetry": "807348",
+        "Beat literature": "2002327",
+        "Dutch literature": "899846",
+        "Italian literature": "980660",
+        "Feminism": "922671",
+        "Music libraries": "1030573",
+        "Musicology": "1030893",
+        "Character": "852264",
+        "Sustainability": "1747391",
+        "Cognitive science": "866547",
+        "Polish language": "1068925",
+        "Postmodernism": "1073164",
+        "Neoliberalism": "1737382",
+        "Imperialism": "968126",
     }
     if subject in existing_subjects.keys():
         return f"{existing_subjects[subject]}:{subject}:topical"
@@ -2080,9 +2080,16 @@ def add_institution(
     if row["institution"]:
         # print(row['id'])
         # print(newrec['metadata']['resource_type']['id'])
-        newrec["custom_fields"]["kcr:sponsoring_institution"] = _clean_string(
-            row["institution"]
-        )
+        if newrec["metadata"]["resource_type"]["id"] not in [
+            "textDocument-thesis",
+        ]:
+            newrec["custom_fields"].setdefault("thesis:thesis", {})[
+                "university"
+            ] = _clean_string(row["institution"])
+        else:
+            newrec["custom_fields"]["kcr:sponsoring_institution"] = (
+                _clean_string(row["institution"])
+            )
         if newrec["metadata"]["resource_type"]["id"] not in [
             "textDocument-thesis",
             "textDocument-report",
@@ -2614,6 +2621,13 @@ def serialize_json() -> tuple[list[dict], dict]:
     print(f"Processed {line_count} lines.")
     print(f"Found {len(bad_data_dict)} records with bad data.")
     # FIXME: make issn field multiple?
+
+    with jsonlines.open(
+        Path(__file__).parent / "logs" / "serializer_failed.jsonl",
+        "w",
+    ) as failed_writer:
+        for k, v in bad_data_dict.items():
+            failed_writer.write({"id": k, "errors": v})
 
     with jsonlines.open(
         Path(__file__).parent / "data" / "serialized_data.jsonl", mode="w"
