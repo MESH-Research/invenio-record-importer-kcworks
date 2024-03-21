@@ -692,13 +692,10 @@ def change_record_ownership(
     record = records_service.read(
         id_=record_id, identity=system_identity
     )._record
-    all_owners = [new_owner]
 
     parent = record.parent
     # logger.info(f"    parent is {parent}...")
-    parent.access.owners.clear()
-    for owner in all_owners:
-        parent.access.owners.add(owner)
+    parent.access.owned_by = new_owner
     parent.commit()
     db.session.commit()
 
@@ -844,6 +841,7 @@ def create_invenio_community(community_label: str) -> dict:
         },
     }
     my_community_data = community_data[community_label]
+    my_community_data["metadata"]["type"] = {"id": "commons"}
     my_community_data["access"] = {
         "visibility": "public",
         "member_policy": "closed",
@@ -1168,7 +1166,7 @@ def create_full_invenio_record(
         existing_record
         and existing_record["custom_fields"]["kcr:submitter_email"]
         == new_owner_email
-        and str(existing_record["parent"]["access"]["owned_by"][0]["user"])
+        and str(existing_record["parent"]["access"]["owned_by"]["user"])
         == str(new_owner.id)
     ):
         logger.info("    skipping re-assigning ownership of the record ")
@@ -1197,12 +1195,12 @@ def create_full_invenio_record(
         if debug:
             pprint(changed_ownership)
             logger.info(type(new_owner))
-            logger.info([new_owner])
-            logger.info(type(changed_ownership[0]))
+            logger.info(new_owner)
+            logger.info(type(changed_ownership))
             logger.info(changed_ownership)
-        # Remember: changed_ownership is a list of Owner systemfield objects,
-        # not Users
-        assert [o.owner_id for o in changed_ownership] == [new_owner.id]
+        # Remember: changed_ownership is an Owner systemfield object,
+        # not User
+        assert changed_ownership.owner_id == new_owner.id
 
     result["existing_record"] = existing_record
     return result
