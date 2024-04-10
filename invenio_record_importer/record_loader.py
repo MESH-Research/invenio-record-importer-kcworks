@@ -399,7 +399,7 @@ def upload_draft_files(draft_id: str, files_dict: dict[str, str]) -> dict:
     output["file_transactions"] = {}
 
     server_string = SERVER_DOMAIN
-    if SERVER_DOMAIN == "10.95.11.198":
+    if SERVER_DOMAIN == "10.98.11.159":
         server_string = "invenio-dev.hcommons-staging.org"
 
     # upload files
