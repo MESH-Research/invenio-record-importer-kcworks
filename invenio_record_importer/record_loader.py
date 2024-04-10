@@ -398,20 +398,29 @@ def upload_draft_files(draft_id: str, files_dict: dict[str, str]) -> dict:
     output["initialization"] = initialization
     output["file_transactions"] = {}
 
+    server_string = SERVER_DOMAIN
+    if SERVER_DOMAIN == "10.95.11.198":
+        server_string = "invenio-dev.hcommons-staging.org"
+
     # upload files
     if debug:
         pprint(initialization["json"]["entries"])
     for f in initialization["json"]["entries"]:
         output["file_transactions"][f["key"]] = {}
-        server_string = SERVER_DOMAIN
-        if SERVER_DOMAIN == "10.95.11.198":
-            server_string = "invenio-dev.hcommons-staging.org"
-        content_args = f["links"]["content"].replace(
-            f"https://{server_string}/api/records/", ""
+
+        #  FIXME: Generated 'link' urls have 'localhost' when running locally
+        #         and api is at 'host.docker.internal'
+        content_args = (
+            f["links"]["content"]
+            .replace(f"https://{server_string}/api/records/", "")
+            .replace("https://localhost/api/records/", "")
         )
         assert re.findall(draft_id, content_args)
-        commit_args = f["links"]["commit"].replace(
-            f"https://{server_string}/api/records/", ""
+
+        commit_args = (
+            f["links"]["commit"]
+            .replace(f"https://{server_string}/api/records/", "")
+            .replace("https://localhost/api/records/", "")
         )
         assert re.findall(draft_id, commit_args)
 
@@ -446,7 +455,6 @@ def upload_draft_files(draft_id: str, files_dict: dict[str, str]) -> dict:
             )
             if debug:
                 print("@@@@@@@")
-            if debug:
                 pprint(content_upload)
             if content_upload["status_code"] != 200:
                 pprint(content_upload)
@@ -484,7 +492,7 @@ def upload_draft_files(draft_id: str, files_dict: dict[str, str]) -> dict:
             pprint(upload_commit)
             logger.error(f"    failed to commit file upload for {filename}...")
             logger.error(upload_commit)
-            raise requests.HTTPError(upload_commit.text)
+            raise requests.HTTPError(upload_commit["text"])
 
         if debug:
             print("&&&&&&&")
@@ -1128,7 +1136,7 @@ def create_full_invenio_record(
                 endpoint="communities",
                 args=f"{community_id}/invitations",
                 json_dict=invite,
-                token=os.environ["P_TOKEN"],
+                token=os.environ["API_TOKEN"],
             )
             print(send_invite)
 
