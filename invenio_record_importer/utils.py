@@ -25,18 +25,18 @@ import unicodedata
 from .config import GLOBAL_DEBUG
 
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-formatter = logging.Formatter("%(asctime)s:%(levelname)s : %(message)s")
-file_handler = RotatingFileHandler(
-    Path(__file__).parent / "logs" / "invenio_record_importer.log",
-    maxBytes=1000000,
-    backupCount=5,
-)
-file_handler.setFormatter(formatter)
-if logger.hasHandlers():
-    logger.handlers.clear()
-logger.addHandler(file_handler)
+# logger = logging.getLogger(__name__)
+# logger.setLevel(logging.INFO)
+# formatter = logging.Formatter("%(asctime)s:%(levelname)s : %(message)s")
+# file_handler = RotatingFileHandler(
+#     Path(__file__).parent / "logs" / "invenio_record_importer.log",
+#     maxBytes=1000000,
+#     backupCount=5,
+# )
+# file_handler.setFormatter(formatter)
+# if logger.hasHandlers():
+#     logger.handlers.clear()
+# logger.addHandler(file_handler)
 
 
 def generate_random_string(length):
@@ -460,21 +460,70 @@ def compare_metadata(A: dict, B: dict) -> dict:
     return output if output["A"] or output["B"] else {}
 
 
-def _normalize_string(mystring: str) -> str:
-    mystring = mystring.casefold()
-    mystring = _clean_string(mystring)
+def normalize_string(mystring: str) -> str:
+    """Normalize a string for comparison.
+
+    This function produces a normalized string with fancy quotes
+    converted to simple characters, combining unicode converted
+    to composed characters, multiple slashes and spaces reduced
+    to single characters, html escape ampersands converted to
+    plain ampersands. It also removes leading and trailing quotes.
+
+    Suitable for cleaning strings for case-insensitive
+    comparison but not for display.
+    """
+    mystring = _clean_backslashes_and_spaces(mystring)
     mystring = _normalize_punctuation(mystring)
+    mystring = _strip_surrounding_quotes(mystring)
+    return mystring
+
+
+def normalize_string_lowercase(mystring: str) -> str:
+    """Normalize a string for comparison.
+
+    This function produces a normalized *lowercase* string with
+    punctuation normalized. It also removes leading and
+    trailing quotes.
+
+    Suitable for cleaning strings for case-insensitive
+    comparison but not for display.
+    """
+    mystring = mystring.casefold()
+    mystring = _clean_backslashes_and_spaces(mystring)
+    mystring = _normalize_punctuation(mystring)
+    mystring = _strip_surrounding_quotes(mystring)
+    return mystring
+
+
+def _strip_surrounding_quotes(mystring: str) -> str:
+    """Remove surrounding quotes from a string.
+
+    This function removes any leading or trailing single or
+    double quotes from a string.
+    """
     try:
-        if mystring[0] in ['"', "'"]:
-            mystring = mystring[1:]
-        if mystring[-1] in ['"', "'"]:
-            mystring = mystring[:-1]
+        if ((mystring[0], mystring[-1]) == ('"', '"')) or (
+            (mystring[0], mystring[-1]) == ("'", "'")
+        ):
+            mystring = mystring[1:-1]
     except IndexError:
         pass
     return mystring
 
 
 def _normalize_punctuation(mystring: str) -> str:
+    """Normalize the punctuation in a string.
+
+    Converts fancy quotes to simple ones, html escaped
+    ampersands to plain ones, and converts any NFD
+    (combining) unicode characters to NFC (composed).
+    It also converts multiple spaces to single spaces and
+    removes any leading or trailing whitespace. Converts
+    Windows-style line endings to Unix-style line endings.
+
+    Suitable for cleaning strings for comparison or for
+    display.
+    """
     mystring = mystring.replace("’", "'")
     mystring = mystring.replace("‘", "'")
     mystring = mystring.replace("“", '"')
@@ -482,22 +531,27 @@ def _normalize_punctuation(mystring: str) -> str:
     mystring = mystring.replace("&amp;", "&")
     mystring = mystring.replace("'", "'")
     mystring = mystring.replace('"', '"')
-    mystring = mystring.replace("  ", " ")
+    mystring = re.sub("[ ]+", " ", mystring)
     mystring = mystring.strip()
     mystring = unicodedata.normalize("NFC", mystring)
+    mystring = mystring.replace("\r\n", "\n")
     return mystring
 
 
-def _clean_string(mystring: str) -> str:
+def _clean_backslashes_and_spaces(mystring: str) -> str:
     """
     Remove unwanted characters from a string and return it.
+
+    Removes backslashes escaping quotation marks, and
+    converts multiple spaces to single spaces. Also converts
+    multiple backslashes to single backslashes.
     """
     if re.search(r"[\'\"]", mystring):
         mystring = re.sub(r"\\+'", r"'", mystring)
         mystring = re.sub(r'\\+"', r'"', mystring)
     else:
         mystring = re.sub(r"\\+", r"\\", mystring)
-    mystring = mystring.replace("  ", " ")
+    mystring = re.sub(r"[ ]+", " ", mystring)
     return mystring
 
 

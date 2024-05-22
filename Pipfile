@@ -4,12 +4,25 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-invenio-app-rdm = {version = "==12.0.0b2.dev9", extras = ["opensearch2", "postgresql"]}
+invenio-app-rdm = {version = "~=12.0.0b3.dev3", extras = ["opensearch2"]}
 timefhuman = "*"
 halo = "*"
 jsonlines = "*"
+isbnlib = "*"
+python-iso639 = "*"
+langdetect = "*"
+python-stdnum = "*"
+titlecase = "*"
+validators = "*"
+invenio-utilities-tuw = "*"
+pytz = "*"
+python-dateutil = "*"
+invenio-saml = "*"
 
 [dev-packages]
+docker-services-cli = "*"
+pytest-invenio = "*"
+selenium = "*"
 
 [requires]
 python_version = "3.9"

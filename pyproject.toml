@@ -29,6 +29,10 @@ dependencies = [
 # dev = ["check-manifest"]
 # test = ["coverage"]
 
+[tool.pytest.ini_options]
+addopts = "--doctest-glob='*.rst' --doctest-modules --ignore=tests/helpers"
+testpaths = [ "tests", "invenio_remote_api_provisioner" ]
+
 [project.scripts]
 importer = "invenio_record_importer.main:cli"
 

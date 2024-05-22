@@ -17,6 +17,7 @@ one json object per line, separated by newlines.
 
 from copy import deepcopy
 from datetime import datetime
+from flask import current_app as app
 from pprint import pprint
 from timefhuman import timefhuman
 from isbnlib import get_isbnlike
@@ -37,8 +38,8 @@ from invenio_record_importer.config import (
 from invenio_record_importer.utils import (
     valid_date,
     valid_isbn,
-    _normalize_string,
-    _clean_string,
+    normalize_string_lowercase,
+    normalize_string,
 )
 
 book_types = [
@@ -466,13 +467,13 @@ def _add_book_authors(
             author_list.append(
                 {
                     "person_or_org": {
-                        "name": _clean_string(fullname),
+                        "name": normalize_string(fullname),
                         "type": "personal",
-                        "given_name": _clean_string(given),
+                        "given_name": normalize_string(given),
                         "family_name": (
-                            _clean_string(family)
+                            normalize_string(family)
                             if family
-                            else _clean_string(fullname)
+                            else normalize_string(fullname)
                         ),
                     },
                     # FIXME: handle unlabelled editors better?
@@ -537,8 +538,8 @@ def _add_author_data(
                 # Some records have "hcadmin" in role of "submitter"
                 if a["uni"] == "hcadmin":
                     continue
-                a["family"] = _clean_string(a["family"])
-                a["given"] = _clean_string(a["given"])
+                a["family"] = normalize_string(a["family"])
+                a["given"] = normalize_string(a["given"])
                 new_person = {}
 
                 new_person["person_or_org"] = {
@@ -607,7 +608,8 @@ def _add_author_data(
                 #                             'contributor as only author'),
                 #                 bad_data_dict)
         except (SyntaxError, ValueError):
-            print(row["authors"])
+            app.logger.error("Problem serializing authors:")
+            app.logger.error(row["authors"])
             _append_bad_data(
                 row["id"],
                 ("authors:Syntax or ValueError", row["authors"]),
@@ -726,8 +728,8 @@ def add_chapter_label(
         dict: The new record dict with chapter title info added
     """
     if row["chapter"]:
-        mychap = _normalize_string(row["chapter"])
-        mytitle = _normalize_string(row["title"])
+        mychap = normalize_string_lowercase(row["chapter"])
+        mytitle = normalize_string_lowercase(row["title"])
 
         # FIXME: Is book_journal_title ever appropriate for chapter label?
         # mybooktitle = _normalize_string(row["book_journal_title"])
@@ -745,8 +747,8 @@ def add_chapter_label(
             if re.search(
                 r"^([Cc]hapter )?\d+[\.,;]?\d*$", row["chapter"]
             ) or re.search(rn, row["chapter"]):
-                newrec["custom_fields"]["kcr:chapter_label"] = _clean_string(
-                    row["chapter"]
+                newrec["custom_fields"]["kcr:chapter_label"] = (
+                    normalize_string(row["chapter"])
                 )
             # elif mytitle in mychap \
             #         and re.search(r'^([Cc]hapter )?\d+[\.,;]?\d*\s?',
@@ -762,14 +764,14 @@ def add_chapter_label(
             # FIXME: label being truncated with \\\\\\\\\ in hc:27769
             elif re.search(r"^[Cc]hapter", row["chapter"]):
                 shortchap = re.sub(r"^[Cc]hapter\s*", "", row["chapter"])
-                newrec["custom_fields"]["kcr:chapter_label"] = _clean_string(
-                    shortchap
+                newrec["custom_fields"]["kcr:chapter_label"] = (
+                    normalize_string(shortchap)
                 )
             elif row["chapter"] == "N/A":
                 pass
             else:
-                newrec["custom_fields"]["kcr:chapter_label"] = _clean_string(
-                    row["chapter"]
+                newrec["custom_fields"]["kcr:chapter_label"] = (
+                    normalize_string(row["chapter"])
                 )
     return newrec, bad_data_dict
 
@@ -938,9 +940,10 @@ def add_titles(
     # Titles
     # FIXME: Filter out titles with punctuation from full biblio ref in
     #    field?
-    # FIXME: Remove things like surrounding quotation marks
-    mytitle = row["title_unchanged"]
-    newrec["metadata"]["title"] = _clean_string(mytitle)
+    normalized_title = normalize_string(row["title_unchanged"])
+    normalized_changed = normalize_string(row["title"])
+    newrec["metadata"]["title"] = normalize_string(normalized_title)
+    # FIXME: Why is this here?
     if row["id"] == "hc:36367":
         newrec["metadata"]["title"] = (
             'Do "Creatures of the State" Have Constitutional Rights? Standing'
@@ -948,13 +951,13 @@ def add_titles(
             " against the State"
         )
     # FIXME: types here are CV, need to expand to accommodate stripped desc
-    if row["title_unchanged"] != row["title"]:
+    if normalized_title != normalized_changed:
         if row["id"] == "hc:36367":
             pass
         else:
             newrec["metadata"].setdefault("additional_titles", []).append(
                 {
-                    "title": _clean_string(row["title"]),
+                    "title": normalized_changed,
                     "type": {
                         "id": "other",
                         "title": {"en": "Primary title with HTML stripped"},
@@ -987,16 +990,13 @@ def add_descriptions(
     """
 
     # Descriptions/Abstracts
-    # FIXME: handle double-escaped slashes?
-    # FIXME: handle windows newlines?
-    newrec["metadata"]["description"] = row["abstract_unchanged"].replace(
-        "\r\n", "\n"
-    )
-    # FIXME: types here are CV, need to expand to accommodate stripped desc
-    if row["abstract_unchanged"] != row["abstract"]:
+    normalized_desc = normalize_string(row["abstract_unchanged"])
+    normalized_abstr = normalize_string(row["abstract"])
+    newrec["metadata"]["description"] = normalized_desc
+    if normalized_desc != normalized_abstr:
         newrec["metadata"].setdefault("additional_descriptions", []).append(
             {
-                "description": row["abstract"].replace("\r\n", "\n"),
+                "description": normalized_abstr,
                 "type": {"id": "other", "title": {"en": "Other"}},
             }
         )
@@ -1299,7 +1299,9 @@ def add_edition_info(
     # Edition
     # FIXME: There's some bad data here, like ISSNs
     if row["edition"]:
-        newrec["custom_fields"]["kcr:edition"] = _clean_string(row["edition"])
+        newrec["custom_fields"]["kcr:edition"] = normalize_string(
+            row["edition"]
+        )
 
     return newrec, bad_data_dict
 
@@ -1336,7 +1338,7 @@ def add_date_info(
         """
         date_parts = re.split(r"[, \.]", date)
         date_parts = [p for p in date_parts if p not in ["del", "de", " ", ""]]
-        print(date_parts)
+        # print(date_parts)
         month = ""
         day = ""
         year = ""
@@ -1473,7 +1475,7 @@ def add_date_info(
         """
         date = fill_missing_zeros(date)
         date_parts = list(filter(None, re.split(r"[\.\-:\/ ]+", date)))
-        print(date_parts)
+        # print(date_parts)
         try:
             assert len(date_parts) >= 2 <= 3
             assert [int(p) for p in date_parts]
@@ -1547,10 +1549,10 @@ def add_date_info(
             parse_human_readable,
         ]:
             newdate = date_func(row["date"])
-            print(date_func)
-            print(newdate)
+            # print(date_func)
+            # print(newdate)
             if valid_date(newdate):
-                print(valid_date(newdate))
+                # print(valid_date(newdate))
                 invalid = False
                 break
 
@@ -1560,10 +1562,10 @@ def add_date_info(
         return invalid, newdate
 
     def repair_range(date: str) -> tuple[bool, str]:
-        print("repairing range")
+        # print("repairing range")
         invalid = True
         range_parts = re.split(r"[\-–\/]", date)
-        print(range_parts)
+        # print(range_parts)
         if (
             len(range_parts) == 2
             and len(range_parts[0]) == 4
@@ -1579,25 +1581,23 @@ def add_date_info(
                 invalid, range_parts[i] = repair_date(part)
             else:
                 invalid = False
-        print(range_parts)
+        # print(range_parts)
         if not invalid:
             date = "/".join(range_parts)
-        print(date)
+        # print(date)
         return invalid, date
 
     # Date info
     # FIXME: does "issued" work here?
-    pprint(newrec["metadata"])
-    pprint(row)
+    # pprint(newrec["metadata"])
+    # pprint(row)
     newrec["metadata"]["publication_date"] = row["date_issued"].split("T")[0]
     if row["date_issued"] != row["date"] and row["date"] not in ["", " "]:
         row["date"] = row["date"].split("T")[0]
         date_description = "Publication date"
         date_to_insert = row["date"]
         if not valid_date(date_to_insert):
-            print("invalid")
             invalid, date_to_insert = repair_date(date_to_insert)
-            print(date_to_insert)
             if invalid:
                 invalid, date_to_insert = repair_range(date_to_insert)
             if invalid and date_to_insert.lower() in [
@@ -1606,6 +1606,11 @@ def add_date_info(
             ]:
                 invalid = False
             if invalid:
+                app.logger.error("Could not repair invalid date:")
+                app.logger.error(
+                    f"input: {row['date']}, failed repaired "
+                    f"value: {date_to_insert}"
+                )
                 _append_bad_data(
                     row["id"],
                     ("bad date", row["date"], date_to_insert),
@@ -1814,7 +1819,7 @@ def add_publication_details(
 
     # FIXME: Handle missing publishers?
     if row["publisher"]:
-        newrec["metadata"]["publisher"] = _clean_string(row["publisher"])
+        newrec["metadata"]["publisher"] = normalize_string(row["publisher"])
     else:
         newrec["metadata"]["publisher"] = "unknown"
 
@@ -1879,7 +1884,7 @@ def add_book_journal_title(
             newrec["custom_fields"][myfield] = {}
         # FIXME: in hc:24459 title replaced by just \\\\
         # FIXME: in hc:52887, hc:27377 title truncated with \\\\
-        newrec["custom_fields"][myfield]["title"] = _clean_string(
+        newrec["custom_fields"][myfield]["title"] = normalize_string(
             row["book_journal_title"]
         )
     return newrec, bad_data_dict
@@ -2080,15 +2085,15 @@ def add_institution(
     if row["institution"]:
         # print(row['id'])
         # print(newrec['metadata']['resource_type']['id'])
-        if newrec["metadata"]["resource_type"]["id"] not in [
+        if newrec["metadata"]["resource_type"]["id"] in [
             "textDocument-thesis",
         ]:
             newrec["custom_fields"].setdefault("thesis:thesis", {})[
                 "university"
-            ] = _clean_string(row["institution"])
+            ] = normalize_string(row["institution"])
         else:
             newrec["custom_fields"]["kcr:sponsoring_institution"] = (
-                _clean_string(row["institution"])
+                normalize_string(row["institution"])
             )
         if newrec["metadata"]["resource_type"]["id"] not in [
             "textDocument-thesis",
@@ -2147,18 +2152,18 @@ def add_meeting_info(
         )
     if row["conference_location"] or row["meeting_location"]:
         newrec["custom_fields"].setdefault("meeting:meeting", {})["place"] = (
-            _clean_string(
+            normalize_string(
                 row["conference_location"] or row["meeting_location"]
             )
         )
     if row["conference_organization"] or row["meeting_organization"]:
-        newrec["custom_fields"]["kcr:meeting_organization"] = _clean_string(
+        newrec["custom_fields"]["kcr:meeting_organization"] = normalize_string(
             row["conference_organization"] or row["meeting_organization"]
         )
     # FIXME: meeting_title being truncated with \\\\ in hc:46017, hc:19211
     if row["conference_title"] or row["meeting_title"]:
         newrec["custom_fields"].setdefault("meeting:meeting", {})["title"] = (
-            _clean_string(row["conference_title"] or row["meeting_title"])
+            normalize_string(row["conference_title"] or row["meeting_title"])
         )
 
     return newrec, bad_data_dict
@@ -2462,14 +2467,9 @@ def add_rights_info(
         newrec["metadata"].setdefault("rights", []).append(
             {
                 "id": license_id,
-                # can't pass both id and title/description
-                # "props": {"url": license_url},
-                # "title": {"en": license_name},
-                # "description": {"en": ""},
+                # NOTE: can't pass both id and title/description
             }
         )
-        # if license_id != "arr":
-        #     newrec["metadata"]["rights"][0]["props"]["scheme"] = "spdx"
 
     return newrec, bad_data_dict
 
@@ -2616,10 +2616,12 @@ def serialize_json() -> tuple[list[dict], dict]:
         # if i[0][:8] == 'authors' and len(i) == 2}
         # pprint(auth_errors)
         if debug:
-            pprint(bad_data_dict)
+            app.logger.debug(bad_data_dict)
         # print(len(auth_errors))
     print(f"Processed {line_count} lines.")
     print(f"Found {len(bad_data_dict)} records with bad data.")
+    app.logger.info(f"Processed {line_count} lines.")
+    app.logger.info(f"Found {len(bad_data_dict)} records with bad data.")
     # FIXME: make issn field multiple?
 
     with jsonlines.open(

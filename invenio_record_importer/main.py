@@ -25,6 +25,7 @@ knowledge_commons_repository directory.
 """
 
 import click
+from flask import current_app as app
 from flask.cli import with_appcontext
 from typing import Optional
 
@@ -34,7 +35,6 @@ from invenio_record_importer.record_loader import (
     delete_records_from_invenio,
 )
 from invenio_record_importer.legacy.fedora_fetcher import fetch_fedora_records
-from invenio_record_importer.utils import logger
 
 
 @click.group()
@@ -205,7 +205,7 @@ def load_records(
     if len(records) > 0 and "-" in records[0]:
         if use_sourceids:
             print("Error: Cannot use source ids with ranges.")
-            logger.error(
+            app.logger.error(
                 "Ranges can only be specified using record indices, not source"
                 " ids."
             )

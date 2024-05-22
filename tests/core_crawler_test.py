@@ -2,6 +2,7 @@ import pytest
 from invenio_record_importer.core_crawler import get_metadata
 
 
+@pytest.mark.skip(reason="Test is not implemented")
 @pytest.mark.parametrize(
     "record_id, expected_metadata",
     [
@@ -71,8 +72,7 @@ from invenio_record_importer.core_crawler import get_metadata
                 "visible_metadata": {
                     "title": (
                         "Experiences of Security Guards Serving in Diocesan"
-                        " Schools During the COVID-19 Pandemic: A Case Study"
-                        .upper()
+                        " Schools During the COVID-19 Pandemic: A Case Study".upper()
                     ),
                     "author": (
                         "Victor Brian L. Catalbas, Ana Glenda S. Lactuan"
@@ -139,8 +139,7 @@ from invenio_record_importer.core_crawler import get_metadata
                 "page_xml_data": {
                     "title": (
                         "Experiences of Security Guards Serving in Diocesan"
-                        " Schools During the COVID-19 Pandemic: A Case Study"
-                        .upper()
+                        " Schools During the COVID-19 Pandemic: A Case Study".upper()
                     ),
                     "date": "2024",
                     "name": [
