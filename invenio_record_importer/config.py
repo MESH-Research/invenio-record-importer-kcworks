@@ -57,3 +57,16 @@ class ImporterConfig:
             self.MIGRATION_API_TOKEN = os.getenv("MIGRATION_API_TOKEN")
         else:
             raise ValueError("Missing config value: MIGRATION_API_TOKEN")
+
+        if app.config.get("RECORD_IMPORTER_LOGS_LOCATION"):
+            self.RECORD_IMPORTER_LOGS_LOCATION = Path(
+                app.config.get("RECORD_IMPORTER_LOGS_LOCATION")
+            )
+        elif os.getenv("RECORD_IMPORTER_LOGS_LOCATION"):
+            self.RECORD_IMPORTER_LOGS_LOCATION = Path(
+                os.getenv("RECORD_IMPORTER_LOGS_LOCATION")
+            )
+        else:
+            self.RECORD_IMPORTER_LOGS_LOCATION = Path(
+                Path(__file__).parent, "logs"
+            )

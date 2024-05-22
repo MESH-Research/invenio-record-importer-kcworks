@@ -85,7 +85,7 @@ def api_request(
 
     # files = {'file': ('report.xls', open('report.xls', 'rb'),
     # 'application/vnd.ms-excel', {'Expires': '0'})}
-    app.logger.debug(f"request to {api_url}")
+    app.logger.debug(f"{method} request to {api_url}")
     # print(f'headers: {headers}')
     app.logger.debug(f"params: {params}")
     app.logger.debug(f"payload_args: {payload_args}")
@@ -1279,6 +1279,15 @@ def load_records_into_invenio(
     else:
         range_args.append(start_index)
 
+    touched_log_path = Path(
+        app.config["RECORD_IMPORTER_LOGS_LOCATION"],
+        "invenio_record_importer_touched.jsonl",
+    )
+    failed_log_path = Path(
+        app.config["RECORD_IMPORTER_LOGS_LOCATION"],
+        "invenio_record_importer_failed.jsonl",
+    )
+
     def log_failed_record(
         index=-1, invenio_id=None, commons_id=None, core_record_id=None
     ) -> None:
@@ -1295,9 +1304,7 @@ def load_records_into_invenio(
                 }
             )
         with jsonlines.open(
-            Path(__file__).parent
-            / "logs"
-            / "invenio_record_importer_failed.jsonl",
+            failed_log_path,
             "w",
         ) as failed_writer:
             total_failed = [*failed_records]
@@ -1326,20 +1333,13 @@ def load_records_into_invenio(
             touched_records.append(touched)
             if commons_id not in previously_touched_sourceids:
                 with jsonlines.open(
-                    Path(__file__).parent
-                    / "logs"
-                    / "invenio_record_importer_touched.jsonl",
+                    touched_log_path,
                     "a",
                 ) as touched_writer:
                     touched_writer.write(touched)
 
     # Load list of previously touched records
     previously_touched_records = []
-    touched_log_path = (
-        Path(__file__).parent
-        / "logs"
-        / "invenio_record_importer_touched.jsonl"
-    )
     try:
         with jsonlines.open(
             touched_log_path,
@@ -1354,9 +1354,6 @@ def load_records_into_invenio(
 
     # Load list of failed records from prior runs
     existing_failed_records = []
-    failed_log_path = (
-        Path(__file__).parent / "logs" / "invenio_record_importer_failed.jsonl"
-    )
     try:
         with jsonlines.open(
             failed_log_path,
@@ -1575,9 +1572,7 @@ def load_records_into_invenio(
     # Order touched records in log file (saved time earlier by not
     # doing this on each iteration)
     with jsonlines.open(
-        Path(__file__).parent
-        / "logs"
-        / "invenio_record_importer_touched.jsonl",
+        touched_log_path,
         "w",
     ) as touched_writer:
         total_touched = []
