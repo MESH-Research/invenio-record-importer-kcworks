@@ -98,12 +98,19 @@ test_config = {
     "SQLALCHEMY_DATABASE_URI": "postgresql+psycopg2://"
     "invenio:invenio@localhost:5432/invenio",
     "SQLALCHEMY_TRACK_MODIFICATIONS": True,
-    # "INVENIO_WTF_CSRF_ENABLED": False,
-    # "INVENIO_WTF_CSRF_METHODS": [],
-    # "APP_DEFAULT_SECURE_HEADERS": {
-    #     "content_security_policy": {"default-src": []},
-    #     "force_https": False,
-    # },
+    "APP_ALLOWED_HOSTS": [
+        "0.0.0.0",
+        "localhost",
+        "127.0.0.1",
+        "192.168.0.15",  # Ian's dev machine internal
+        "192.168.0.16",  # Ian's dev machine internal
+    ],
+    "INVENIO_WTF_CSRF_ENABLED": False,
+    "INVENIO_WTF_CSRF_METHODS": [],
+    "APP_DEFAULT_SECURE_HEADERS": {
+        "content_security_policy": {"default-src": []},
+        "force_https": False,
+    },
     # "BROKER_URL": "amqp://guest:guest@localhost:5672//",
     # "CELERY_BROKER_URL": "amqp://guest:guest@localhost:5672//",
     # "CELERY_TASK_ALWAYS_EAGER": True,
@@ -119,6 +126,8 @@ test_config = {
     #     "R": "Remote",
     # },
     # "FILES_REST_DEFAULT_STORAGE_CLASS": "L",
+    "MIGRATION_SERVER_DOMAIN": "localhost:5000",
+    "MIGRATION_SERVER_PROTOCOL": "https",
 }
 
 parent_path = Path(__file__).parent.parent
@@ -126,16 +135,15 @@ parent_path = Path(__file__).parent.parent
 raw_data_path = (
     parent_path / "invenio_record_importer/tests/helpers/sample_records"
 )
-os.environ["MIGRATION_SERVER_DATA_DIR"] = str(raw_data_path)
+test_config["MIGRATION_SERVER_DATA_DIR"] = str(raw_data_path)
 
 # TODO: change to something local for testing
 files_dir = Path(Path(__file__).parents[2], "kcr-untracked-files/humcore")
-os.environ["MIGRATION_SERVER_FILES_LOCATION"] = str(files_dir)
+test_config["MIGRATION_SERVER_FILES_LOCATION"] = str(files_dir)
 
 log_file_path = (
     parent_path / "invenio_record_importer" / "logs" / "invenio.log"
 )
-
 if not log_file_path.exists():
     log_file_path.parent.mkdir(parents=True, exist_ok=True)
     log_file_path.touch()
@@ -882,6 +890,7 @@ def sample_communities(app, db):
 @pytest.fixture(scope="module")
 def app(
     app,
+    app_config,
     search,
     database,
     create_records_custom_fields,

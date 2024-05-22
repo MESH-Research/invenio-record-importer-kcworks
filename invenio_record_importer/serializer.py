@@ -31,10 +31,6 @@ from titlecase import titlecase
 import re
 import validators
 
-from invenio_record_importer.config import (
-    DATA_DIR,
-    GLOBAL_DEBUG,
-)
 from invenio_record_importer.utils import (
     valid_date,
     valid_isbn,
@@ -2510,8 +2506,6 @@ def serialize_json() -> tuple[list[dict], dict]:
     """
     Parse and serialize csv data into Invenio JSON format.
     """
-    debug = GLOBAL_DEBUG or True
-
     baserec: dict = {
         "parent": {"access": {"owned_by": []}},
         "custom_fields": {},
@@ -2531,110 +2525,130 @@ def serialize_json() -> tuple[list[dict], dict]:
     bad_data_dict: dict[str, list] = {}
     line_count: int = 0
 
-    with open(Path(DATA_DIR, "records-for-import.json")) as json_file:
-        top_object = json.loads(json_file.read())
-        for row in top_object:
-            newrec = deepcopy(baserec)
+    with app.app_context():
+        with open(
+            Path(
+                app.config["MIGRATION_SERVER_DATA_DIR"],
+                "records-for-import.json",
+            )
+        ) as json_file:
+            top_object = json.loads(json_file.read())
+            for row in top_object:
+                newrec = deepcopy(baserec)
 
-            # commons info
-            newrec, bad_data_dict = add_legacy_commons_info(
-                newrec, row, bad_data_dict
-            )
-            newrec, bad_data_dict = add_groups_info(newrec, row, bad_data_dict)
-            newrec, bad_data_dict = add_embargo_info(
-                newrec, row, bad_data_dict
-            )
+                # commons info
+                newrec, bad_data_dict = add_legacy_commons_info(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_groups_info(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_embargo_info(
+                    newrec, row, bad_data_dict
+                )
 
-            # basic metadata
-            newrec, bad_data_dict = add_titles(newrec, row, bad_data_dict)
-            newrec, bad_data_dict = add_descriptions(
-                newrec, row, bad_data_dict
-            )
-            newrec, bad_data_dict = add_notes(newrec, row, bad_data_dict)
-            newrec, bad_data_dict = _add_resource_type(
-                newrec, row, bad_data_dict
-            )
-            newrec, bad_data_dict = add_identifiers(newrec, row, bad_data_dict)
-            newrec, bad_data_dict = add_language_info(
-                newrec, row, bad_data_dict
-            )
-            newrec, bad_data_dict = add_edition_info(
-                newrec, row, bad_data_dict
-            )
-            newrec, bad_data_dict = _add_author_data(
-                newrec, row, bad_data_dict
-            )
-            newrec, bad_data_dict = add_date_info(newrec, row, bad_data_dict)
-            newrec, bad_data_dict = add_subjects_keywords(
-                newrec, row, bad_data_dict
-            )
-            newrec, bad_data_dict = add_rights_info(newrec, row, bad_data_dict)
+                # basic metadata
+                newrec, bad_data_dict = add_titles(newrec, row, bad_data_dict)
+                newrec, bad_data_dict = add_descriptions(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_notes(newrec, row, bad_data_dict)
+                newrec, bad_data_dict = _add_resource_type(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_identifiers(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_language_info(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_edition_info(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = _add_author_data(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_date_info(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_subjects_keywords(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_rights_info(
+                    newrec, row, bad_data_dict
+                )
 
-            # Info for chapters and articles
-            newrec, bad_data_dict = add_chapter_label(
-                newrec, row, bad_data_dict
-            )
-            newrec, bad_data_dict = add_book_authors(
-                newrec, row, bad_data_dict
-            )
-            newrec, bad_data_dict = add_volume_info(newrec, row, bad_data_dict)
-            newrec, bad_data_dict = add_publication_details(
-                newrec, row, bad_data_dict
-            )
-            newrec, bad_data_dict = add_book_journal_title(
-                newrec, row, bad_data_dict
-            )
-            newrec, bad_data_dict = add_pages(newrec, row, bad_data_dict)
-            newrec, bad_data_dict = add_journal_info(
-                newrec, row, bad_data_dict
-            )
+                # Info for chapters and articles
+                newrec, bad_data_dict = add_chapter_label(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_book_authors(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_volume_info(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_publication_details(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_book_journal_title(
+                    newrec, row, bad_data_dict
+                )
+                newrec, bad_data_dict = add_pages(newrec, row, bad_data_dict)
+                newrec, bad_data_dict = add_journal_info(
+                    newrec, row, bad_data_dict
+                )
 
-            # Info for dissertations and reports
-            newrec, bad_data_dict = add_institution(newrec, row, bad_data_dict)
+                # Info for dissertations and reports
+                newrec, bad_data_dict = add_institution(
+                    newrec, row, bad_data_dict
+                )
 
-            # conference/meeting info
-            newrec, bad_data_dict = add_meeting_info(
-                newrec, row, bad_data_dict
-            )
+                # conference/meeting info
+                newrec, bad_data_dict = add_meeting_info(
+                    newrec, row, bad_data_dict
+                )
 
-            # Uploaded file details
-            newrec, bad_data_dict = add_file_info(newrec, row, bad_data_dict)
+                # Uploaded file details
+                newrec, bad_data_dict = add_file_info(
+                    newrec, row, bad_data_dict
+                )
 
-            newrec["record_source"] = "knowledgeCommons"
+                newrec["record_source"] = "knowledgeCommons"
 
-            newrec_list.append(newrec)
-            line_count += 1
+                newrec_list.append(newrec)
+                line_count += 1
 
-        # pprint([r for r in newrec_list if r['metadata']['resource_type']
-        # ['id'] == 'publication:journalArticle'])
+            # pprint([r for r in newrec_list if r['metadata']['resource_type']
+            # ['id'] == 'publication:journalArticle'])
 
-        # pprint([r for r in newrec_list if r['metadata']['identifiers'][0]
-        # ['identifier'] == 'hc:45177'])
-        # pprint([r for r in top_object if r['id'] == 'hc:45177'])
+            # pprint([r for r in newrec_list if r['metadata']['identifiers'][0]
+            # ['identifier'] == 'hc:45177'])
+            # pprint([r for r in top_object if r['id'] == 'hc:45177'])
 
-        # auth_errors = {k:v for k, v in bad_data_dict.items() for i in v
-        # if i[0][:8] == 'authors' and len(i) == 2}
-        # pprint(auth_errors)
-        if debug:
-            app.logger.debug(bad_data_dict)
-        # print(len(auth_errors))
-    print(f"Processed {line_count} lines.")
-    print(f"Found {len(bad_data_dict)} records with bad data.")
-    app.logger.info(f"Processed {line_count} lines.")
-    app.logger.info(f"Found {len(bad_data_dict)} records with bad data.")
-    # FIXME: make issn field multiple?
+            # auth_errors = {k:v for k, v in bad_data_dict.items() for i in v
+            # if i[0][:8] == 'authors' and len(i) == 2}
+            # pprint(auth_errors)
+            if debug:
+                app.logger.debug(bad_data_dict)
+            # print(len(auth_errors))
+        print(f"Processed {line_count} lines.")
+        print(f"Found {len(bad_data_dict)} records with bad data.")
+        app.logger.info(f"Processed {line_count} lines.")
+        app.logger.info(f"Found {len(bad_data_dict)} records with bad data.")
+        # FIXME: make issn field multiple?
 
-    with jsonlines.open(
-        Path(__file__).parent / "logs" / "serializer_failed.jsonl",
-        "w",
-    ) as failed_writer:
-        for k, v in bad_data_dict.items():
-            failed_writer.write({"id": k, "errors": v})
+        with jsonlines.open(
+            Path(__file__).parent / "logs" / "serializer_failed.jsonl",
+            "w",
+        ) as failed_writer:
+            for k, v in bad_data_dict.items():
+                failed_writer.write({"id": k, "errors": v})
 
-    with jsonlines.open(
-        Path(__file__).parent / "data" / "serialized_data.jsonl", mode="w"
-    ) as output_file:
-        for rec in newrec_list:
-            output_file.write(rec)
+        with jsonlines.open(
+            Path(__file__).parent / "data" / "serialized_data.jsonl", mode="w"
+        ) as output_file:
+            for rec in newrec_list:
+                output_file.write(rec)
 
     return newrec_list, bad_data_dict

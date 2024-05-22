@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "75c160fa5d6a2e5f5c04c44d3dbe40a764fac8e13a2f120cc61b74235b305af4"
+            "sha256": "f2c5ef5f18fbc96e2cfe165351ea9ed36993f1c767296d9d68d74bf07f95493d"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -947,6 +947,14 @@
             ],
             "version": "==1.5"
         },
+        "iniconfig": {
+            "hashes": [
+                "sha256:2d91e135bf72d31a410b17c16da610a82cb55f6b0477d1a902134b24a455b8b3",
+                "sha256:b6a85871a79d2e3b22d2d1b94ac2824226a63c6b741c88f7ae975f18b6778374"
+            ],
+            "markers": "python_version >= '3.7'",
+            "version": "==2.0.0"
+        },
         "intervals": {
             "hashes": [
                 "sha256:7c963abf7b4be2be40322b84e036af5d4ebec0945b5d29df7da1a638b3fea768",
@@ -999,11 +1007,11 @@
                 "opensearch2"
             ],
             "hashes": [
-                "sha256:58de4d991e739be136127616eae0ede5671fa778b4d1a02332713a7fe5956919",
-                "sha256:b03873ea8dbd0a45b75376ad86d76bcdd30a26022a2efaaa799599ca2807c778"
+                "sha256:a30153ccc6f33c8e145c122c427878c930877ecddd8f64378aa4a91ec253bbc5",
+                "sha256:c4e90a1737151ca53dc169ba2e2c9ae67d3b7650058fbd51a21d00c87885d1b4"
             ],
             "markers": "python_version >= '3.7'",
-            "version": "==12.0.0b3.dev15"
+            "version": "==12.0.0b3.dev16"
         },
         "invenio-assets": {
             "hashes": [
@@ -1213,11 +1221,15 @@
         },
         "invenio-rdm-records": {
             "hashes": [
-                "sha256:2ebb038b1e0bfe0fa01bdff146e95a04d41010855abfae2db920bb3223db9869",
-                "sha256:7bf4413e2654fc01e78accbdbbac8fd6bfda76d5e66a3195d4a7e90075b25b12"
+                "sha256:9e9917ac3e7b7d469f96b58b840a16fb8de09932d7ddcaa9ca270e41973648ee",
+                "sha256:a941ff6882232e97a05c36f446300eca92075757cca90c6a6f42574bff4f15d2"
             ],
             "markers": "python_version >= '3.7'",
-            "version": "==10.4.3"
+            "version": "==10.5.0"
+        },
+        "invenio-record-importer": {
+            "editable": true,
+            "file": "."
         },
         "invenio-records": {
             "hashes": [
@@ -2389,6 +2401,14 @@
             "markers": "python_full_version >= '3.6.8'",
             "version": "==3.1.2"
         },
+        "pytest": {
+            "hashes": [
+                "sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280",
+                "sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8"
+            ],
+            "markers": "python_version >= '3.7'",
+            "version": "==7.4.4"
+        },
         "python-dateutil": {
             "hashes": [
                 "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3",
@@ -2716,11 +2736,11 @@
         },
         "requests": {
             "hashes": [
-                "sha256:21ac9465cdf8c1650fe1ecde8a71669a93d4e6f147550483a2967d08396a56a5",
-                "sha256:eb97e87e64c79e64e5b8ac75cee9dd1f97f49e289b083ee6be96268930725685"
+                "sha256:dd951ff5ecf3e3b3aa26b40703ba77495dab41da839ae72ef3c8e5d8e2433289",
+                "sha256:fc06670dd0ed212426dfeb94fc1b983d917c4f9847c863f313c9dfaaffb7c23c"
             ],
             "markers": "python_version >= '3.8'",
-            "version": "==2.32.1"
+            "version": "==2.32.2"
         },
         "requests-oauthlib": {
             "hashes": [
@@ -3908,11 +3928,11 @@
         },
         "pytest": {
             "hashes": [
-                "sha256:1377bda3466d70b55e3f5cecfa55bb7cfcf219c7964629b967c37cf0bda818b7",
-                "sha256:4f365fec2dff9c1162f834d9f18af1ba13062db0c708bf7b946f8a5c76180c39"
+                "sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280",
+                "sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8"
             ],
             "markers": "python_version >= '3.7'",
-            "version": "==7.1.3"
+            "version": "==7.4.4"
         },
         "pytest-cov": {
             "hashes": [

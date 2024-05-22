@@ -25,13 +25,6 @@ import re
 import unicodedata
 from urllib.parse import unquote
 
-from invenio_record_importer.config import (
-    GLOBAL_DEBUG,
-    FILES_LOCATION,
-    SERVER_DOMAIN,
-    SERVER_PROTOCOL,
-    API_TOKEN,
-)
 from invenio_record_importer.utils import (
     valid_date,
     compare_metadata,
@@ -53,20 +46,22 @@ def api_request(
     """
     Make an api request and return the response
     """
-    debug = GLOBAL_DEBUG or True
     if not server:
-        server = SERVER_DOMAIN
+        server = app.config.get("MIGRATION_SERVER_DOMAIN")
     if not token:
-        token = API_TOKEN
+        token = app.config.get("MIGRATION_API_TOKEN")
     if not protocol:
-        protocol = SERVER_PROTOCOL
+        protocol = app.config.get("MIGRATION_SERVER_PROTOCOL")
 
     payload_args = {}
 
+    app.logger.debug(protocol)
+    app.logger.debug(server)
+    app.logger.debug(endpoint)
     api_url = f"{protocol}://{server}/api/{endpoint}"
     if args:
         api_url = f"{api_url}/{args}"
-        app.logger.error("url:", api_url)
+        app.logger.error(f"url: {api_url}")
 
     callfuncs = {
         "GET": requests.get,
@@ -146,7 +141,7 @@ def create_invenio_record(
     Create a new Invenio record from the provided dictionary of metadata
     """
     if not token:
-        token = API_TOKEN
+        token = app.config["MIGRATION_API_TOKEN"]
     app.logger.debug("~~~~~~~~")
     app.logger.debug("metadata for new record:")
     app.logger.debug(pformat(metadata))
@@ -379,9 +374,8 @@ def upload_draft_files(
                                 used in the humcore folder. (The latter is
                                 prefixed with a hashed (?) string.)
     """
-    debug = GLOBAL_DEBUG or True
     if not token:
-        token = API_TOKEN
+        token = app.config["MIGRATION_API_TOKEN"]
     filenames_list = [{"key": f} for f in files_dict.keys()]
     output = {}
 
@@ -402,8 +396,9 @@ def upload_draft_files(
     output["initialization"] = initialization
     output["file_transactions"] = {}
 
-    server_string = SERVER_DOMAIN
-    if SERVER_DOMAIN == "10.98.11.159":
+    # FIXME: Generated 'link' urls have 'localhost' when running locally
+    server_string = app.config.get("MIGRATION_SERVER_DOMAIN")
+    if server_string == "10.98.11.159":
         server_string = "invenio-dev.hcommons-staging.org"
 
     # upload files
@@ -443,7 +438,9 @@ def upload_draft_files(
             "/srv/www/commons/current/web/app/uploads/humcore/", ""
         )
         with open(
-            Path(FILES_LOCATION) / long_filename, "rb"
+            Path(app.config["MIGRATION_SERVER_FILES_LOCATION"])
+            / long_filename,
+            "rb",
         ) as binary_file_data:
             app.logger.debug("^^^^^^^^")
             app.logger.debug(
@@ -560,7 +557,7 @@ def delete_invenio_draft_record(
     :param str record_id:   The id string for the Invenio draft record
     """
     if not token:
-        token = API_TOKEN
+        token = app.config["MIGRATION_API_TOKEN"]
     reviews = api_request(
         method="GET",
         endpoint="records",
@@ -699,8 +696,6 @@ def change_record_ownership(
     """
     Change the owner of the specified record to a new user.
     """
-    debug = GLOBAL_DEBUG or True
-
     app.logger.debug("__________")
     app.logger.debug(f"Changing ownership of record {record_id}")
 
@@ -741,7 +736,7 @@ def create_invenio_community(
 ) -> dict:
     """Create a new community in Invenio."""
     if not token:
-        token = API_TOKEN
+        token = app.config["MIGRATION_API_TOKEN"]
 
     community_data = {
         "hcommons": {
@@ -893,7 +888,7 @@ def create_full_invenio_record(
     Create an invenio record with file uploads, ownership, communities.
     """
     if not token:
-        token = API_TOKEN
+        token = app.config["MIGRATION_API_TOKEN"]
     existing_record = None
     result = {}
     file_data = core_data["files"]

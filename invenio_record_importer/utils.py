@@ -22,8 +22,6 @@ import re
 import string
 from typing import Union
 import unicodedata
-from .config import GLOBAL_DEBUG
-
 
 # logger = logging.getLogger(__name__)
 # logger.setLevel(logging.INFO)
@@ -110,7 +108,6 @@ def compare_metadata(A: dict, B: dict) -> dict:
     return: A dictionary of differences between the two records
     rtype: dict
     """
-    VERBOSE = GLOBAL_DEBUG or False
     output = {"A": {}, "B": {}}
 
     def obj_list_compare(list_name, key, a, b, comparators):

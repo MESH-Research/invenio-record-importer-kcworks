@@ -3,3 +3,9 @@ importer = invenio_record_importer.main:cli
 
 [flask.commands]
 importer = invenio_record_importer.main:cli
+
+[invenio_base.api_apps]
+importer = invenio_record_importer.ext:InvenioRecordImporter
+
+[invenio_base.apps]
+importer = invenio_record_importer.ext:InvenioRecordImporter

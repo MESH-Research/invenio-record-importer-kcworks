@@ -36,6 +36,12 @@ testpaths = [ "tests", "invenio_remote_api_provisioner" ]
 [project.scripts]
 importer = "invenio_record_importer.main:cli"
 
+[project.entry-points."invenio_base.apps"]
+importer = "invenio_record_importer.ext:InvenioRecordImporter"
+
+[project.entry-points."invenio_base.api_apps"]
+importer = "invenio_record_importer.ext:InvenioRecordImporter"
+
 [project.entry-points."flask.commands"]
 importer = "invenio_record_importer.main:cli"
 

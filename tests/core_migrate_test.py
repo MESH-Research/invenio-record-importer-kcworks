@@ -7,12 +7,11 @@
 # modify it under the terms of the MIT License; see LICENSE file for more
 # details.
 
-import token
 from click.testing import CliRunner
 from copy import deepcopy
 from invenio_record_importer.main import cli
 from invenio_record_importer.utils import valid_date, generate_random_string
-from invenio_record_importer.serializer import add_date_info, serialize_json
+from invenio_record_importer.serializer import add_date_info
 from invenio_record_importer.record_loader import (
     api_request,
     create_invenio_record,
@@ -49,8 +48,6 @@ from .helpers.sample_records import (
     rec583,
     rec16079,
 )
-
-TESTING_SERVER_DOMAIN = os.getenv("MIGRATION_SERVER_DOMAIN", "localhost:5000")
 
 
 @pytest.mark.parametrize(
@@ -344,11 +341,10 @@ request_header_keys = [
 
 
 @pytest.mark.parametrize(
-    "method,server,endpoint,args,json_dict,expected_response",
+    "method,endpoint,args,json_dict,expected_response",
     [
         (
             "GET",
-            TESTING_SERVER_DOMAIN,
             "records",
             "p6qjf-y6074",
             "",
@@ -357,9 +353,10 @@ request_header_keys = [
     ],
 )
 def test_api_request(
-    app, admin, method, server, endpoint, args, json_dict, expected_response
+    app, admin, method, endpoint, args, json_dict, expected_response
 ):
     """ """
+    server = app.config.get("MIGRATION_SERVER_DOMAIN")
     token = admin.allowed_token
     other_args = {}
     if json_dict:
@@ -554,7 +551,7 @@ def test_create_invenio_record(
     #  - parent
     #  - pids
     #  -
-    print("Starting")
+    TESTING_SERVER_DOMAIN = app.config.get("MIGRATION_SERVER_DOMAIN")
 
     expected_headers = {
         "Server": "nginx/1.23.4",
@@ -596,31 +593,11 @@ def test_create_invenio_record(
     }
     json_payload["access"] = {"record": "public", "files": "public"}
     json_payload["files"] = {"enabled": True}
-    if "rights" in json_payload["metadata"].keys():
-        json_payload["metadata"]["rights"] = [
-            {"id": json_payload["metadata"]["rights"][0]["id"]}
-        ]
 
     # prepare expected json for output (some differences from input)
     # REMEMBER: normalized here to simulate normalized output with
     # odd input
     expected_json = deepcopy(expected_json)
-    if "description" in expected_json["metadata"].keys():
-        expected_json["metadata"]["description"] = _normalize_punctuation(
-            _clean_backslashes_and_spaces(
-                expected_json["metadata"]["description"]
-            )
-        )
-    if "additional_descriptions" in expected_json["metadata"].keys():
-        expected_json["metadata"]["additional_descriptions"][0][
-            "description"
-        ] = _normalize_punctuation(
-            _clean_backslashes_and_spaces(
-                expected_json["metadata"]["additional_descriptions"][0][
-                    "description"
-                ]
-            )
-        )
 
     # Create record and sanitize the result to ease comparison
     actual = create_invenio_record(
@@ -1030,7 +1007,8 @@ def test_create_invenio_user(
     assert actual_user["new_user"] == new_user_flag
 
 
-def test_record_loader(app):
+def test_record_loader(app, admin):
+    app.config["MIGRATION_API_TOKEN"] = admin.allowed_token
     runner = CliRunner()
     result = runner.invoke(cli, ["load", "0", "1"])
     assert result.exit_code == 0

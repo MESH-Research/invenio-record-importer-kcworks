@@ -18,6 +18,7 @@ invenio-utilities-tuw = "*"
 pytz = "*"
 python-dateutil = "*"
 invenio-saml = "*"
+invenio-record-importer = {file = ".", editable = true}
 
 [dev-packages]
 docker-services-cli = "*"

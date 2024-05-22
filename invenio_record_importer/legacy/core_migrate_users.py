@@ -19,8 +19,6 @@ from invenio_utilities_tuw.utils import (
 from invenio_utilities_tuw.cli.utils import set_record_owners
 from pprint import pprint
 
-from invenio_record_importer.config import GLOBAL_DEBUG
-
 cli = click.Group()
 
 
@@ -37,7 +35,6 @@ def get_user_id(user_email):
 @click.argument("new_owner", required=True, type=str)
 @click.argument("old_owner", required=True, type=str)
 def change_owner(recid, new_owner, old_owner):
-    debug = GLOBAL_DEBUG or True
     print("__________")
     print(f"Changing ownership of record {recid}")
     u = get_identity_for_user(old_owner)

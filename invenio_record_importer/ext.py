@@ -7,11 +7,8 @@
 # and/or modify it under the terms of the MIT License; see
 # LICENSE file for more details.
 
-from pprint import pformat
-from flask import current_app
-import os
 
-from . import config
+from .config import ImporterConfig
 
 
 class InvenioRecordImporter(object):
@@ -43,6 +40,8 @@ class InvenioRecordImporter(object):
             app (Flask): the Flask application object on which to initialize
                 the extension
         """
-        for k in dir(config):
-            if k.startswith("RECORD_IMPORTER_"):
-                app.config.setdefault(k, getattr(config, k))
+        self.config = ImporterConfig(app)
+        for k in dir(self.config):
+            if k.startswith("RECORD_IMPORTER_") or k.startswith("MIGRATION_"):
+                app.config.setdefault(k, getattr(self.config, k))
+                print(f"Setting {k} to {getattr(self.config, k)}")
