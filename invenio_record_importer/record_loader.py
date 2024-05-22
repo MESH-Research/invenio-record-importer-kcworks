@@ -1,3 +1,4 @@
+import sys
 import arrow
 from halo import Halo
 from flask import current_app as app
@@ -6,6 +7,7 @@ from invenio_access.permissions import system_identity
 # from invenio_access.utils import get_identity
 from invenio_accounts import current_accounts
 from invenio_accounts.models import User
+from invenio_communities.proxies import current_communities
 from invenio_db import db
 from invenio_oauthclient.models import UserIdentity
 from invenio_rdm_records.proxies import (
@@ -734,7 +736,11 @@ def change_record_ownership(
 def create_invenio_community(
     community_label: str, token: Optional[str] = None
 ) -> dict:
-    """Create a new community in Invenio."""
+    """Create a new community in Invenio.
+
+    Return the community data as a dict. (The result
+    of the CommunityItem.to_dict() method.)
+    """
     if not token:
         token = app.config["MIGRATION_API_TOKEN"]
 
@@ -864,18 +870,18 @@ def create_invenio_community(
         "review_policy": "open",
         # "owned_by": [{"user": ""}]
     }
-    # admin_user_id = os.environ['ADMIN_USER_ID']
-    # my_community_data['access']['owned_by'] = [{"user": admin_user_id}]
-    # FIXME: a better way to get the current user?
-    result = api_request(
-        "POST",
-        endpoint="communities",
-        json_dict=my_community_data,
-        token=token,
+    # result = api_request(
+    #     "POST",
+    #     endpoint="communities",
+    #     json_dict=my_community_data,
+    #     token=token,
+    # )
+    result = current_communities.service.create(
+        system_identity, data=my_community_data
     )
-    if result["status_code"] != 201:
-        raise requests.HTTPError(result)
-    return result
+    if result.data.get("errors"):
+        raise RuntimeError(result)
+    return result.to_dict()
 
 
 def create_full_invenio_record(
@@ -917,16 +923,21 @@ def create_full_invenio_record(
 
         app.logger.debug(f"checking for community {community_label}")
         # try to look up a matching community
-        community_check = api_request(
-            "GET", endpoint="communities", args=community_label, token=token
-        )
+        # community_check = api_request(
+        #     "GET", endpoint="communities", args=community_label, token=token
+        # )
+        community_check = current_communities.service.search(
+            system_identity, q=f"slug:{community_label}"
+        ).to_dict()
         # otherwise create it
-        if community_check["status_code"] == 404:
+        if community_check["hits"]["total"] == 0:
             app.logger.debug(
                 "Community", community_label, "does not exist. Creating..."
             )
             community_check = create_invenio_community(community_label)
-        community_id = community_check["json"]["id"]
+        else:
+            community_check = community_check["hits"]["hits"][0]
+        community_id = community_check["id"]
         result["community"] = community_check
 
     # Create the basic metadata record

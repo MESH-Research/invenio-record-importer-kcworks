@@ -108,6 +108,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
     return: A dictionary of differences between the two records
     rtype: dict
     """
+    VERBOSE = False
     output = {"A": {}, "B": {}}
 
     def obj_list_compare(list_name, key, a, b, comparators):

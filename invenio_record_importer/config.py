@@ -20,7 +20,7 @@ class ImporterConfig:
         if app.config.get("MIGRATION_SERVER_DATA_DIR"):
             DATA_DIR = Path(app.config.get("MIGRATION_SERVER_DATA_DIR"))
         elif os.getenv("MIGRATION_SERVER_DATA_DIR"):
-            DATA_DIR = Path(os.getenv["MIGRATION_SERVER_DATA_DIR"])
+            DATA_DIR = Path(os.getenv("MIGRATION_SERVER_DATA_DIR"))
         else:
             DATA_DIR = Path(Path(__file__).parents[2], "kcr-untracked-files")
         self.MIGRATION_SERVER_DATA_DIR = DATA_DIR
@@ -52,8 +52,8 @@ class ImporterConfig:
         self.MIGRATION_SERVER_PROTOCOL = SERVER_PROTOCOL
 
         if app.config.get("MIGRATION_API_TOKEN"):
-            self.API_TOKEN = app.config.get("MIGRATION_API_TOKEN")
+            self.MIGRATION_API_TOKEN = app.config.get("MIGRATION_API_TOKEN")
         elif os.getenv("MIGRATION_API_TOKEN"):
-            self.API_TOKEN = os.getenv("MIGRATION_API_TOKEN")
+            self.MIGRATION_API_TOKEN = os.getenv("MIGRATION_API_TOKEN")
         else:
             raise ValueError("Missing config value: MIGRATION_API_TOKEN")
