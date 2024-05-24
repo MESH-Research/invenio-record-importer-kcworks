@@ -1,4 +1,6 @@
+from os import error
 import sys
+from venv import logger
 import arrow
 from halo import Halo
 from flask import current_app as app
@@ -10,8 +12,14 @@ from invenio_accounts.models import User
 from invenio_communities.proxies import current_communities
 from invenio_db import db
 from invenio_oauthclient.models import UserIdentity
+from invenio_pidstore.errors import PIDUnregistered
 from invenio_rdm_records.proxies import (
     current_rdm_records_service as records_service,
+)
+from invenio_rdm_records.services.errors import ReviewNotFoundError
+from invenio_records_resources.services.errors import (
+    FailedFileUploadException,
+    FileKeyNotFoundError,
 )
 import itertools
 import json
@@ -20,10 +28,10 @@ import jsonlines
 from pathlib import Path
 import requests
 from requests.exceptions import JSONDecodeError as RequestsJSONDecodeError
+from sqlalchemy.orm.exc import NoResultFound
 from traceback import format_exception, print_exc
 from typing import Optional, Union
 from pprint import pformat, pprint
-import re
 import unicodedata
 from urllib.parse import unquote
 
@@ -57,13 +65,9 @@ def api_request(
 
     payload_args = {}
 
-    app.logger.debug(protocol)
-    app.logger.debug(server)
-    app.logger.debug(endpoint)
     api_url = f"{protocol}://{server}/api/{endpoint}"
     if args:
         api_url = f"{api_url}/{args}"
-        app.logger.error(f"url: {api_url}")
 
     callfuncs = {
         "GET": requests.get,
@@ -92,8 +96,8 @@ def api_request(
     response = callfunc(
         api_url, headers=headers, params=params, **payload_args, verify=False
     )
-    app.logger.debug(pformat(response))
-    app.logger.debug(pformat(response.text))
+    # app.logger.debug(pformat(response))
+    # app.logger.debug(pformat(response.text))
 
     try:
         json_response = response.json() if method != "DELETE" else None
@@ -152,56 +156,42 @@ def create_invenio_record(
     if "pids" in metadata.keys() and "doi" in metadata["pids"].keys():
         my_doi = metadata["pids"]["doi"]["identifier"]
         doi_for_query = my_doi.split("/")
-        same_doi = api_request(
-            method="GET",
-            endpoint=(
-                f"records?q=pids.doi.identifier%3D%22{doi_for_query[0]}"
-                f"%2F{doi_for_query[1]}%22"
-            ),
-            params={},
-            token=token,
-        )
-        if (
-            same_doi["status_code"] == 200
-            and same_doi["json"]["hits"]["total"] == 0
-        ):
-            same_doi = api_request(
-                method="GET",
-                endpoint=(
-                    "user/records?q=pids.doi.identifier%3D%22"
-                    f"{doi_for_query[0]}%2F{doi_for_query[1]}%22"
-                ),
-                params={},
-                token=token,
-            )
-        if same_doi["status_code"] not in [200]:
+        # TODO: Can we include deleted records here somehow?
+        try:
+            same_doi = records_service.search_drafts(
+                system_identity,
+                q=f'pids.doi.identifier:"{doi_for_query[0]}/{doi_for_query[1]}"',
+            ).to_dict()
+            # app.logger.debug(f"same_doi: {my_doi}")
+            # app.logger.debug(f"same_doi: {pformat(same_doi)}")
+        except Exception as e:
             app.logger.error(
                 "    error checking for existing record with same DOI:"
             )
             app.logger.error(same_doi)
-            raise requests.HTTPError(same_doi)
-        if (
-            same_doi["status_code"] == 200
-            and same_doi["json"]["hits"]["total"] > 0
-        ):
+            raise e
+        if same_doi["hits"]["total"] > 0:
             app.logger.info(
-                f'    found {len(same_doi["json"]["hits"]["hits"])} existing'
+                f'    found {len(same_doi["hits"]["hits"])} existing'
                 " records with same DOI..."
             )
             # delete extra records with the same doi
-            if len(same_doi["json"]["hits"]["hits"]) > 1:
+            if same_doi["hits"]["total"] > 1:
                 app.logger.info(
                     "    found more than one existing record with same DOI:"
-                    f" {[j['id'] for j in same_doi['json']['hits']['hits']]}"
+                    f" {[(j['id'], j['status']) for j in same_doi['hits']['hits']]}"
                 )
                 app.logger.info("   deleting extra records...")
-                for i in [
-                    h["id"] for h in same_doi["json"]["hits"]["hits"][1:]
-                ]:
-                    delete_result = delete_invenio_draft_record(i)
-                    if delete_result["status_code"] != 204:
-                        raise requests.HTTPError(delete_result)
-            existing_metadata = same_doi["json"]["hits"]["hits"][0]
+                for i in [h["id"] for h in same_doi["hits"]["hits"][1:]]:
+                    try:
+                        delete_result = delete_invenio_draft_record(i)
+                    except Exception as e:
+                        app.logger.error(
+                            "    error deleting extra record with same DOI:"
+                        )
+                        app.logger.error(delete_result)
+                        raise e
+            existing_metadata = same_doi["hits"]["hits"][0]
             # Check for differences in metadata
             differences = compare_metadata(existing_metadata, metadata)
             if differences:
@@ -231,7 +221,6 @@ def create_invenio_record(
                 app.logger.info(
                     "    updating existing record with new metadata..."
                 )
-                # app.logger.info(f"    {update_payload}")
                 new_comparison = compare_metadata(
                     existing_metadata, update_payload
                 )
@@ -261,61 +250,54 @@ def create_invenio_record(
                         "    metadata updated to match migration source..."
                     )
                     if existing_metadata["status"] != "published":
-                        try:
-                            result = api_request(
-                                method="PUT",
-                                endpoint="records",
-                                args=f'{existing_metadata["id"]}/draft',
-                                json_dict=update_payload,
-                                token=token,
-                            )
-                            assert result["status_code"] == 200
-                            app.logger.info(
-                                "    continuing with existing draft record"
-                                " (new metadata)..."
-                            )
-                            # app.logger.info(result["json"])
-                            result["headers"] = (
+                        # result = api_request(
+                        #     method="PUT",
+                        #     endpoint="records",
+                        #     args=f'{existing_metadata["id"]}/draft',
+                        #     json_dict=update_payload,
+                        #     token=token,
+                        # )
+                        result = records_service.update_draft(
+                            system_identity,
+                            id_=existing_metadata["id"],
+                            data=update_payload,
+                        )
+                        result = result.to_dict()
+                        app.logger.info(
+                            "    continuing with existing draft record"
+                            " (new metadata)..."
+                        )
+                        # app.logger.info(result["json"])
+                        return {
+                            "headers": (
                                 "existing draft record with same DOI and"
                                 " updated metadata"
-                            )
-                            return result
-                        except AssertionError:
-                            raise requests.HTTPError(result)
+                            ),
+                            "record_data": result,
+                        }
                     else:
                         app.logger.info(
                             "    creating new draft of published record..."
                         )
-                        create_draft_result = api_request(
-                            method="POST",
-                            endpoint="records",
-                            args=f'{existing_metadata["id"]}/draft',
-                            token=token,
+                        create_draft_result = records_service.edit(
+                            system_identity, id_=existing_metadata["id"]
                         )
-                        if create_draft_result["status_code"] == 201:
-                            app.logger.info(
-                                "    updating new draft of published record"
-                                " with new metadata..."
-                            )
-                            try:
-                                result = api_request(
-                                    method="PUT",
-                                    endpoint="records",
-                                    args=(
-                                        f'{create_draft_result["json"]["id"]}'
-                                        "/draft"
-                                    ),
-                                    json_dict=update_payload,
-                                    token=token,
-                                )
-                                assert result["status_code"] == 200
-                                result["headers"] = (
-                                    "new draft of existing record with same"
-                                    " DOI and updated metadata"
-                                )
-                                return result
-                            except AssertionError:
-                                raise requests.HTTPError(result)
+                        app.logger.info(
+                            "    updating new draft of published record"
+                            " with new metadata..."
+                        )
+                        result = records_service.update_draft(
+                            system_identity,
+                            id_=create_draft_result.id,
+                            data=update_payload,
+                        ).to_dict()
+                        return {
+                            "headers": (
+                                "new draft of existing record with same"
+                                " DOI and updated metadata"
+                            ),
+                            "record_data": result,
+                        }
 
             if not differences:
                 record_type = (
@@ -328,25 +310,25 @@ def create_invenio_record(
                     "(same metadata)..."
                 )
                 result = {
-                    "status_code": 201,
+                    # "status_code": 201,
                     "headers": "existing record with same DOI and same data",
-                    "json": existing_metadata,
-                    "text": existing_metadata,
+                    "record_data": existing_metadata,
                 }
                 return result
 
     # Make draft and publish
     app.logger.info("    creating new draft record...")
-    result = api_request(
-        method="POST", endpoint="records", json_dict=metadata, token=token
-    )
-    if result["status_code"] != 201:
-        raise requests.HTTPError(result)
-    publish_link = result["json"]["links"]["publish"]
+    # result = api_request(
+    #     method="POST", endpoint="records", json_dict=metadata, token=token
+    # )
+    # if result["status_code"] != 201:
+    #     raise requests.HTTPError(result)
+    result = records_service.create(system_identity, data=metadata).to_dict()
+    publish_link = result["links"]["publish"]
     app.logger.debug("publish link:", publish_link)
-    app.logger.debug(pformat(result["json"]))
+    app.logger.debug(pformat(result))
 
-    return result
+    return {"headers": "", "record_data": result}
 
 
 def fetch_draft_files(files_dict: dict[str, str]) -> dict:
@@ -359,7 +341,9 @@ def fetch_draft_files(files_dict: dict[str, str]) -> dict:
 
 
 def upload_draft_files(
-    draft_id: str, files_dict: dict[str, str], token: Optional[str] = None
+    draft_id: str,
+    files_dict: dict[str, dict],
+    source_filenames: dict[str, str],
 ) -> dict:
     """
     Upload the files for one draft record using the REST api.
@@ -371,177 +355,251 @@ def upload_draft_files(
     :param str draft_id:    The id number for the Invenio draft record
                             for which the files are to be uploaded.
     :param dict files_dict:     A dictionary whose keys are the filenames to
-                                be used for the uploaded files. The
-                                values are the corresponding full filenames
-                                used in the humcore folder. (The latter is
-                                prefixed with a hashed (?) string.)
+                                be used for the uploaded files. It is
+                                structured like the ["files"]["entries"]
+                                dictionary in an Invenio metadata record.
+    :param dict source_filenames:  A dictionary whose keys are the filenames
+                                to be used for the uploaded files. The values
+                                are the corresponding full filenames in the
+                                upload source directory.
     """
-    if not token:
-        token = app.config["MIGRATION_API_TOKEN"]
-    filenames_list = [{"key": f} for f in files_dict.keys()]
+    files_service = records_service.draft_files
     output = {}
 
-    # initialize upload
-    initialization = api_request(
-        method="POST",
-        endpoint="records",
-        args=f"{draft_id}/draft/files",
-        json_dict=filenames_list,
-        token=token,
-    )
-    if initialization["status_code"] != 201:
-        app.logger.error(
-            f"    failed to initialize file upload for {draft_id}..."
-        )
-        app.logger.error(initialization)
-        raise requests.HTTPError(initialization.text)
-    output["initialization"] = initialization
-    output["file_transactions"] = {}
-
-    # FIXME: Generated 'link' urls have 'localhost' when running locally
-    server_string = app.config.get("MIGRATION_SERVER_DOMAIN")
-    if server_string == "10.98.11.159":
-        server_string = "invenio-dev.hcommons-staging.org"
-
-    # upload files
-    app.logger.debug(pformat(initialization["json"]["entries"]))
-    for f in initialization["json"]["entries"]:
-        output["file_transactions"][f["key"]] = {}
-
-        #  FIXME: Generated 'link' urls have 'localhost' when running locally
-        #         and api is at 'host.docker.internal'
-        content_args = (
-            f["links"]["content"]
-            .replace(f"https://{server_string}/api/records/", "")
-            .replace("https://localhost/api/records/", "")
-        )
-        assert re.findall(draft_id, content_args)
-
-        commit_args = (
-            f["links"]["commit"]
-            .replace(f"https://{server_string}/api/records/", "")
-            .replace("https://localhost/api/records/", "")
-        )
-        assert re.findall(draft_id, commit_args)
-
-        filename = content_args.split("/")[-2]
-        # handle @ characters in filenames
-        app.logger.debug(f"filename: {filename}")
-        app.logger.debug(files_dict.keys())
-        assert unquote(filename) in [
-            unicodedata.normalize("NFC", f) for f in files_dict.keys()
-        ]
-        matching_filename = [
-            f
-            for f in files_dict.keys()
-            if unicodedata.normalize("NFC", f) == unquote(filename)
-        ][0]
-        long_filename = files_dict[matching_filename].replace(
+    # FIXME: Collect and upload files as a batch rather than one at a time
+    for k, v in files_dict.items():
+        source_filename = source_filenames[k]
+        long_filename = source_filename.replace(
             "/srv/www/commons/current/web/app/uploads/humcore/", ""
         )
-        with open(
-            Path(app.config["MIGRATION_SERVER_FILES_LOCATION"])
-            / long_filename,
-            "rb",
-        ) as binary_file_data:
-            app.logger.debug("^^^^^^^^")
-            app.logger.debug(
-                f"filesize is {len(binary_file_data.read())} bytes"
-            )
-            binary_file_data.seek(0)
-            content_upload = api_request(
-                method="PUT",
-                endpoint="records",
-                args=content_args,
-                file_data=binary_file_data,
-                token=token,
-            )
-            app.logger.debug("@@@@@@@")
-            app.logger.debug(content_upload)
-            if content_upload["status_code"] != 200:
-                pprint(content_upload)
-                app.logger.error(
-                    f"    failed to upload file content for {filename}..."
-                )
-                app.logger.error(content_upload)
-                raise requests.HTTPError(content_upload)
-            output["file_transactions"][f["key"]][
-                "content_upload"
-            ] = content_upload
-
-            try:
-                assert content_upload["json"]["key"] == unquote(filename)
-                assert content_upload["json"]["status"] == "pending"
-                assert (
-                    content_upload["json"]["links"]["commit"]
-                    == f["links"]["commit"]
-                )
-
-            except AssertionError as e:
-                app.logger.error(
-                    "    failed to properly upload file content for"
-                    f" {filename}..."
-                )
-                app.logger.error(content_upload)
-                raise e
-
-        # commit uploaded data
-        upload_commit = api_request(
-            method="POST", endpoint="records", args=commit_args, token=token
+        # handle @ characters in filenames
+        # FIXME: assumes the filename contains the key
+        assert unicodedata.normalize("NFC", k) in unquote(source_filename)
+        # FIXME: implementation detail. Humcore specific
+        long_filename = source_filename.replace(
+            "/srv/www/commons/current/web/app/uploads/humcore/", ""
         )
-        if upload_commit["status_code"] != 200:
-            app.logger.debug("&&&&&&&")
-            app.logger.debug(upload_commit)
-            app.logger.error(
-                f"    failed to commit file upload for {filename}..."
-            )
-            app.logger.error(upload_commit)
-            raise requests.HTTPError(upload_commit["text"])
 
-        app.logger.debug("&&&&&&&")
-        app.logger.debug(upload_commit)
-        output["file_transactions"][f["key"]]["upload_commit"] = upload_commit
+        # FIXME: Change the identity throughout the process to the user
+        # for the token and permission protect the top-level functions
         try:
-            assert upload_commit["json"]["key"] == unquote(filename)
-            assert valid_date(upload_commit["json"]["created"])
-            assert valid_date(upload_commit["json"]["updated"])
-            assert upload_commit["json"]["status"] == "completed"
-            assert upload_commit["json"]["metadata"] is None
+            initialization = files_service.init_files(
+                system_identity, draft_id, data=[{"key": k}]
+            ).to_dict()
+            app.logger.debug(initialization)
+            app.logger.debug(k)
             assert (
-                upload_commit["json"]["links"]["content"]
-                == f["links"]["content"]
+                len(
+                    [
+                        e["key"]
+                        for e in initialization["entries"]
+                        if e["key"] == k
+                    ]
+                )
+                == 1
             )
-            assert upload_commit["json"]["links"]["self"] == f["links"]["self"]
-            assert (
-                upload_commit["json"]["links"]["commit"]
-                == f["links"]["commit"]
-            )
-        except AssertionError as e:
+        except Exception as e:
             app.logger.error(
-                f"    failed to properly commit file upload for {filename}..."
+                f"    failed to initialize file upload for {draft_id}..."
             )
-            app.logger.error(upload_commit)
             raise e
 
-    # confirm uploads for deposit
-    confirmation = api_request(
-        "GET",
-        "records",
-        args=f"{draft_id}/draft/files/{filename}",
-        token=token,
-    )
-    app.logger.debug("######")
-    app.logger.debug(pformat(confirmation))
-    if confirmation["status_code"] != 200:
-        app.logger.error(
-            f"    failed to confirm file upload for {filename}..."
+        try:
+            with open(
+                Path(app.config["MIGRATION_SERVER_FILES_LOCATION"])
+                / long_filename,
+                "rb",
+            ) as binary_file_data:
+                app.logger.debug("^^^^^^^^")
+                app.logger.debug(
+                    f"filesize is {len(binary_file_data.read())} bytes"
+                )
+                binary_file_data.seek(0)
+                files_service.set_file_content(
+                    system_identity, draft_id, k, binary_file_data
+                )
+        except Exception as e:
+            app.logger.error(
+                f"    failed to upload file content for {draft_id}..."
+            )
+            raise e
+
+        try:
+            files_service.commit_file(system_identity, draft_id, k)
+        except Exception as e:
+            app.logger.error(
+                f"    failed to commit file upload for {draft_id}..."
+            )
+            raise e
+
+        output[k] = "uploaded"
+
+    result_record = files_service.list_files(
+        system_identity, draft_id
+    ).to_dict()
+    try:
+
+        #   upload_commit["json"]["key"] == unquote(filename)
+        assert all(
+            r["key"]
+            for r in result_record["entries"]
+            if r["key"] in files_dict.keys()
         )
-        app.logger.error(confirmation)
-        raise requests.HTTPError(confirmation.text)
-    output["confirmation"] = confirmation
-    app.logger.debug("confirmation")
-    app.logger.debug(confirmation)
+        for v in result_record["entries"]:
+            assert v["key"] == k
+            assert v["status"] == "completed"
+            assert v["size"] == files_dict[k]["size"]
+            assert valid_date(v["created"])
+            assert valid_date(v["updated"])
+            assert v["metadata"] is None
+            # assert (
+            #     upload_commit["json"]["links"]["content"]
+            #     == f["links"]["content"]
+            # )
+            # assert upload_commit["json"]["links"]["self"] == f["links"]["self"]
+            # assert (
+            #     upload_commit["json"]["links"]["commit"]
+            #     == f["links"]["commit"]
+            # )
+    except AssertionError as e:
+        app.logger.error(
+            "    failed to properly upload file content for"
+            f" draft {draft_id}..."
+        )
+        app.logger.error(f"result is {pformat(result_record['entries'])}")
+        raise e
+
     return output
+
+
+def _compare_existing_files(
+    draft_id: str,
+    is_draft: bool,
+    old_files: dict[str, dict],
+    new_entries: dict[str, dict],
+) -> bool:
+    """Compare record's existing files with import record's files.
+
+    Compares the files based on filename and size. If the existing record has
+    different files than the import record, the existing files are deleted to
+    prepare for uploading the correct files.
+
+    This function also handles prior interrupted uploads, deleting them to
+    clear the way for a new upload.
+
+    params:
+        draft_id (str): the id of the draft record
+        is_draft (bool): whether the record is a draft or published record
+        old_files (dict): dictionary of files attached to the existing record
+        new_entries (dict): dictionary of files to be attached to the import
+                            record
+
+    raises:
+        RuntimeError: if existing record has different files than import record
+        and the existing files are not deleted.
+
+    returns:
+        bool: True if the existing record already has the same files as the
+        import record, False if the existing record has different files than
+        the import record.
+    """
+
+    files_service = (
+        records_service.files if not is_draft else records_service.draft_files
+    )
+    # draft_files_service = records_service.draft_files
+    same_files = True
+
+    try:
+        files_request = files_service.list_files(
+            system_identity, draft_id
+        ).to_dict()
+    except NoResultFound:
+        # try:
+        #     files_request = draft_files_service.list_files(
+        #         system_identity, draft_id
+        #     ).to_dict()
+        # except NoResultFound:
+        #     files_request = None
+        files_request = None
+    existing_files = files_request["entries"] if files_request else []
+    app.logger.debug(pformat(files_request))
+    if len(existing_files) == 0:
+        same_files = False
+        app.logger.info("    no files attached to existing record")
+    else:
+        for k, v in new_entries.items():
+            wrong_file = False
+            existing_file = [
+                f
+                for f in existing_files
+                if unicodedata.normalize("NFC", f["key"])
+                == unicodedata.normalize("NFC", k)
+            ]
+            app.logger.debug(
+                [
+                    "normalized existing file: "
+                    f"{unicodedata.normalize('NFC', f['key'])}"
+                    for f in existing_files
+                ]
+            )
+
+            if len(existing_file) == 0:
+                same_files = False
+
+            # handle prior interrupted uploads
+            # handle uploads with same name but different size
+            elif (existing_file[0]["status"] == "pending") or (
+                str(v["size"]) != str(existing_file[0]["size"])
+            ):
+                same_files = False
+                wrong_file = True
+
+            # delete interrupted or different prior uploads
+            if wrong_file:
+                error_message = (
+                    "Existing record with same DOI has different"
+                    f" files.\n{pformat(old_files)}\n !=\n {pformat(new_entries)}\n"
+                    f"Could not delete existing file {existing_file[0]['key']}."
+                )
+                try:
+                    files_service.delete_file(
+                        system_identity, draft_id, existing_file[0]["key"]
+                    )
+                    app.logger.info(
+                        "    existing record had wrong or partial upload, now"
+                        " deleted"
+                    )
+                except FileKeyNotFoundError as e:
+                    # FIXME: Do we need to create a new draft here?
+                    # because the file is not in the draft?
+                    # files_delete = files_service.delete_file(
+                    #     system_identity, draft_id, existing_file[0]["key"]
+                    # )
+                    app.logger.info(
+                        "    existing record had wrong or partial upload, but"
+                        " it could not be found for deletion"
+                    )
+                    raise e
+                except Exception as e:
+                    app.logger.error(e)
+                    app.logger.error(error_message)
+                    raise RuntimeError(error_message)
+
+                # check that the file was actually deleted
+                # call produces an error if not found
+                try:
+                    files_service.list_files(
+                        system_identity, draft_id
+                    ).to_dict()["entries"]
+                except NoResultFound:
+                    app.logger.info(
+                        "    deleted file is no longer attached to record"
+                    )
+                else:
+                    app.logger.error(error_message)
+                    raise RuntimeError(error_message)
+        return same_files
 
 
 def delete_invenio_draft_record(
@@ -560,29 +618,41 @@ def delete_invenio_draft_record(
     """
     if not token:
         token = app.config["MIGRATION_API_TOKEN"]
-    reviews = api_request(
-        method="GET",
-        endpoint="records",
-        args=f"{record_id}/draft/review",
-        token=token,
-    )
-    if reviews["status_code"] == 200:
-        request_id = reviews["json"]["id"]
-        cancellation = api_request(
-            method="POST",
-            endpoint="requests",
-            args=f"{request_id}/actions/cancel",
-            token=token,
+    record = records_service.read(system_identity, id_=record_id).to_dict()
+    try:
+        reviews = records_service.review.read(system_identity, id_=record_id)
+        # if reviews["status_code"] == 200:
+        #     request_id = reviews["json"]["id"]
+        #     cancellation = api_request(
+        #         method="POST",
+        #         endpoint="requests",
+        #         args=f"{request_id}/actions/cancel",
+        #         token=token,
+        #     )
+        #     if cancellation["status_code"] != 200:
+        #         raise requests.HTTPError(cancellation)
+        # FIXME: What if there are multiple reviews?
+        app.logger.debug(
+            f"    deleting review request for draft record {record_id}..."
         )
-        if cancellation["status_code"] != 200:
-            raise requests.HTTPError(cancellation)
-    result = api_request(
-        method="DELETE",
-        endpoint="records",
-        args=f"{record_id}/draft",
-        token=token,
-    )
-    assert result["status_code"] == 204
+        records_service.review.delete(system_identity, id_=record_id)
+    except ReviewNotFoundError:
+        app.logger.info(
+            f"    no review requests found for draft record {record_id}..."
+        )
+    # result = api_request(
+    #     method="DELETE",
+    #     endpoint="records",
+    #     args=f"{record_id}/draft",
+    #     token=token,
+    # )
+    try:
+        result = records_service.delete_record(
+            system_identity, id_=record_id, data=record
+        )
+    except PIDUnregistered:
+        result = records_service.delete_draft(system_identity, id_=record_id)
+
     return result
 
 
@@ -947,110 +1017,62 @@ def create_full_invenio_record(
     if metadata_record["headers"] in [
         "existing record with same DOI and same data",
     ]:
-        existing_record = metadata_record["json"]
+        existing_record = metadata_record["record_data"]
         result["unchanged_existing"] = True
     elif metadata_record["headers"] in [
         "new draft of existing record with same DOI and updated metadata",
     ]:
-        existing_record = metadata_record["json"]
+        existing_record = metadata_record["record_data"]
         result["updated_published"] = True
     elif metadata_record["headers"] in [
         "existing draft record with same DOI and updated metadata",
     ]:
-        existing_record = metadata_record["json"]
+        existing_record = metadata_record["record_data"]
         result["updated_draft"] = True
     # if debug: print('#### metadata_record')
     # if debug: pprint(metadata_record)
-    draft_id = metadata_record["json"]["id"]
+    draft_id = metadata_record["record_data"]["id"]
 
     # Upload the files
-    app.logger.info("    uploading files for draft...")
-    same_files = False
-    if existing_record:
-        same_files = True
-        files_request = api_request(
-            "GET",
-            endpoint="records",
-            args=f"{draft_id}/draft/files",
-            token=token,
-        )
-        if files_request["status_code"] == 404:
-            files_request = api_request(
-                "GET",
-                endpoint="records",
-                args=f"{draft_id}/files",
-                token=token,
+    if len(core_data["files"]["entries"]) > 0:
+        assert metadata_record["record_data"]["files"]["enabled"] is True
+        app.logger.info("    uploading files for draft...")
+        same_files = False
+        if existing_record:
+            app.logger.debug(
+                f"    existing metadata record {pformat(existing_record)}"
             )
-        existing_files = files_request["json"]["entries"]
-        if len(existing_files) == 0:
-            same_files = False
-            app.logger.info("    no files attached to existing record")
-        for k, v in core_data["files"]["entries"].items():
-            wrong_file = False
-            existing_file = [
-                f
-                for f in existing_files
-                if unicodedata.normalize("NFC", f["key"])
-                == unicodedata.normalize("NFC", k)
-            ]
-            if len(existing_file) == 0:
-                same_files = False
-            # handle prior interrupted uploads
-            elif existing_file[0]["status"] == "pending":
-                same_files = False
-                wrong_file = True
-            # handle uploads with same name but different size
-            elif str(v["size"]) != str(existing_file[0]["size"]):
-                same_files = False
-                wrong_file = True
-            # delete interrupted or different prior uploads
-            if wrong_file:
-                files_delete = api_request(
-                    "DELETE",
-                    endpoint="records",
-                    args=f"{draft_id}/draft/files/{existing_file[0]['key']}",
-                    token=token,
-                )
-                if files_delete["status_code"] == 204:
-                    app.logger.info(
-                        "    existing record had wrong or partial upload, now"
-                        " deleted"
-                    )
-                else:
-                    app.logger.error(files_delete)
-                    old_files = metadata_record["json"]["files"]["entries"]
-                    app.logger.error(
-                        "Existing record with same DOI has different"
-                        f" files.\n{old_files}\n"
-                        f" !=\n {core_data['files']['entries']}\n"
-                        "Could not delete existing file "
-                        f"{existing_file[0]['key']}."
-                    )
-                    raise RuntimeError(
-                        "Existing record with same DOI has different"
-                        f" files.\n{old_files}\n"
-                        f" !=\n {core_data['files']['entries']}\n"
-                        "Could not delete existing file "
-                        f"{existing_file[0]['key']}."
-                    )
+            same_files = _compare_existing_files(
+                draft_id,
+                existing_record["is_draft"] is True
+                and existing_record["is_published"] is False,
+                existing_record["files"]["entries"],
+                file_data["entries"],
+            )
 
-    if same_files:
-        app.logger.info(
-            "    skipping uploading files (same already uploaded)..."
-        )
+        if same_files:
+            app.logger.info(
+                "    skipping uploading files (same already uploaded)..."
+            )
+        else:
+            app.logger.info("    uploading new files...")
+
+            # FIXME: Change upload filename field for other
+            # import sources, and make it dict to match ["files"]["entries"]
+            uploaded_files = upload_draft_files(
+                draft_id,
+                file_data["entries"],
+                {
+                    next(iter(file_data["entries"])): metadata_record[
+                        "record_data"
+                    ]["custom_fields"]["hclegacy:file_location"]
+                },
+            )
+            app.logger.debug("@@@@ uploaded_files")
+            app.logger.debug(pformat(uploaded_files))
+            result["uploaded_files"] = uploaded_files
     else:
-        app.logger.info("    uploading files to draft...")
-        my_files = {}
-        for k, v in file_data["entries"].items():
-            my_files[v["key"]] = metadata_record["json"]["custom_fields"][
-                "hclegacy:file_location"
-            ]
-        uploaded_files = upload_draft_files(
-            draft_id=draft_id, files_dict=my_files
-        )
-        app.logger.debug("@@@@ uploaded_files")
-        app.logger.debug(pformat(uploaded_files))
-        result["uploaded_files"] = uploaded_files
+        assert metadata_record["record_data"]["files"]["enabled"] is False
 
     # Attach the record to the communities
     if (
