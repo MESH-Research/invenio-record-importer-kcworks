@@ -2,6 +2,7 @@ from os import error
 import sys
 from venv import logger
 import arrow
+from arrow.arrow import Arrow
 from halo import Halo
 from flask import current_app as app
 from invenio_access.permissions import system_identity
@@ -21,6 +22,14 @@ from invenio_records_resources.services.errors import (
     FailedFileUploadException,
     FileKeyNotFoundError,
 )
+from invenio_search.proxies import current_search
+from invenio_stats.contrib.event_builders import (
+    build_file_unique_id,
+    build_record_unique_id,
+)
+from invenio_stats.processors import anonymize_user
+from invenio_stats.proxies import current_stats
+from invenio_stats.tasks import aggregate_events, process_events
 import itertools
 import json
 from simplejson.errors import JSONDecodeError as SimpleJSONDecodeError
@@ -40,6 +49,148 @@ from invenio_record_importer.utils import (
     compare_metadata,
     # generate_password,
 )
+
+
+def create_stats_events(
+    record_id: str,  # the UUID of the record
+    pid=None,  # a pid object
+    views: int = 0,
+    downloads: int = 0,
+    file_id: str = "",
+    file_key: str = "",
+    size: int = 0,
+    bucket_id: str = "",
+    user_id: int = 0,
+    visitor_id: int = 0,
+    record_creation: Union[Arrow, str] = arrow.utcnow(),
+    eager=False,
+):
+    """
+    Create artificial statistics events for a migrated record.
+
+    Since Invenio stores statistics as aggregated events in the
+    search index, we need to create the individual events that
+    will be aggregated. This function creates the individual
+    events for a record, simulating views and downloads. It creates
+    a given number of events for each type, with the timestamps
+    evenly distributed between the record creation date and the
+    current date.
+
+    params:
+        record_id (str): the record id
+        doi (str): the record's DOI
+        views (int): the number of views to simulate
+        downloads (int): the number of downloads to simulate
+        file_id (str): the file id
+        file_key (str): the file key
+        size (int): the file size
+        bucket_id (str): the bucket id
+        user_id (int): the user id
+        visitor_id (int): the visitor id
+        record_creation (arrow.datetime): the record creation date
+        eager (bool): whether to process the events immediately or
+            queue them for processing in a background task
+
+    record-view event schema:
+
+    "timestamp": { "type": "date", "format": "strict_date_hour_minute_second" },
+    "record_id": { "type": "keyword" },
+    "pid_type": { "type": "keyword" },
+    "pid_value": { "type": "keyword" },
+    "labels": { "type": "keyword" },
+    "country": { "type": "keyword" },
+    "visitor_id": { "type": "keyword" },
+    "is_robot": { "type": "boolean" },
+    "unique_id": { "type": "keyword" },
+    "unique_session_id": { "type": "keyword" },
+    "updated_timestamp": { "type": "date" }
+
+    file-download event schema:
+    "timestamp": { "type": "date", "format": "strict_date_hour_minute_second" },
+    "bucket_id": { "type": "keyword" },
+    "file_id": { "type": "keyword" },
+    "file_key": { "type": "keyword" },
+    "unique_id": { "type": "keyword" },
+    "country": { "type": "keyword" },
+    "visitor_id": { "type": "keyword" },
+    "collection": { "type": "keyword" },
+    "is_robot": { "type": "boolean" },
+    "unique_session_id": { "type": "keyword" },
+    "size": { "type": "double" },
+    "updated_timestamp": { "type": "date" }
+
+    """
+    record_creation = arrow.get(record_creation)
+
+    def generate_datetimes(start, n):
+        total_seconds = arrow.utcnow().timestamp() - start.timestamp()
+        interval = total_seconds / n
+        datetimes = [start.shift(seconds=i * interval) for i in range(n)]
+
+        return datetimes
+
+    view_events = []
+    for dt in generate_datetimes(record_creation, views):
+        doc = {
+            "timestamp": dt.isoformat(),
+            "record_id": record_id,  # record_id not same as recid
+            "pid_type": pid.pid_type,  # "recid"  # pid.pid_type (in builder)
+            "pid_value": pid.pid_value,  # "1"  # pid.pid_value (in builder)
+            "is_robot": False,  # not in builder (in flag_robots)
+            "user_id": "1",
+        }
+        doc = anonymize_user(doc)
+        # we can safely pass the doc through processor.anonymize_user
+        # with null/dummy values for user_id, session_id, user_agent,
+        # ip_address
+        # it adds visitor_id and unique_session_id
+        view_events.append(build_record_unique_id(doc))
+    current_stats.publish("record-view", [view_events])
+
+    download_events = []
+    for dt in generate_datetimes(record_creation, downloads):
+        doc = {
+            "timestamp": dt.isoformat(),
+            "bucket_id": str(bucket_id),  # UUID
+            "file_id": str(file_id),  # UUID
+            "file_key": file_key,
+            "size": size,
+            "is_robot": False,  # not in builder
+            "user_id": "1",
+        }
+        doc = anonymize_user(doc)
+        # we can safely pass the doc through processor.anonymize_user
+        # with null/dummy values for user_id, session_id, user_agent,
+        # ip_address
+        # it adds visitor_id and unique_session_id
+        download_events.append(build_file_unique_id(doc))
+    current_stats.publish("file-download", [download_events])
+
+    process_task = process_events.si(["record-view", "file-download"])
+    if eager:
+        process_task.apply(throw=True)
+        app.logger.info("Aggregations processed successfully.", fg="green")
+    else:
+        process_task.delay()
+        app.logger.info("Aggregations processing task sent...", fg="yellow")
+    # current_search.flush_and_refresh(index="*")
+
+    # FIXME: run this task once after all the records are imported
+    # aggregation_types = list(current_stats.aggregations)
+    # start_date = None
+    # end_date = None
+    # agg_task = aggregate_events.si(
+    #     aggregation_types,
+    #     start_date=start_date.isoformat() if start_date else None,
+    #     end_date=end_date.isoformat() if end_date else None,
+    #     update_bookmark=False,  # is this right?
+    # )
+    # if eager:
+    #     agg_task.apply(throw=True)
+    #     app.logger.info("Aggregations processed successfully.", fg="green")
+    # else:
+    #     agg_task.delay()
+    #     app.logger.info("Aggregations processing task sent...", fg="yellow")
 
 
 def api_request(
@@ -250,13 +401,6 @@ def create_invenio_record(
                         "    metadata updated to match migration source..."
                     )
                     if existing_metadata["status"] != "published":
-                        # result = api_request(
-                        #     method="PUT",
-                        #     endpoint="records",
-                        #     args=f'{existing_metadata["id"]}/draft',
-                        #     json_dict=update_payload,
-                        #     token=token,
-                        # )
                         result = records_service.update_draft(
                             system_identity,
                             id_=existing_metadata["id"],
@@ -267,12 +411,12 @@ def create_invenio_record(
                             "    continuing with existing draft record"
                             " (new metadata)..."
                         )
-                        # app.logger.info(result["json"])
                         return {
                             "headers": (
                                 "existing draft record with same DOI and"
                                 " updated metadata"
                             ),
+                            "status": "updated_draft",
                             "record_data": result,
                         }
                     else:
@@ -296,6 +440,7 @@ def create_invenio_record(
                                 "new draft of existing record with same"
                                 " DOI and updated metadata"
                             ),
+                            "status": "updated_published",
                             "record_data": result,
                         }
 
@@ -303,32 +448,23 @@ def create_invenio_record(
                 record_type = (
                     "draft"
                     if existing_metadata["status"] != "published"
-                    else "published record"
+                    else "published"
                 )
                 app.logger.info(
-                    f"    continuing with existing {record_type} "
+                    f"    continuing with existing {record_type} record "
                     "(same metadata)..."
                 )
                 result = {
-                    # "status_code": 201,
-                    "headers": "existing record with same DOI and same data",
                     "record_data": existing_metadata,
+                    "status": f"unchanged_existing_{record_type}",
                 }
                 return result
 
     # Make draft and publish
     app.logger.info("    creating new draft record...")
-    # result = api_request(
-    #     method="POST", endpoint="records", json_dict=metadata, token=token
-    # )
-    # if result["status_code"] != 201:
-    #     raise requests.HTTPError(result)
     result = records_service.create(system_identity, data=metadata).to_dict()
-    publish_link = result["links"]["publish"]
-    app.logger.debug("publish link:", publish_link)
-    app.logger.debug(pformat(result))
 
-    return {"headers": "", "record_data": result}
+    return {"status": "new_record", "record_data": result}
 
 
 def fetch_draft_files(files_dict: dict[str, str]) -> dict:
@@ -993,9 +1129,6 @@ def create_full_invenio_record(
 
         app.logger.debug(f"checking for community {community_label}")
         # try to look up a matching community
-        # community_check = api_request(
-        #     "GET", endpoint="communities", args=community_label, token=token
-        # )
         community_check = current_communities.service.search(
             system_identity, q=f"slug:{community_label}"
         ).to_dict()
@@ -1014,23 +1147,14 @@ def create_full_invenio_record(
     app.logger.info("    finding or creating draft metadata record...")
     metadata_record = create_invenio_record(core_data, no_updates)
     result["metadata_record_created"] = metadata_record
-    if metadata_record["headers"] in [
-        "existing record with same DOI and same data",
+    result["status"] = metadata_record["status"]
+    if metadata_record["status"] in [
+        "updated_published",
+        "updated_draft",
+        "unchanged_existing_draft",
+        "unchanged_existing_published",
     ]:
         existing_record = metadata_record["record_data"]
-        result["unchanged_existing"] = True
-    elif metadata_record["headers"] in [
-        "new draft of existing record with same DOI and updated metadata",
-    ]:
-        existing_record = metadata_record["record_data"]
-        result["updated_published"] = True
-    elif metadata_record["headers"] in [
-        "existing draft record with same DOI and updated metadata",
-    ]:
-        existing_record = metadata_record["record_data"]
-        result["updated_draft"] = True
-    # if debug: print('#### metadata_record')
-    # if debug: pprint(metadata_record)
     draft_id = metadata_record["record_data"]["id"]
 
     # Upload the files

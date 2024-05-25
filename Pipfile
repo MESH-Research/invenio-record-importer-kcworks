@@ -24,6 +24,7 @@ invenio-record-importer = {file = ".", editable = true}
 docker-services-cli = "*"
 pytest-invenio = "*"
 selenium = "*"
+ipykernel = "*"
 
 [requires]
 python_version = "3.9"

@@ -2614,6 +2614,13 @@ def serialize_json() -> tuple[list[dict], dict]:
                     newrec, row, bad_data_dict
                 )
 
+                newrec["custom_fields"]["hclegacy:total_views"] = row[
+                    "total_views"
+                ]
+                newrec["custom_fields"]["hclegacy:total_downloads"] = row[
+                    "total_downloads"
+                ]
+
                 newrec["record_source"] = "knowledgeCommons"
 
                 newrec_list.append(newrec)
@@ -2629,8 +2636,7 @@ def serialize_json() -> tuple[list[dict], dict]:
             # auth_errors = {k:v for k, v in bad_data_dict.items() for i in v
             # if i[0][:8] == 'authors' and len(i) == 2}
             # pprint(auth_errors)
-            if debug:
-                app.logger.debug(bad_data_dict)
+            app.logger.debug(bad_data_dict)
             # print(len(auth_errors))
         print(f"Processed {line_count} lines.")
         print(f"Found {len(bad_data_dict)} records with bad data.")
