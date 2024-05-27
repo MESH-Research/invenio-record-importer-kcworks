@@ -44,4 +44,3 @@ class InvenioRecordImporter(object):
         for k in dir(self.config):
             if k.startswith("RECORD_IMPORTER_") or k.startswith("MIGRATION_"):
                 app.config.setdefault(k, getattr(self.config, k))
-                print(f"Setting {k} to {getattr(self.config, k)}")

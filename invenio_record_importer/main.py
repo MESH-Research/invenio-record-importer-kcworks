@@ -43,6 +43,7 @@ def cli():
 
 
 @cli.command(name="serialize")
+@with_appcontext
 def serialize_command_wrapper():
     """
     Serialize all exported legacy CORE deposits as JSON that Invenio can ingest
@@ -53,6 +54,7 @@ def serialize_command_wrapper():
 @cli.command(name="load")
 @click.argument("records", nargs=-1)
 @click.option(
+    "-n",
     "--no-updates",
     is_flag=True,
     default=False,
@@ -62,6 +64,7 @@ def serialize_command_wrapper():
     ),
 )
 @click.option(
+    "-r",
     "--retry-failed",
     is_flag=True,
     default=False,
@@ -71,6 +74,7 @@ def serialize_command_wrapper():
     ),
 )
 @click.option(
+    "-s",
     "--use-sourceids",
     is_flag=True,
     default=False,
@@ -222,6 +226,7 @@ def load_records(
         if not use_sourceids:
             named_params["nonconsecutive"] = [int(arg) for arg in records]
         else:
+            records = [arg.replace("\-", "-") for arg in records]
             named_params["nonconsecutive"] = records
 
     load_records_into_invenio(**named_params)

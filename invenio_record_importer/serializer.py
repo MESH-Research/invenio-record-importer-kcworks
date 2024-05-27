@@ -1122,6 +1122,8 @@ def add_language_info(
     if row["language"]:
         if row["language"] == "Greek":
             row["language"] = "Greek, Modern (1453-)"
+        if row["language"] == "Swahili":
+            row["language"] = "Swahili (macrolanguage)"
         mylang = iso639.Language.from_name(row["language"])
         newrec["metadata"]["languages"] = [
             {"id": mylang.part3, "title": {"en": mylang.name}}
@@ -1602,11 +1604,11 @@ def add_date_info(
             ]:
                 invalid = False
             if invalid:
-                app.logger.error("Could not repair invalid date:")
-                app.logger.error(
-                    f"input: {row['date']}, failed repaired "
-                    f"value: {date_to_insert}"
-                )
+                # app.logger.error("Could not repair invalid date:")
+                # app.logger.error(
+                #     f"input: {row['date']}, failed repaired "
+                #     f"value: {date_to_insert}"
+                # )
                 _append_bad_data(
                     row["id"],
                     ("bad date", row["date"], date_to_insert),
@@ -2636,7 +2638,7 @@ def serialize_json() -> tuple[list[dict], dict]:
             # auth_errors = {k:v for k, v in bad_data_dict.items() for i in v
             # if i[0][:8] == 'authors' and len(i) == 2}
             # pprint(auth_errors)
-            app.logger.debug(bad_data_dict)
+            # app.logger.debug(bad_data_dict)
             # print(len(auth_errors))
         print(f"Processed {line_count} lines.")
         print(f"Found {len(bad_data_dict)} records with bad data.")

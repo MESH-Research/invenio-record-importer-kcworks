@@ -12,6 +12,7 @@ Utility functions for core-migrate
 """
 
 from datetime import datetime
+from flask import current_app as app
 from flask_security.utils import hash_password
 from isbnlib import is_isbn10, is_isbn13, clean
 import random
@@ -116,17 +117,19 @@ def compare_metadata(A: dict, B: dict) -> dict:
                     if _normalize_punctuation(i[k]) != _normalize_punctuation(
                         i_2[k]
                     ):
+                        if VERBOSE:
+                            app.logger.debug(f"{k} is different: {i} != {i_2}")
                         same = False
                 if not same:
                     out.setdefault("A", []).append(i_2)
                     out.setdefault("B", []).append(i)
 
         if VERBOSE:
-            print("&&&&&&")
+            app.logger.debug(f"comparing {list_name} &&&&&&")
         if VERBOSE:
-            print(a[list_name])
+            app.logger.debug(a[list_name])
         if VERBOSE:
-            print(b[list_name])
+            app.logger.debug(b[list_name])
         return out
 
     def compare_people(list_a, list_b):
@@ -297,7 +300,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
         if "subjects" in meta_b.keys():
             comp = obj_list_compare(
                 "subjects",
-                "subject",
+                "id",
                 meta_a,
                 meta_b,
                 ["id", "subject", "scheme"],

@@ -70,3 +70,23 @@ class ImporterConfig:
             self.RECORD_IMPORTER_LOGS_LOCATION = Path(
                 Path(__file__).parent, "logs"
             )
+
+        if app.config.get("RECORD_IMPORTER_FAILED_LOG_PATH"):
+            self.RECORD_IMPORTER_FAILED_LOG_PATH = Path(
+                app.config.get("RECORD_IMPORTER_FAILED_LOG_PATH")
+            )
+        else:
+            self.RECORD_IMPORTER_FAILED_LOG_PATH = Path(
+                app.config["RECORD_IMPORTER_LOGS_LOCATION"],
+                "invenio_record_importer_failed.jsonl",
+            )
+
+        if app.config.get("RECORD_IMPORTER_TOUCHED_LOG_PATH"):
+            self.RECORD_IMPORTER_TOUCHED_LOG_PATH = Path(
+                app.config.get("RECORD_IMPORTER_TOUCHED_LOG_PATH")
+            )
+        else:
+            self.RECORD_IMPORTER_TOUCHED_LOG_PATH = Path(
+                app.config["RECORD_IMPORTER_LOGS_LOCATION"],
+                "invenio_record_importer_touched.jsonl",
+            )

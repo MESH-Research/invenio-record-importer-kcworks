@@ -17,9 +17,9 @@ from invenio_record_importer.record_loader import (
     create_invenio_record,
     create_invenio_user,
     delete_invenio_draft_record,
-    create_invenio_community,
-    create_full_invenio_record,
-    upload_draft_files,
+    _create_invenio_community,
+    import_record_to_invenio,
+    _upload_draft_files,
 )
 from invenio_record_importer.utils import (
     _clean_backslashes_and_spaces,
@@ -791,7 +791,7 @@ def test_upload_draft_files(app):
         )
     }
 
-    actual_upload = upload_draft_files(
+    actual_upload = _upload_draft_files(
         draft_id=actual_draft_id, files_dict=files_in
     )
     pprint(actual_upload)
@@ -806,7 +806,7 @@ def test_upload_draft_files(app):
 
 def test_create_invenio_community(app, db, admin):
     slug = "mla"
-    actual_community = create_invenio_community(
+    actual_community = _create_invenio_community(
         slug, token=admin.allowed_token
     )
     actual_community_id = actual_community["json"]["id"]
@@ -821,7 +821,7 @@ def test_create_full_invenio_record(json_in):
     random_doi = json_in["pids"]["doi"]["identifier"].split("-")[0]
     random_doi = f"{random_doi}-{generate_random_string(5)}"
     json_in["pids"]["doi"]["identifier"] = random_doi
-    actual_full_record = create_full_invenio_record(json_in)
+    actual_full_record = import_record_to_invenio(json_in)
     assert (
         actual_full_record["community"]["json"]["metadata"]["website"]
         == f'https://{json_in["custom_fields"]["kcr:commons_domain"]}'
