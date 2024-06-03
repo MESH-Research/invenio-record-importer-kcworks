@@ -15,8 +15,10 @@ The main function `serialize_json` writes the output to a jsonl file, with
 one json object per line, separated by newlines.
 """
 
+import arrow
 from copy import deepcopy
 from datetime import datetime
+import dateparser
 from flask import current_app as app
 from pprint import pprint
 from timefhuman import timefhuman
@@ -31,12 +33,14 @@ from titlecase import titlecase
 import re
 import validators
 
-from invenio_record_importer.utils import (
+from invenio_record_importer.utils.utils import (
     valid_date,
     valid_isbn,
     normalize_string_lowercase,
     normalize_string,
 )
+from invenio_record_importer.utils.monthwords import monthwords
+from invenio_record_importer.utils.seasonwords import seasonwords
 
 book_types = [
     "textDocument-bookChapter",
@@ -517,6 +521,7 @@ def _add_author_data(
     contributors_misplaced = []
     # creators_misplaced = []
     # FIXME: "HC Admin" showing up with "submitter" role?
+    # FIXME: "creator" role removed from KC Works, converting to "author"
     allowed_roles = [
         "author",
         "editor",
@@ -557,6 +562,11 @@ def _add_author_data(
                         new_person["role"] = {
                             "id": "projectOrTeamLeader",
                             "title": {"en": "Project or team leader"},
+                        }
+                    elif a["role"] == "creator":
+                        new_person["role"] = {
+                            "id": "author",
+                            "title": {"en": "Author"},
                         }
                     else:
                         new_person["role"] = {
@@ -890,16 +900,20 @@ def add_embargo_info(
     the `embargo_end_date` date string.
 
     Args:
-        newrec (_type_): The new record being prepared for serialization
-        row (_type_): The CORE record being processed
-        bad_data_dict (_type_): A dictionary of error messages recording
+        newrec (dict): The new record being prepared for serialization
+        row (dict): The CORE record being processed
+        bad_data_dict (dict): A dictionary of error messages recording
                                 problems with the data in the CORE record
 
     Returns:
         dict: The new record dict with access info added
     """
     # Access information
-    if row["embargoed"] == "yes" and row["embargo_end_date"]:
+    if (
+        row["embargoed"] == "yes"
+        and row["embargo_end_date"]
+        and arrow.get(row["embargo_end_date"], "MM/DD/YYYY") > arrow.now()
+    ):
         end_date_dt = datetime.strptime(
             row["embargo_end_date"].strip(), "%m/%d/%Y"
         ).date()
@@ -909,6 +923,9 @@ def add_embargo_info(
             "until": end_date_iso,
             "reason": None,
         }
+        newrec["access"]["record"] = "restricted"
+        newrec["access"]["files"] = "restricted"
+        newrec["access"]["status"] = "embargoed"
     return newrec, bad_data_dict
 
 
@@ -1258,14 +1275,16 @@ def add_language_info(
                 {"id": "eng", "title": {"en": "English"}}
             ]
         elif lang1[0]["prob"] > 0.99 and row["id"] not in exceptions:
-            newrec["metadata"]["languages"] = [{"id": lang1[0]["code"]}]
+            mylang = iso639.Language.from_part1(lang1[0]["code"])
+            newrec["metadata"]["languages"] = [{"id": mylang.part3}]
         elif (
             lang1[0]["prob"] < 0.9
             and lang2
             and lang2[0]["prob"] >= 0.9
             and row["id"] not in exceptions
         ):
-            newrec["metadata"]["languages"] = [{"id": lang2[0]["code"]}]
+            mylang = iso639.Language.from_part1(lang2[0]["code"])
+            newrec["metadata"]["languages"] = [{"id": mylang.part3}]
         elif row["id"] in exceptions:
             pass
         else:
@@ -1315,6 +1334,11 @@ def add_date_info(
         - the CORE record's `record_change_date` as an `updated` date
         - the CORE record's `record_creation_date` as a `created` date
 
+    Attempts to convert date strings with words to date strings with numbers
+    in EDTF format (required by InvenioRDM). If the date string is not in a
+    recognizable format, the original date string is added as a custom field
+    `kcr:original_date`.
+
     Args:
         newrec (_type_): The new record being prepared for serialization
         row (_type_): The CORE record being processed
@@ -1328,6 +1352,11 @@ def add_date_info(
     def convert_date_words(date: str) -> str:
         """Convert a date string with words to a date string with numbers.
 
+        Treats season names as the first month of the season, and month names
+        and abbreviations as the month number. Attempts to identify a 4-digit
+        year and a day number. Reorders the date parts to YYYY-MM-DD or YYYY-MM
+        or YYYY format.
+
         Args:
             date (str): A date string with words
 
@@ -1340,53 +1369,6 @@ def add_date_info(
         month = ""
         day = ""
         year = ""
-        months = {
-            "january": "01",
-            "enero": "01",
-            "janvier": "01",
-            "february": "02",
-            "février": "02",
-            "febrero": "02",
-            "februar": "02",
-            "march": "03",
-            "marzo": "03",
-            "marc": "03",
-            "april": "04",
-            "avril": "04",
-            "abril": "04",
-            "aprisl": "04",
-            "апреля": "04",
-            "may": "05",
-            "mayo": "05",
-            "mai": "05",
-            "mei": "05",
-            "june": "06",
-            "junio": "06",
-            "juin": "06",
-            "july": "07",
-            "julio": "07",
-            "juillet": "07",
-            "julho": "07",
-            "august": "08",
-            "agosto": "08",
-            "août": "08",
-            "september": "09",
-            "septiembre": "09",
-            "septembre": "09",
-            "septmber": "09",
-            "septemebr": "09",
-            "settembre": "09",
-            "october": "10",
-            "octobre": "10",
-            "octubre": "10",
-            "november": "11",
-            "novembre": "11",
-            "noviembre": "11",
-            "december": "12",
-            "décembre": "12",
-            "diciembre": "12",
-            "dezembro": "12",
-        }
         month_abbrevs = {
             "jan": "01",
             "janv": "01",
@@ -1403,8 +1385,10 @@ def add_date_info(
             "jul": "07",
             "aug": "08",
             "au": "08",
+            "augus": "08",
             "sep": "09",
             "sept": "09",
+            "septmber": "09",
             "se": "09",
             "oct": "10",
             "octo": "10",
@@ -1414,26 +1398,44 @@ def add_date_info(
             "dec": "12",
             "de": "12",
         }
+        season_abbrevs = {
+            "spr": "03",
+            "sum": "06",
+            "fal": "09",
+            "win": "12",
+        }
+        # try to identify month words and abbreviations
+        # and convert to numbers
         for d in date_parts:
             d_cand = d.lower().strip().replace(",", "").replace(".", "")
-            if d_cand in months.keys():
-                month = months[d_cand]
+            if d_cand in monthwords.keys():
+                month = monthwords[d_cand]
                 date_parts = [p for p in date_parts if p != d]
             elif d_cand in month_abbrevs.keys():
                 month = month_abbrevs[d_cand]
                 date_parts = [p for p in date_parts if p != d]
+            elif d_cand in seasonwords.keys():
+                month = seasonwords[d_cand].split("-")[0]
+                date_parts = [p for p in date_parts if p != d]
+            elif d_cand in season_abbrevs.keys():
+                month = season_abbrevs[d_cand].split("-")[0]
+                date_parts = [p for p in date_parts if p != d]
+        # try to identify a 4-digit year
         for d in date_parts:
             if len(d) == 4 and d.isdigit() and int(d) > 0 < 3000:
                 year = d
                 date_parts = [p for p in date_parts if p != d]
+        # try to identify a day from remaining parts
         for d in date_parts:
             suffixes = r"(th|st|nd|rd)"
             day_cand = re.sub(suffixes, "", d.lower())
             if day_cand.isdigit() and len(day_cand) <= 2:
                 day = day_cand
                 date_parts = [p for p in date_parts if p != d]
+        # if we have identified year and month, assume one remaining part is day
         if year and month and not day and len(date_parts) == 1:
             day = date_parts[0]
+        # reorder parts to YYYY-MM-DD or YYYY-MM or YYYY
         if year and month and day:
             return reorder_date_parts("-".join([year, month, day]))
         elif year and month:
@@ -1538,10 +1540,17 @@ def add_date_info(
                     valid = True
         return valid
 
+    def restore_2digit_year(date: str) -> str:
+        pattern = r"^\d{2}[/,-\.]\d{2}[/,-\.]\d{2}$"
+        if re.match(pattern, date):
+            date = arrow.get(dateparser.parse("03-02-18")).date().isoformat()
+        return date
+
     def repair_date(date: str) -> tuple[bool, str]:
         invalid = True
         newdate = date
         for date_func in [
+            restore_2digit_year,
             reorder_date_parts,
             convert_date_words,
             parse_human_readable,
@@ -1563,6 +1572,8 @@ def add_date_info(
         # print("repairing range")
         invalid = True
         range_parts = re.split(r"[\-–\/]", date)
+        if len(range_parts) == 1:
+            range_parts = re.split(r" to ", date)
         # print(range_parts)
         if (
             len(range_parts) == 2
@@ -1620,7 +1631,7 @@ def add_date_info(
                 "date": date_to_insert,
                 "type": {
                     "id": "issued",
-                    "title": {"en": "Issued", "de": "Veröffentlicht"},
+                    "title": {"en": "Issued"},
                 },
                 "description": date_description,
             }
@@ -1671,9 +1682,11 @@ def add_groups_info(
         # print(row['group'])
         # print(row['group_ids'])A. Pifferetti, A. & I. Dosztal (comps.i
         if row["group"] not in [None, [], ""]:
-            row["group"] = row["group"]
+            row["group"] = [g for g in row["group"] if g not in [None, ""]]
         if row["group_ids"] not in [None, [], ""]:
-            row["group_ids"] = row["group_ids"]
+            row["group_ids"] = [
+                i for i in row["group_ids"] if i not in [None, ""]
+            ]
         assert len(row["group"]) == len(row["group_ids"])
         group_list = []
         if len(row["group"]) > 0:
@@ -2647,7 +2660,7 @@ def serialize_json() -> tuple[list[dict], dict]:
         # FIXME: make issn field multiple?
 
         with jsonlines.open(
-            Path(__file__).parent / "logs" / "serializer_failed.jsonl",
+            Path(app.config["RECORD_IMPORTER_SERIALIZED_FAILED_PATH"]),
             "w",
         ) as failed_writer:
             for k, v in bad_data_dict.items():

@@ -14,7 +14,7 @@ import os
 from pprint import pprint
 import xml.etree.ElementTree as ET
 
-from invenio_record_importer.utils import valid_date
+from invenio_record_importer.utils.utils import valid_date
 
 fedora_fields = [
     "pid",

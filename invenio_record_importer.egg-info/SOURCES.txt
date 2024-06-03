@@ -6,6 +6,7 @@ invenio_record_importer/config.py
 invenio_record_importer/core_crawler.py
 invenio_record_importer/ext.py
 invenio_record_importer/main.py
+invenio_record_importer/queries.py
 invenio_record_importer/record_loader.py
 invenio_record_importer/serializer.py
 invenio_record_importer/utils.py

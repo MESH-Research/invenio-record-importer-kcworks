@@ -90,3 +90,13 @@ class ImporterConfig:
                 app.config["RECORD_IMPORTER_LOGS_LOCATION"],
                 "invenio_record_importer_touched.jsonl",
             )
+
+        if app.config.get("RECORD_IMPORTER_SERIALIZED_FAILED_PATH"):
+            self.RECORD_IMPORTER_SERIALIZED_FAILED_PATH = Path(
+                app.config.get("RECORD_IMPORTER_SERIALIZED_FAILED_PATH")
+            )
+        else:
+            self.RECORD_IMPORTER_SERIALIZED_FAILED_PATH = Path(
+                app.config["RECORD_IMPORTER_LOGS_LOCATION"],
+                "invenio_record_importer_serialized_failed.jsonl",
+            )

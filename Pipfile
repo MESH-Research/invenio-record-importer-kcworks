@@ -19,6 +19,8 @@ pytz = "*"
 python-dateutil = "*"
 invenio-saml = "*"
 invenio-record-importer = {file = ".", editable = true}
+invenio-remote-user-data = {file = "../invenio-remote-user-data", editable = true}
+invenio-group-collections = {file = "../invenio-group-collections", editable = true}
 
 [dev-packages]
 docker-services-cli = "*"

@@ -141,9 +141,7 @@ test_config["MIGRATION_SERVER_DATA_DIR"] = str(raw_data_path)
 files_dir = Path(Path(__file__).parents[2], "kcr-untracked-files/humcore")
 test_config["MIGRATION_SERVER_FILES_LOCATION"] = str(files_dir)
 
-log_file_path = (
-    parent_path / "invenio_record_importer" / "logs" / "invenio.log"
-)
+log_file_ = parent_path / "invenio_record_importer" / "logs" / "invenio.log"
 if not log_file_path.exists():
     log_file_path.parent.mkdir(parents=True, exist_ok=True)
     log_file_path.touch()

@@ -7,7 +7,7 @@
 # and/or modify it under the terms of the MIT License; see
 # LICENSE file for more details.
 
-
+import logging
 from .config import ImporterConfig
 
 
@@ -44,3 +44,11 @@ class InvenioRecordImporter(object):
         for k in dir(self.config):
             if k.startswith("RECORD_IMPORTER_") or k.startswith("MIGRATION_"):
                 app.config.setdefault(k, getattr(self.config, k))
+
+        app.logger.handlers[0].setFormatter(
+            logging.Formatter(
+                "[%(asctime)s] %(levelname)s - %(message)s "
+                "{%(filename)s:%(lineno)d}",
+                "%m-%d %H:%M:%S",
+            )
+        )
