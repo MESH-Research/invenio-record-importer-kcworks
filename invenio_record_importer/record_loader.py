@@ -80,6 +80,7 @@ from invenio_record_importer.utils.utils import (
     normalize_string,
     valid_date,
     compare_metadata,
+    FilesHelper,
 )
 
 
@@ -749,11 +750,12 @@ def _upload_draft_files(
         # handle @ characters and apostrophes in filenames
         # FIXME: assumes the filename contains the key
         app.logger.debug(k)
-        app.logger.debug(unicodedata.normalize("NFC", k))
+        app.logger.debug(source_filename)
+        app.logger.debug(normalize_string(k))
         app.logger.debug(normalize_string(unquote(source_filename)))
-        assert normalize_string(
-            unicodedata.normalize("NFC", k)
-        ) in normalize_string(unquote(source_filename))
+        assert normalize_string(k) in normalize_string(
+            unquote(source_filename)
+        )
         # FIXME: implementation detail. Humcore specific
         long_filename = source_filename.replace(
             "/srv/www/commons/current/web/app/uploads/humcore/", ""
@@ -761,8 +763,13 @@ def _upload_draft_files(
         file_path = (
             Path(app.config["MIGRATION_SERVER_FILES_LOCATION"]) / long_filename
         )
-        if not file_path.is_file():
-            raise UploadFileNotFoundError("    file not found for upload...")
+        app.logger.debug(f"    uploading file: {file_path}")
+        try:
+            assert file_path.is_file()
+        except AssertionError:
+            raise UploadFileNotFoundError(
+                f"    file not found for upload {file_path}..."
+            )
 
         # FIXME: Change the identity throughout the process to the user
         # for the token and permission protect the top-level functions
@@ -1279,7 +1286,7 @@ def _create_invenio_community(
             "slug": "aseees",
             "metadata": {
                 "title": "ASEEES Commons",
-                "description": ("A community representing ASEEES Commons"),
+                "description": ("A collection representing ASEEES Commons"),
                 "website": "https://aseees.hcommons.org",
                 "organizations": [{"name": "ASEEES Commons"}],
             },
@@ -2059,6 +2066,7 @@ def load_records_into_invenio(
     aggregate: bool = False,
     start_date: str = "",
     end_date: str = "",
+    clean_filenames: bool = False,
     verbose: bool = False,
 ) -> None:
     """
@@ -2108,6 +2116,14 @@ def load_records_into_invenio(
         app.config["RECORD_IMPORTER_LOGS_LOCATION"],
         "invenio_record_importer_touched.jsonl",
     )
+
+    # Sanitize the names of files before upload to avoid
+    # issues with special characters
+    if clean_filenames:
+        app.logger.info("Sanitizing file names...")
+        FilesHelper.sanitize_filenames(
+            app.config["MIGRATION_SERVER_FILES_LOCATION"]
+        )
 
     # Load list of previously touched records
     previously_touched_records = []

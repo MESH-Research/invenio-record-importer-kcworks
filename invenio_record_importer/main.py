@@ -122,6 +122,15 @@ def serialize_command_wrapper():
     ),
 )
 @click.option(
+    "-c",
+    "--clean-filenames",
+    default=False,
+    help=(
+        "If True, clean up the filenames of the uploaded files to remove"
+        " special characters and spaces."
+    ),
+)
+@click.option(
     "-v",
     "--verbose",
     default=False,
@@ -137,6 +146,7 @@ def load_records(
     aggregate: bool,
     start_date: Optional[str],
     end_date: Optional[str],
+    clean_filenames: bool,
     verbose: bool,
 ):
     """
@@ -273,6 +283,9 @@ def load_records(
             aggregation will end with the current date. The date should be
             formatted in ISO format, i.e. as 'YYYY-MM-DD'. Defaults to None.
 
+        clean_filenames (bool, optional): If True, clean up the filenames of
+            the uploaded files to remove special characters and spaces.
+
         verbose (bool, optional): Print and log verbose output. Defaults to
             False.
 
@@ -288,6 +301,7 @@ def load_records(
         "aggregate": aggregate,
         "start_date": start_date,
         "end_date": end_date,
+        "clean_filenames": clean_filenames,
         "verbose": verbose,
     }
     if len(records) > 0 and "-" in records[0]:

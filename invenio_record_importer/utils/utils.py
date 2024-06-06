@@ -14,6 +14,7 @@ Utility functions for core-migrate
 from datetime import datetime
 from flask import current_app as app
 from flask_security.utils import hash_password
+import fnmatch
 from invenio_access.permissions import system_identity
 from invenio_accounts.proxies import current_accounts
 from invenio_communities import current_communities
@@ -26,6 +27,24 @@ import requests
 import string
 from typing import Union
 import unicodedata
+
+
+class FilesHelper:
+    def __init__(self) -> None:
+        pass
+
+    @staticmethod
+    def sanitize_filenames(directory) -> list:
+        changed = []
+        for path, dirs, files in os.walk(directory):
+            for filename in fnmatch.filter(files, "*[“”‘’]*"):
+                file_path = os.path.join(path, filename)
+                newname = re.sub(r"[“”‘’]", "", filename)
+                new_file_path = os.path.join(path, newname)
+                if file_path != new_file_path:
+                    os.rename(file_path, new_file_path)
+                    changed.append(new_file_path)
+        return changed
 
 
 class IndexHelper:

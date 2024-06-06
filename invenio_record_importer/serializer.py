@@ -2507,13 +2507,15 @@ def add_file_info(
     """
 
     if row["file_pid"] or row["fileloc"] or row["filename"]:
-        newrec["custom_fields"]["hclegacy:file_location"] = row["fileloc"]
+        clean_name = re.sub(r"[‘’”“]", "", row["filename"])
+        clean_loc = re.sub(r"[‘’”“]", "", row["fileloc"])
+        newrec["custom_fields"]["hclegacy:file_location"] = clean_loc
         newrec["custom_fields"]["hclegacy:file_pid"] = row["file_pid"]
         newrec["files"] = {
             "enabled": True,
             "entries": {
-                f'{row["filename"]}': {
-                    "key": row["filename"],
+                f"{clean_name}": {
+                    "key": clean_name,
                     "mimetype": row["filetype"],
                     "size": row["filesize"],
                 }
