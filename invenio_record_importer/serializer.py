@@ -1609,11 +1609,12 @@ def add_date_info(
             invalid, date_to_insert = repair_date(date_to_insert)
             if invalid:
                 invalid, date_to_insert = repair_range(date_to_insert)
-            if invalid and date_to_insert.lower() in [
-                "undated",
-                "forthcoming",
-            ]:
-                invalid = False
+            # FIXME: Allow forthcoming?
+            # if invalid and date_to_insert.lower() in [
+            #     "undated",
+            #     "forthcoming",
+            # ]:
+            #     invalid = False
             if invalid:
                 # app.logger.error("Could not repair invalid date:")
                 # app.logger.error(
@@ -1625,17 +1626,20 @@ def add_date_info(
                     ("bad date", row["date"], date_to_insert),
                     bad_data_dict,
                 )
-                date_description = "Human readable publication date"
-        newrec["metadata"].setdefault("dates", []).append(
-            {
-                "date": date_to_insert,
-                "type": {
-                    "id": "issued",
-                    "title": {"en": "Issued"},
-                },
-                "description": date_description,
-            }
-        )
+                # NOTE: Don't add unparsed dates because they won't
+                # be accepted by InvenioRDM in any date field
+                date_to_insert = None
+        if date_to_insert:
+            newrec["metadata"].setdefault("dates", []).append(
+                {
+                    "date": date_to_insert,
+                    "type": {
+                        "id": "issued",
+                        "title": {"en": "Issued"},
+                    },
+                    "description": date_description,
+                }
+            )
 
     if row["record_change_date"]:
         assert valid_date(row["record_change_date"])
@@ -2238,66 +2242,67 @@ def add_subjects_keywords(
 
     if row["subject"]:
         missing_subjects = [
-            "Public humanities",
-            "Scholarly communication",
-            "European history",
-            "African American culture",
-            "Literature and philosophy",
-            "Asian history",
-            "Modern history",
-            "Postcolonial literature",
-            "Ancient history",
-            "Ancient Mediterranean religions",
-            "Early Christianity",
-            "Religions of late Antiquity",
-            "Literature and economics",
-            "Contemporary art",
-            "Translation studies",
-            "Classical studies",
-            "Sociology of development",
-            "African studies",
-            "Data sharing",
-            "Cultural anthropology",
-            "Criticism of the arts",
-            "Theory of the arts",
-            "Music criticism",
-            "African American studies",
-            "Ancient literature",
-            "Biblical studies",
-            "Hebrew bible",
-            "Literary criticism",
-            "Pentateuchal studies",
-            "Medieval studies",
-            "Urban studies",
-            "Comparative religious ethics",
-            "American studies",
-            "Asian-American studies",
-            "Film studies",
             "17th century",
-            "Migration studies",
-            "Music analysis",
-            "Ancient Greece",
-            "Music information retrieval",
-            "Archival studies",
-            "Native American literature",
-            "Coming-of-age literature",
-            "Poesia",
-            "American art",
-            "Late Antiquity",
-            "Music composition",
-            "Accelerationism",
-            "Behavioral anthropology",
+            "19th-century German literature",
             "20th century",
-            "Immigration history",
+            "Accelerationism",
+            "African American culture",
+            "African American studies",
+            "African studies",
+            "American art",
+            "American studies",
+            "Ancient Greece",
+            "Ancient history",
+            "Ancient literature",
+            "Ancient Mediterranean religions",
+            "Archival studies",
+            "Arts",
+            "Asian history",
+            "Asian-American studies",
+            "Behavioral anthropology",
+            "Biblical studies",
             "Bibliography",
             "Biography",
+            "Classical studies",
+            "Coming-of-age literature",
+            "Comparative religious ethics",
+            "Contemporary art",
+            "Criticism of the arts",
+            "Cultural anthropology",
+            "Data sharing",
+            "Early Christianity",
             "Education",
             "English",
-            "Poetry",
-            "Romanticism",
-            "19th-century German literature",
+            "European history",
+            "Film studies",
+            "Hebrew bible",
+            "Immigration history",
+            "Late Antiquity",
+            "Literary criticism",
+            "Literature and economics",
+            "Literature and philosophy",
+            "Medieval studies",
+            "Migration studies",
+            "Modern history",
+            "Music analysis",
+            "Music composition",
+            "Music criticism",
+            "Music information retrieval",
+            "Native American literature",
+            "Pentateuchal studies",
+            "Poesia",
             "Polish culture",
             "Polish studies",
+            "Poetry",
+            "Postcolonial literature",
+            "Public humanities",
+            "Religions of late Antiquity",
+            "Romanticism",
+            "Scholarly communication",
+            "Sociology of development",
+            "Theory of the arts",
+            "Translation studies",
+            "Urban studies",
         ]
         bad_subjects = {
             "1411635:Criticism, interpretation, etc.:topical": (
@@ -2376,7 +2381,7 @@ def add_subjects_keywords(
             "Book history": "836420:Books--History:topical",
             "Harlem Renaissance": "951467:Harlem Renaissance:topical",
             "Music performance": "1030398:Music--Performance:topical",
-            "Latin America": "1245945:Latin America:topical",
+            "Latin America": "1245945:Latin America:geographic",
             "Portuguese culture": (
                 "1072404:Portuguese--Ethnic identity:topical"
             ),
@@ -2386,6 +2391,7 @@ def add_subjects_keywords(
                 "807113:American literature:topical"
             ),
             "Poetics and poetry": "1067682:Poetics:topical",
+            "1208380:Greece:topical": "1208380:Greece:geographic",
         }
         covered_subjects = []
         if isinstance(row["subject"], dict):

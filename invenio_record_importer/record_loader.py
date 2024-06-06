@@ -1,5 +1,3 @@
-from locale import normalize
-import sys
 import arrow
 from halo import Halo
 from flask import current_app as app
@@ -29,6 +27,14 @@ from invenio_rdm_records.services.errors import (
     InvalidAccessRestrictions,
 )
 from invenio_rdm_records.services.tasks import reindex_stats
+from invenio_record_importer.errors import (
+    ExistingRecordNotUpdatedError,
+    PublicationValidationError,
+    TooManyDownloadEventsError,
+    TooManyViewEventsError,
+    UploadFileNotFoundError,
+)
+from invenio_record_importer.tasks import aggregate_events
 from invenio_records_resources.services.errors import (
     FileKeyNotFoundError,
 )
@@ -45,7 +51,7 @@ from invenio_stats.contrib.event_builders import (
 )
 from invenio_stats.processors import anonymize_user
 from invenio_stats.proxies import current_stats
-from invenio_stats.tasks import aggregate_events, process_events
+from invenio_stats.tasks import process_events
 from invenio_users_resources.proxies import (
     current_users_service as users_service,
 )
@@ -53,6 +59,7 @@ import itertools
 import json
 from simplejson.errors import JSONDecodeError as SimpleJSONDecodeError
 import jsonlines
+from marshmallow.exceptions import ValidationError
 from pathlib import Path
 import requests
 from requests.exceptions import JSONDecodeError as RequestsJSONDecodeError
@@ -69,6 +76,7 @@ from invenio_record_importer.queries import (
 )
 from invenio_record_importer.utils.utils import (
     CommunityRecordHelper,
+    UsersHelper,
     normalize_string,
     valid_date,
     compare_metadata,
@@ -153,7 +161,7 @@ def create_stats_events(
         )
     else:
         if existing_view_count > views:
-            raise RuntimeError(
+            raise TooManyViewEventsError(
                 "    existing imported view events exceed expected count."
             )
         else:
@@ -166,10 +174,11 @@ def create_stats_events(
                     "timestamp": dt.naive.isoformat(),
                     "recid": record_id,
                     "parent_recid": metadata_record["parent"]["id"],
-                    "unique_id": f"imported_{pid.pid_value}",
+                    "unique_id": f"ui_{pid.pid_value}",
                     "is_robot": False,
                     "user_id": "1",
                     "country": "imported",
+                    "via_api": False,
                     # FIXME: above is hack to mark synthetic data
                 }
                 doc = anonymize_user(doc)
@@ -191,7 +200,7 @@ def create_stats_events(
         )
     else:
         if existing_download_count > downloads:
-            raise RuntimeError(
+            raise TooManyDownloadEventsError(
                 "    existing imported download events exceed expected count."
             )
         else:
@@ -211,7 +220,8 @@ def create_stats_events(
                     "is_robot": False,
                     "user_id": "1",
                     "country": "imported",
-                    "unique_id": f"imported_{pid.pid_value}",
+                    "unique_id": f"{str(bucket_id)}_{str(file_id)}",
+                    "via_api": False,
                 }
                 doc = anonymize_user(doc)
                 # we can safely pass the doc through processor.anonymize_user
@@ -237,7 +247,10 @@ def create_stats_events(
 
 
 def create_stats_aggregations(
-    start_date: str = None, end_date: str = None, eager=False
+    start_date: str = None,
+    end_date: str = None,
+    bookmark_override=None,
+    eager=False,
 ) -> Union[bool, list]:
     """
     Create statistics aggregations for the migrated records.
@@ -269,6 +282,7 @@ def create_stats_aggregations(
         ),
         end_date=arrow.get(end_date).naive.isoformat() if end_date else None,
         update_bookmark=True,  # is this right?
+        bookmark_override=bookmark_override,
     )
     if eager:
         aggs = agg_task.apply(throw=True)
@@ -487,15 +501,14 @@ def create_invenio_record(
                     existing_metadata, update_payload
                 )
                 if new_comparison:
-                    app.logger.debug(pformat(new_comparison))
-                    app.logger.info(
-                        "    metadata still does not match migration source"
-                        " after update attempt..."
-                    )
-                    raise RuntimeError(
+                    app.logger.debug(
                         f"existing record: {pformat(new_comparison['A'])}"
                         "new record:"
                         f" {pformat(new_comparison['B'])}"
+                    )
+                    raise ExistingRecordNotUpdatedError(
+                        "    metadata still does not match migration source"
+                        " after update attempt..."
                     )
                 else:
                     update_payload = {
@@ -735,6 +748,9 @@ def _upload_draft_files(
         )
         # handle @ characters and apostrophes in filenames
         # FIXME: assumes the filename contains the key
+        app.logger.debug(k)
+        app.logger.debug(unicodedata.normalize("NFC", k))
+        app.logger.debug(normalize_string(unquote(source_filename)))
         assert normalize_string(
             unicodedata.normalize("NFC", k)
         ) in normalize_string(unquote(source_filename))
@@ -746,7 +762,7 @@ def _upload_draft_files(
             Path(app.config["MIGRATION_SERVER_FILES_LOCATION"]) / long_filename
         )
         if not file_path.is_file():
-            raise RuntimeError("    file not found for upload...")
+            raise UploadFileNotFoundError("    file not found for upload...")
 
         # FIXME: Change the identity throughout the process to the user
         # for the token and permission protect the top-level functions
@@ -1067,14 +1083,22 @@ def create_invenio_user(
             f"record_source {record_source} not found in SSO_SAML_IDPS"
         )
 
+    if source_username and not user_email:
+        user_email = UsersHelper.get_user_by_source_id(source_username)[
+            "email"
+        ]
+
+    if not user_email:
+        raise ValueError("No email address provided for new user account")
+
     existing_user = current_accounts.datastore.get_user_by_email(user_email)
     if existing_user:
         app.logger.info(f"    found existing user {existing_user.id}...")
         new_user_flag = False
         active_user = existing_user
-
     else:
         # FIXME: make proper password here
+        app.logger.debug(f"creating new user for email {user_email}...")
         new_user = current_accounts.datastore.create_user(
             email=user_email,
             # password=generate_password(16),
@@ -1359,6 +1383,8 @@ def publish_record_to_community(
     returns:
         dict: the result of the review acceptance action
     """
+    # Attachment to community unnecessary if the record is already published
+    # or included in it, even if a new draft version
     if (
         existing_record
         and (existing_record["status"] not in ["draft", "draft_with_review"])
@@ -1367,21 +1393,32 @@ def publish_record_to_community(
             and community_id in existing_record["parent"]["communities"]["ids"]
         )
     ):
-        # Can't attach to a community if the record is already published to it
-        # even if we have a new version as a draft
         app.logger.info(
             "    skipping attaching the record to the community (already"
             " published to it)..."
         )
-        # Publish draft if necessary (otherwise published at community
+        # Publish new draft (otherwise would be published at community
         # review acceptance)
         if existing_record["is_draft"] is True:
             app.logger.info("    publishing new draft record version...")
-            publish = records_service.publish(system_identity, id_=draft_id)
+            app.logger.debug(
+                pformat(
+                    records_service.search_drafts(
+                        system_identity, q=f"id:{draft_id}"
+                    ).to_dict()
+                )
+            )
+            # Edit is sometimes necessary if the draft status has become
+            # confused
+            edit = records_service.edit(system_identity, id_=draft_id)
+            publish = records_service.publish(system_identity, id_=edit.id)
             assert publish.data["status"] == "published"
-
+    # for records that haven't been attached to the community yet
+    # submit and accept a review request
     else:
         request_id = None
+        # Try to cancel any existing review request for the record
+        # with another community, since it will conflict
         try:
             existing_review = records_service.review.read(
                 system_identity, id_=draft_id
@@ -1415,19 +1452,25 @@ def publish_record_to_community(
                     f"cancel_existing_request: "
                     f"{pformat(cancel_existing_request)}"
                 )
+        # If no existing review request, just continue
         except (ReviewNotFoundError, NoResultFound):
             app.logger.info(
                 "    no existing review request found for the record to the"
                 " community..."
             )
 
+        # Create/retrieve and accept a review request
         app.logger.info("    attaching the record to the community...")
+
+        # Try creating/retrieving and accepting a 'community-submission'
+        # request for an unpublished record (record will be published at
+        # acceptance).
         try:
             review_body = {
                 "receiver": {"community": f"{community_id}"},
                 "type": "community-submission",
             }
-            new_request = records_service.review.update(
+            new_request = records_service.review.update(  # noqa: F841
                 system_identity, draft_id, review_body
             )
             # app.logger.debug(f"new_request: {pformat(new_request.to_dict())}")
@@ -1472,33 +1515,48 @@ def publish_record_to_community(
             assert review_accepted.data["status"] == "accepted"
 
             return review_accepted
-        except NoResultFound:  # because the record is already published
+
+        # Catch validation errors when publishing the record
+        except ValidationError as e:
+            app.logger.error(
+                f"    failed to validate record for publication: {e.messages}"
+            )
+            raise PublicationValidationError(e.messages)
+
+        # If the record is already published, we need to create/retrieve
+        # and accept a 'community-inclusion' request instead
+        except NoResultFound:
             app.logger.debug("   record is already published")
-            requests, errors = (
-                current_rdm_records.record_communities_service.add(
-                    system_identity,
-                    draft_id,
-                    {"communities": [{"id": community_id}]},
-                )
+            record_communities = current_rdm_records.record_communities_service
+
+            # Try to create and submit a 'community-inclusion' request
+            requests, errors = record_communities.add(
+                system_identity,
+                draft_id,
+                {"communities": [{"id": community_id}]},
             )
             submitted_request = requests[0] if requests else None
-            # app.logger.debug(pformat(submitted_request))
-            if errors:  # because there's already an inclusion request open
+            app.logger.debug(pformat(submitted_request))
+
+            # If that failed because the record is already included in the
+            # community, skip accepting the request (unnecessary)
+            # FIXME: How can we tell if an inclusion request is already
+            # open and/or accepted? Without relying on this error message?
+            if errors and "already included" in errors[0]["message"]:
+                return {submitted_request}
+            # If that failed look for any existing open
+            # 'community-inclusion' request and continue with it
+            if errors:
                 app.logger.debug(
                     f"    inclusion request already open for {draft_id}"
                 )
                 app.logger.debug(pformat(errors))
-                record = current_rdm_records.record_communities_service.record_cls.pid.resolve(
-                    draft_id
-                )
-                request_id = (
-                    current_rdm_records.record_communities_service._exists(
-                        community_id, record
-                    )
-                )
+                record = record_communities.record_cls.pid.resolve(draft_id)
+                request_id = record_communities._exists(community_id, record)
                 app.logger.debug(
                     f"submitted inclusion request: {pformat(request_id)}"
                 )
+            # If it succeeded, continue with the new request
             else:
                 request_id = (
                     submitted_request["id"]
@@ -1512,25 +1570,30 @@ def publish_record_to_community(
                 community_id
             )
             # app.logger.debug(f"request_obj: {pformat(request_obj)}  ")
+
+            # Accept the 'community-inclusion' request if it's not already
+            # accepted
             if request_obj["status"] != "accepted":
+                community_inclusion = (
+                    current_rdm_records.community_inclusion_service
+                )
                 try:
-                    review_accepted = current_rdm_records.community_inclusion_service.include(
+                    review_accepted = community_inclusion.include(
                         system_identity, community, request_obj, uow
                     )
                 except InvalidAccessRestrictions:
                     # can't add public record to restricted community
-                    # temporarily set community to public
-                    app.logger.debug(
-                        "    temporaily setting community to public"
+                    # so set community to public before acceptance
+                    # TODO: can we change this policy?
+                    app.logger.warning(
+                        f"    setting community {community_id} to public"
                     )
                     CommunityRecordHelper.set_community_visibility(
                         community_id, "public"
                     )
-                    review_accepted = current_rdm_records.community_inclusion_service.include(
+                    review_accepted = community_inclusion.include(
                         system_identity, community, request_obj, uow
                     )
-                    # FIXME: at present you can't have a restricted collection
-                    # with a public record
             else:
                 review_accepted = request_obj
             return review_accepted
@@ -1579,18 +1642,25 @@ def add_record_to_group_collections(
             group_name = group["group_name"]
             coll_record = None
             try:
-                coll_records = collections_service.search(
+                coll_search = collections_service.search(
                     system_identity,
                     record_source,
                     commons_group_id=group_id,
-                ).to_dict()["hits"]["hits"]
-                coll_records = [
-                    c
-                    for c in coll_records
-                    if c["custom_fields"].get("kcr:commons_group_name")
-                    == group_name
-                ]
-                # app.logger.debug(f"coll_record: {pformat(coll_records[0])}")
+                )
+                coll_records = coll_search.to_dict()["hits"]["hits"]
+                # NOTE: Don't check for identical group name because
+                # sometimes the group name has changed since the record
+                # was created
+                #
+                # coll_records = [
+                #     c
+                #     for c in coll_records
+                #     if c["custom_fields"].get("kcr:commons_group_name")
+                #     == group_name
+                # ]
+                app.logger.debug(
+                    f"coll_record: {pformat(coll_search.to_dict())}"
+                )
                 assert len(coll_records) == 1
                 coll_record = coll_records[0]
                 app.logger.debug(
@@ -1653,8 +1723,18 @@ def assign_record_ownership(
     # Create/find the necessary user account
     app.logger.info("    creating or finding the user (submitter)...")
     # TODO: Make sure this will be the same email used for SAML login
-    new_owner_email = core_data["custom_fields"]["kcr:submitter_email"]
-    new_owner_username = core_data["custom_fields"]["kcr:submitter_username"]
+    new_owner_email = core_data["custom_fields"].get("kcr:submitter_email")
+    new_owner_username = core_data["custom_fields"].get(
+        "kcr:submitter_username"
+    )
+    if not new_owner_email and not new_owner_username:
+        app.logger.warning(
+            "    no submitter email or username found in source metadata. "
+            "Assigning ownership to first admin user..."
+        )
+        admin = UsersHelper.get_admins()[0]
+        new_owner_email = admin.email
+        new_owner_username = admin.username
     full_name = ""
     for c in [
         *core_data["metadata"].get("creators", []),
@@ -1695,7 +1775,7 @@ def assign_record_ownership(
             f"{pformat(existing_user)} {existing_user.email}"
         )
     else:
-        app.logger.debug("new owner email: " + new_owner_email)
+        app.logger.debug(f"new owner email: {new_owner_email}")
         new_owner_result = create_invenio_user(
             new_owner_email, new_owner_username, full_name, record_source
         )
@@ -1710,7 +1790,7 @@ def assign_record_ownership(
         # app.logger.debug(existing_record["parent"])
     if (
         existing_record
-        and existing_record["custom_fields"]["kcr:submitter_email"]
+        and existing_record["custom_fields"].get("kcr:submitter_email")
         == new_owner_email
         and existing_record["parent"]["access"].get("owned_by")
         and str(existing_record["parent"]["access"]["owned_by"]["user"])
@@ -1839,6 +1919,7 @@ def import_record_to_invenio(
 def _log_touched_record(
     index: int = 0,
     invenio_id: str = "",
+    invenio_recid: str = "",
     commons_id: str = "",
     core_record_id: str = "",
     touched_records: list = [],
@@ -1851,6 +1932,7 @@ def _log_touched_record(
     touched = {
         "index": index,
         "invenio_id": invenio_id,
+        "invenio_recid": invenio_recid,
         "commons_id": commons_id,
         "core_record_id": core_record_id,
     }
@@ -1872,28 +1954,34 @@ def _log_failed_record(
     core_record_id=None,
     failed_records=None,
     residual_failed_records=None,
+    reason=None,
 ) -> None:
     """
     Log a failed record to the failed records log file.
     """
     failed_log_path = Path(app.config["RECORD_IMPORTER_FAILED_LOG_PATH"])
 
+    failed_obj = {
+        "index": index,
+        "invenio_id": invenio_id,
+        "commons_id": commons_id,
+        "core_record_id": core_record_id,
+        "reason": reason,
+    }
     if index > -1:
-        failed_records.append(
-            {
-                "index": index,
-                "invenio_id": invenio_id,
-                "commons_id": commons_id,
-                "core_record_id": core_record_id,
-            }
-        )
+        failed_records.append(failed_obj)
     with jsonlines.open(
         failed_log_path,
         "w",
     ) as failed_writer:
         total_failed = [*failed_records]
+        if len(failed_records) > 0:
+            app.logger.debug(pformat(failed_records))
+            failed_ids = [r["commons_id"] for r in failed_records if r]
+        else:
+            failed_ids = []
         for e in residual_failed_records:
-            if e not in failed_records:
+            if e["commons_id"] not in failed_ids and e not in total_failed:
                 total_failed.append(e)
         ordered_failed_records = sorted(total_failed, key=lambda r: r["index"])
         for o in ordered_failed_records:
@@ -1957,12 +2045,7 @@ def _sort_touched_records(
         for o in ordered_touched_records:
             touched_writer.write(o)
 
-    print(
-        "Touched records written to logs/invenio_record_importer_touched.jsonl"
-    )
-    app.logger.info(
-        "Touched records written to logs/invenio_record_importer_touched.jsonl"
-    )
+    app.logger.info(f"Touched records written to {touched_log_path}...")
 
 
 def load_records_into_invenio(
@@ -1973,9 +2056,38 @@ def load_records_into_invenio(
     use_sourceids: bool = False,
     sourceid_scheme: str = "hclegacy-pid",
     retry_failed: bool = False,
+    aggregate: bool = False,
+    start_date: str = "",
+    end_date: str = "",
+    verbose: bool = False,
 ) -> None:
     """
     Create new InvenioRDM records and upload files for serialized deposits.
+
+    params:
+        start_index (int): the starting index of the records to load in the
+            source jsonl file
+        stop_index (int): the stopping index of the records to load in the
+            source jsonl file (inclusive)
+        nonconsecutive (list): a list of nonconsecutive indices to load in the
+            source jsonl file
+        no_updates (bool): whether to update existing records
+        use_sourceids (bool): whether to use ids from the record source's id
+            system for identification of records to load
+        sourceid_scheme (str): the scheme to use for the source ids if records
+            are identified by source ids
+        retry_failed (bool): whether to retry failed records from a prior run
+        aggregate (bool): whether to aggregate usage stats for the records
+            after loading. This may take a long time.
+        start_date (str): the starting date of usage events to aggregate if
+            aggregate is True
+        end_date (str): the ending date of usage events to aggregate if
+            aggregate is True
+        verbose (bool): whether to print and log verbose output during the
+            loading process
+
+    returns:
+        None
     """
     record_counter = 0
     failed_records = []
@@ -2112,9 +2224,13 @@ def load_records_into_invenio(
                 for r in rec["metadata"]["identifiers"]
                 if r["scheme"] == "hclegacy-record-id"
             ][0]["identifier"]
+            # FIXME: Can we get the Invenio record ID from the failed record
+            # that didn't complete processing?
+            rec_invenioid = rec.get("id")
             app.logger.info(f"....starting to load record {current_record}")
             app.logger.info(
-                f"    DOI:{rec_doi} {rec_hcid} {rec_recid} {record_source}"
+                f"    DOI:{rec_doi} {rec_invenioid} {rec_hcid} {rec_recid}"
+                f"{record_source}"
             )
             spinner = Halo(
                 text=f"    Loading record {current_record}", spinner="dots"
@@ -2123,6 +2239,7 @@ def load_records_into_invenio(
             try:
                 touched_records = _log_touched_record(
                     index=current_record,
+                    invenio_recid=rec_invenioid,
                     invenio_id=rec_doi,
                     commons_id=rec_hcid,
                     core_record_id=rec_recid,
@@ -2170,16 +2287,36 @@ def load_records_into_invenio(
                 print("ERROR:", e)
                 print_exc()
                 app.logger.error(f"ERROR: {e}")
-                app.logger.error(f"ERROR: {pformat(e.__traceback__)}")
+                msg = str(e)
+                try:
+                    msg = e.messages
+                except AttributeError:
+                    try:
+                        msg = e.messages
+                    except AttributeError:
+                        pass
+                error_reasons = {
+                    "ExistingRecordNotUpdatedError": msg,
+                    "UploadFileNotFoundError": msg,
+                    "InvalidKeyError": msg,
+                    "PublicationValidationError": msg,
+                    "TooManyViewEventsError": msg,
+                    "TooManyDownloadEventsError": msg,
+                }
+                log_object = {
+                    "index": current_record,
+                    "invenio_id": rec_doi,
+                    "commons_id": rec_hcid,
+                    "core_record_id": rec_recid,
+                    "failed_records": failed_records,
+                    "residual_failed_records": residual_failed_records,
+                }
+                if e.__class__.__name__ in error_reasons.keys():
+                    log_object.update(
+                        {"reason": error_reasons[e.__class__.__name__]}
+                    )
                 failed_records, residual_failed_records = _log_failed_record(
-                    **{
-                        "index": current_record,
-                        "invenio_id": rec_doi,
-                        "commons_id": rec_hcid,
-                        "core_record_id": rec_recid,
-                        "failed_records": failed_records,
-                        "residual_failed_records": residual_failed_records,
-                    }
+                    **log_object
                 )
 
             spinner.stop()
@@ -2209,21 +2346,29 @@ def load_records_into_invenio(
         f" {str(len(repaired_failed))} previously failed records repaired \n "
         f"   {str(len(failed_records))} failed \n"
     )
-    print(message)
     app.logger.info(message)
 
     # Aggregate the stats again now
-    # aggregations = create_stats_aggregations(
-    #     start_date=arrow.get("2019-01-01").naive.isoformat(), eager=True
-    # )
-    # app.logger.debug(f"    created usage aggregations...")
-    # app.logger.debug(pformat(aggregations))
+    if aggregate:
+        aggregations = create_stats_aggregations(
+            start_date=arrow.get("2024-01-01").naive.isoformat(),
+            bookmark_override=arrow.get("2023-01-01").naive,
+            eager=True,
+        )
+        app.logger.debug(f"    created usage aggregations...")
+        app.logger.debug(pformat(aggregations))
+    else:
+        app.logger.warning(
+            "    Skipping usage stats aggregation. Usage stats "
+            "for the imported records will not be visible "
+            "until an aggregation is performed."
+        )
 
     # Report
-    if repaired_failed or (
-        existing_failed_records and not residual_failed_records
+    if verbose and (
+        repaired_failed
+        or (existing_failed_records and not residual_failed_records)
     ):
-        print("Previously failed records repaired:")
         app.logger.info("Previously failed records repaired:")
         for r in repaired_failed:
             print(r)
@@ -2231,18 +2376,13 @@ def load_records_into_invenio(
 
     # Report and log failed records
     if failed_records:
-        print("Failed records:")
-        app.logger.info("Failed records:")
-        for r in failed_records:
-            print(r)
-            app.logger.info(r)
-        print(
-            "Failed records written to"
-            " logs/invenio_record_importer_failed.jsonl"
-        )
+        if verbose:
+            app.logger.info("Failed records:")
+            for r in failed_records:
+                app.logger.info(r)
         app.logger.info(
             "Failed records written to"
-            " logs/invenio_record_importer_failed.jsonl"
+            f" {app.config['RECORD_IMPORTER_FAILED_LOG_PATH']}"
         )
 
     # Order touched records in log file (saved time earlier by not

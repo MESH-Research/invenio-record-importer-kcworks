@@ -12,15 +12,17 @@ Utility functions for core-migrate
 """
 
 from datetime import datetime
-from subprocess import list2cmdline
 from flask import current_app as app
 from flask_security.utils import hash_password
 from invenio_access.permissions import system_identity
+from invenio_accounts.proxies import current_accounts
 from invenio_communities import current_communities
 from invenio_search.proxies import current_search_client
 from isbnlib import is_isbn10, is_isbn13, clean
+import os
 import random
 import re
+import requests
 import string
 from typing import Union
 import unicodedata
@@ -83,6 +85,55 @@ class IndexHelper:
                     index=f"kcworks-events-stats-record-view-{t}",
                     id=hit["_id"],
                 )
+
+
+class UsersHelper:
+    """A collection of methods for working with users."""
+
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def get_admins():
+        """Get all users with the role of 'admin'."""
+        admin_role = current_accounts.datastore.find_role_by_id("admin")
+        admin_role_holders = [
+            u
+            for u in current_accounts.datastore.find_role(
+                admin_role.name
+            ).users
+        ]
+        assert len(admin_role_holders) > 0  # should be at least one admin
+        return admin_role_holders
+
+    @staticmethod
+    def get_user_by_source_id(source_id: str):
+        """Get a user by their source id."""
+        remote_api_token = os.environ["COMMONS_API_TOKEN"]
+        # FIXME: Change for production and make configurable
+        api_url = (
+            f"https://hcommons-dev.org/wp-json/commons/v1/users/{source_id}"
+        )
+        headers = {"Authorization": f"Bearer {remote_api_token}"}
+        response = requests.get(
+            api_url, headers=headers, verify=False, timeout=10
+        )
+        if response.status_code != 200:
+            app.logger.error(
+                f"Error fetching user data from remote API: {api_url}"
+            )
+            app.logger.error(
+                "Response status code: " + str(response.status_code)
+            )
+        try:
+            app.logger.debug(response.json())
+            return response.json()
+        except requests.exceptions.JSONDecodeError:
+            app.logger.error(
+                "JSONDecodeError: User group data API response was not"
+                " JSON:"
+            )
+            return None
 
 
 class CommunityRecordHelper:
@@ -306,17 +357,21 @@ def compare_metadata(A: dict, B: dict) -> dict:
     return: A dictionary of differences between the two records
     rtype: dict
     """
-    VERBOSE = True
+    VERBOSE = False
     output = {"A": {}, "B": {}}
 
     def obj_list_compare(list_name, key, a, b, comparators):
         app.logger.debug(f"comparing {list_name} &&&&&&")
-        app.logger.debug(a[list_name])
-        app.logger.debug(b[list_name])
+        app.logger.debug(a.get(list_name))
+        app.logger.debug(b.get(list_name))
         out = {}
         if list_name not in a.keys():
             a[list_name] = []
-        existing_items = [i.get(key) for i in a[list_name]]
+        if list_name not in b.keys():
+            b[list_name] = []
+        existing_items = [
+            _normalize_punctuation(i.get(key)) for i in a[list_name]
+        ]
         for i in b[list_name]:
             if _normalize_punctuation(i[key]) not in existing_items:
                 out.setdefault("A", []).append({})
@@ -339,6 +394,9 @@ def compare_metadata(A: dict, B: dict) -> dict:
                 if not same:
                     out.setdefault("A", []).append(i_2)
                     out.setdefault("B", []).append(i)
+        if len(a[list_name]) != len(b[list_name]):
+            out.setdefault("A", []).append(a[list_name])
+            out.setdefault("B", []).append(b[list_name])
 
         if VERBOSE:
             app.logger.debug(f"comparing {list_name} &&&&&&")
@@ -349,49 +407,38 @@ def compare_metadata(A: dict, B: dict) -> dict:
         return out
 
     def compare_people(list_a, list_b):
-        existing_people = [
-            _normalize_punctuation(c["person_or_org"]["name"]) for c in list_a
-        ]
         people_diff = {}
-        for c in list_b:
+        for idx, c in enumerate(list_b):
+            same = True
+            c_2 = list_a[idx]  # order should be the same
+            if _normalize_punctuation(
+                c_2["person_or_org"]["name"]
+            ) != _normalize_punctuation(c["person_or_org"]["name"]):
+                same = False
+            for k in c["person_or_org"].keys():
+                if k == "identifiers":
+                    if (
+                        k not in c_2["person_or_org"].keys()
+                        or c["person_or_org"][k] != c_2["person_or_org"][k]
+                    ):
+                        same = False
+                else:
+                    if k not in c_2[
+                        "person_or_org"
+                    ].keys() or _normalize_punctuation(
+                        c["person_or_org"][k]
+                    ) != _normalize_punctuation(
+                        c_2["person_or_org"][k]
+                    ):
+                        same = False
             if (
-                _normalize_punctuation(c["person_or_org"]["name"])
-                not in existing_people
+                "role" not in c_2.keys()
+                or c["role"]["id"] != c_2["role"]["id"]
             ):
-                people_diff.setdefault("A", []).append({})
+                same = False
+            if not same:
+                people_diff.setdefault("A", []).append(c_2)
                 people_diff.setdefault("B", []).append(c)
-            else:
-                same = True
-                c_2 = [
-                    c2
-                    for c2 in list_a
-                    if _normalize_punctuation(c2["person_or_org"]["name"])
-                    == _normalize_punctuation(c["person_or_org"]["name"])
-                ][0]
-                for k in c["person_or_org"].keys():
-                    if k == "identifiers":
-                        if (
-                            k not in c_2["person_or_org"].keys()
-                            or c["person_or_org"][k] != c_2["person_or_org"][k]
-                        ):
-                            same = False
-                    else:
-                        if k not in c_2[
-                            "person_or_org"
-                        ].keys() or _normalize_punctuation(
-                            c["person_or_org"][k]
-                        ) != _normalize_punctuation(
-                            c_2["person_or_org"][k]
-                        ):
-                            same = False
-                if (
-                    "role" not in c_2.keys()
-                    or c["role"]["id"] != c_2["role"]["id"]
-                ):
-                    same = False
-                if not same:
-                    people_diff.setdefault("A", []).append(c_2)
-                    people_diff.setdefault("B", []).append(c)
         return people_diff
 
     if "pids" in B.keys():
@@ -416,7 +463,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
             "publisher",
         ]
         for s in simple_fields:
-            if s in meta_b.keys():
+            if s in meta_a.keys():
                 if s in meta_b.keys():
                     if _normalize_punctuation(
                         meta_b[s]
@@ -483,7 +530,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
                             "additional_titles", []
                         ).append(t)
 
-        if "identifiers" in meta_b.keys():
+        if "identifiers" in meta_b.keys() or "identifiers" in meta_a.keys():
             comp = obj_list_compare(
                 "identifiers",
                 "identifier",
@@ -495,7 +542,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
                 meta_diff["A"]["identifiers"] = comp["A"]
                 meta_diff["B"]["identifiers"] = comp["B"]
 
-        if "dates" in meta_b.keys():
+        if "dates" in meta_b.keys() or "dates" in meta_a.keys():
             comp = obj_list_compare(
                 "dates",
                 "date",
@@ -507,13 +554,16 @@ def compare_metadata(A: dict, B: dict) -> dict:
                 meta_diff["A"]["dates"] = comp["A"]
                 meta_diff["B"]["dates"] = comp["B"]
 
-        if "languages" in meta_b.keys():
+        if "languages" in meta_b.keys() or "languages" in meta_a.keys():
             comp = obj_list_compare("languages", "id", meta_a, meta_b, ["id"])
             if comp:
                 meta_diff["A"]["languages"] = comp["A"]
                 meta_diff["B"]["languages"] = comp["B"]
 
-        if "additional_descriptions" in meta_b.keys():
+        if (
+            "additional_descriptions" in meta_b.keys()
+            or "additional_descriptions" in meta_a.keys()
+        ):
             comp = obj_list_compare(
                 "additional_descriptions",
                 "description",
@@ -525,7 +575,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
                 meta_diff["A"]["additional_descriptions"] = comp["A"]
                 meta_diff["B"]["additional_descriptions"] = comp["B"]
 
-        if "subjects" in meta_b.keys():
+        if "subjects" in meta_b.keys() or "subjects" in meta_a.keys():
             comp = obj_list_compare(
                 "subjects",
                 "id",
@@ -598,7 +648,10 @@ def compare_metadata(A: dict, B: dict) -> dict:
                     custom_diff["A"][s] = custom_a[s]
                     custom_diff["B"][s] = custom_b[s]
 
-        if "hclegacy:groups_for_deposit" in custom_b.keys():
+        if (
+            "hclegacy:groups_for_deposit" in custom_b.keys()
+            or "hclegacy:groups_for_deposit" in custom_a.keys()
+        ):
             comp = obj_list_compare(
                 "hclegacy:groups_for_deposit",
                 "group_name",

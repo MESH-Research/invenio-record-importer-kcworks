@@ -1,9 +1,9 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2023 MESH Research
+# Copyright (C) 2023-2024 Mesh Research
 #
-# core-migrate is free software; you can redistribute it and/or
+# invenio-record-importer is free software; you can redistribute it and/or
 # modify it under the terms of the MIT License; see LICENSE file for more
 # details.
 
@@ -14,14 +14,14 @@ Functions to convert and migrate legacy CORE deposits to InvenioRDM
 Relies on the following environment variables:
 
 MIGRATION_SERVER_DOMAIN     The domain (without https://) at which your
-                            running knowledge_commons_repository
+                            running knowledge_commons_works
                             instance can receive requests.
 MIGRATION_SERVER_DATA_DIR   The full path to the local directory where
                             the source json files (exported from legacy
                             CORE) can be found.
 
 Normally these variables can be set in the .env file in your base
-knowledge_commons_repository directory.
+knowledge_commons_works directory.
 """
 
 import click
@@ -83,9 +83,61 @@ def serialize_command_wrapper():
         " source system instead of positional indices."
     ),
 )
+@click.option(
+    "--scheme",
+    default="hclegacy-pid",
+    help=(
+        "The identifier scheme to use for the records when the --use-sourceids "
+        "flag is True. Defaults to 'hclegacy-pid' for the ids used by the old "
+        "Humanities Commons CORE repository."
+    ),
+)
+@click.option(
+    "-a",
+    "--aggregate",
+    default=False,
+    help=(
+        "If True, aggregate the record view and download statistics for all"
+        " records after loading. (This may take a long time.)"
+    ),
+)
+@click.option(
+    "--start-date",
+    default=None,
+    help=(
+        "The start date for the record events to aggregate if the --aggregate "
+        "flag is True. If not specified, the aggregation will begin from the "
+        "earliest creation date of the migrated records. The date should be "
+        "formatted in ISO format, i.e. as 'YYYY-MM-DD'."
+    ),
+)
+@click.option(
+    "--end-date",
+    default=None,
+    help=(
+        "The end date for the record events to aggregate if the --aggregate "
+        "flag is True. If not specified, the aggregation will end with the "
+        "current date. The date should be formatted in ISO format, i.e. as "
+        "'YYYY-MM-DD'."
+    ),
+)
+@click.option(
+    "-v",
+    "--verbose",
+    default=False,
+    help="Print and log verbose output",
+)
 @with_appcontext
 def load_records(
-    records: list, no_updates: bool, retry_failed: bool, use_sourceids: bool
+    records: list,
+    no_updates: bool,
+    retry_failed: bool,
+    use_sourceids: bool,
+    scheme: str,
+    aggregate: bool,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    verbose: bool,
 ):
     """
     Load serialized exported records into InvenioRDM.
@@ -99,40 +151,45 @@ def load_records(
 
         To load records 1, 2, 3, and 5, run:
 
-            core-migrate load 1 2 3 5
+            invenio importer load 1 2 3 5
 
         A range can be specified in the RECORDS by linking two integers with a
         hyphen. For example, to load only the first 100 records, run:
 
-            core-migrate load 1-100
+            invenio importer load 1-100
 
         If the range ends in a hyphen with no second integer, the program will
         load all records from the start index to the end of the input file. For
         example, to load all records from 100 to the end of the file, run:
 
-            core-migrate load 100-
+            invenio importer load 100-
 
         Records may be loaded by id in the source system instead of by index.
         For example, to load records with ids hc:4723, hc:8271, and hc:2246,
         run:
 
-            core-migrate load --use-sourceids hc:4723 hc:8271 hc:2246
+            invenio importer load --use-sourceids hc:4723 hc:8271 hc:2246
+
+        To aggregate usage statistics after loading, add the --aggregate flag.
+        For example, to load all records and aggregate usage statistics, run:
+
+            invenio importer load --aggregate
 
     Notes:
 
-        This program must be run from the base knowledge_commons_repository
+        This program must be run from the base knowledge_commons_works
         directory. It will look for the exported records in the directory
         specified by the MIGRATION_SERVER_DATA_DIR environment variable. It
-        will send requests to the knowledge_commons_repository instance
+        will send requests to the knowledge_commons_works instance
         specified by the MIGRATION_SERVER_DOMAIN environment variable.
 
         The program must also be run inside the pipenv virtual environment for
-        the knowledge_commons_repository instance. All of the commands must be
+        the knowledge_commons_works instance. All of the commands must be
         preceded by `pipenv run` or the pipenv environment must first be
         activated with `pipenv shell`.
 
         The operations involved require authenitcation as an admin user in the
-        knowledge_commons_repository instance. This program will look for the
+        knowledge_commons_works instance. This program will look for the
         admin user's api token in the MIGRATION_API_TOKEN environment variable.
         Where it's necessary to invite this user to a community, the program
         will look for the community's id in the P_TOKEN environment variable.
@@ -197,6 +254,28 @@ def load_records(
             are interpreted as ids in the source system instead of positional
             indices. Defaults to False.
 
+        scheme (str, optional): The identifier scheme to use for the records
+            when the --use-sourceids flag is True. Defaults to 'hclegacy-pid'
+            for the ids used by the old Humanities Commons CORE repository.
+
+        aggregate (bool, optional): If True, aggregate the record view and
+            download statistics for all records after loading. Defaults to
+            False.
+
+        start_date (str, optional): The start date for the record events to
+            aggregate if the --aggregate flag is True. If not specified, the
+            aggregation will begin from the earliest creation date of the
+            migrated records. The date should be formatted in ISO format,
+            i.e. as 'YYYY-MM-DD'. Defaults to None.
+
+        end_date (str, optional): The end date for the record events to
+            aggregate if the --aggregate flag is True. If not specified, the
+            aggregation will end with the current date. The date should be
+            formatted in ISO format, i.e. as 'YYYY-MM-DD'. Defaults to None.
+
+        verbose (bool, optional): Print and log verbose output. Defaults to
+            False.
+
     Returns:
 
         None
@@ -205,6 +284,11 @@ def load_records(
         "no_updates": no_updates,
         "retry_failed": retry_failed,
         "use_sourceids": use_sourceids,
+        "sourceid_scheme": scheme,
+        "aggregate": aggregate,
+        "start_date": start_date,
+        "end_date": end_date,
+        "verbose": verbose,
     }
     if len(records) > 0 and "-" in records[0]:
         if use_sourceids:

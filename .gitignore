@@ -111,6 +111,12 @@ ipython_config.py
 #   https://pdm.fming.dev/#use-with-ide
 .pdm.toml
 
+# distribution build files
+*.egg
+*.egg-info
+dist
+build
+
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
 
@@ -167,3 +173,5 @@ invenio_record_importer/logs/invenio_record_importer_touched.jsonl
 invenio_record_importer/logs/invenio_record_importer.log
 invenio_record_importer/logs/invenio_record_importer.log.*
 invenio_record_importer/logs/serializer_failed.jsonl
+
+invenio_record_importer/data/serialized_data.jsonl
