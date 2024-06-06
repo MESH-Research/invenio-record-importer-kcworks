@@ -744,8 +744,12 @@ def _upload_draft_files(
     # FIXME: Collect and upload files as a batch rather than one at a time
     for k, v in files_dict.items():
         source_filename = source_filenames[k]
+        # FIXME: implementation detail. Humcore specific
         long_filename = source_filename.replace(
             "/srv/www/commons/current/web/app/uploads/humcore/", ""
+        )
+        long_filename = long_filename.replace(
+            "/srv/www/commons/shared/uploads/humcore/", ""
         )
         # handle @ characters and apostrophes in filenames
         # FIXME: assumes the filename contains the key
@@ -755,10 +759,6 @@ def _upload_draft_files(
         app.logger.debug(normalize_string(unquote(source_filename)))
         assert normalize_string(k) in normalize_string(
             unquote(source_filename)
-        )
-        # FIXME: implementation detail. Humcore specific
-        long_filename = source_filename.replace(
-            "/srv/www/commons/current/web/app/uploads/humcore/", ""
         )
         file_path = (
             Path(app.config["MIGRATION_SERVER_FILES_LOCATION"]) / long_filename

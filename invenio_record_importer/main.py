@@ -95,6 +95,7 @@ def serialize_command_wrapper():
 @click.option(
     "-a",
     "--aggregate",
+    is_flag=True,
     default=False,
     help=(
         "If True, aggregate the record view and download statistics for all"
@@ -124,6 +125,7 @@ def serialize_command_wrapper():
 @click.option(
     "-c",
     "--clean-filenames",
+    is_flag=True,
     default=False,
     help=(
         "If True, clean up the filenames of the uploaded files to remove"
