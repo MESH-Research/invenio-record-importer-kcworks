@@ -1983,7 +1983,6 @@ def _log_failed_record(
     ) as failed_writer:
         total_failed = [*failed_records]
         if len(failed_records) > 0:
-            app.logger.debug(pformat(failed_records))
             failed_ids = [r["commons_id"] for r in failed_records if r]
         else:
             failed_ids = []
@@ -2365,6 +2364,16 @@ def load_records_into_invenio(
     app.logger.info(message)
 
     # Aggregate the stats again now
+    start_date = (
+        start_date
+        if start_date
+        else arrow.utcnow().shift(days=-1).naive.date().isoformat()
+    )
+    end_date = (
+        end_date
+        if end_date
+        else arrow.utcnow().shift(days=1).naive.date().isoformat()
+    )
     if aggregate:
         aggregations = create_stats_aggregations(
             start_date=arrow.get(start_date).naive.isoformat(),
