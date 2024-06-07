@@ -2367,8 +2367,9 @@ def load_records_into_invenio(
     # Aggregate the stats again now
     if aggregate:
         aggregations = create_stats_aggregations(
-            start_date=arrow.get("2024-01-01").naive.isoformat(),
-            bookmark_override=arrow.get("2023-01-01").naive,
+            start_date=arrow.get(start_date).naive.isoformat(),
+            end_date=arrow.get(end_date).naive.isoformat(),
+            bookmark_override=arrow.get(start_date).naive,
             eager=True,
         )
         app.logger.debug(f"    created usage aggregations...")

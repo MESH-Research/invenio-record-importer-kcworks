@@ -22,6 +22,13 @@ import dateparser
 from flask import current_app as app
 from pprint import pprint
 from timefhuman import timefhuman
+from idutils import (
+    is_doi,
+    is_url,
+    normalize_pid,
+    normalize_doi,
+    detect_identifier_schemes,
+)
 from isbnlib import get_isbnlike
 import iso639
 import json
@@ -1059,59 +1066,111 @@ def add_identifiers(
     Returns:
         dict: The new record dict with identifier info added
     """
+    identifiers = {}
+
+    ids = [
+        s
+        for i in [row.get("doi"), row.get("url"), row.get("handle")]
+        for s in re.split(r"\s*and |\s*; |\s*, |\s*or |\s+", i)
+        if i and s
+    ]
+    for i in ids:
+        if i and not re.match(
+            r"^(url|http|handle|doi)\:?$|^n/?a$", i, re.IGNORECASE
+        ):
+            print(row["id"])
+            detected = detect_identifier_schemes(i)
+            if len(detected) < 1:
+                detected = detect_identifier_schemes(f"https://{i}")
+            if "doi" in detected and normalize_doi(i) != normalize_doi(
+                row["deposit_doi"]
+            ):
+                identifiers.setdefault("doi", []).append(i)
+            elif "isbn" in detected:
+                identifiers.setdefault("isbn", []).append(i)
+            elif "issn" in detected:
+                identifiers.setdefault("issn", []).append(i)
+            elif "url" in detected and is_url(i):
+                identifiers.setdefault("url", []).append(i)
+            elif re.match(r"^hc:\d+$", i):
+                identifiers.setdefault("hc", []).append(i)
+            elif "handle" in detected and i == row["handle"]:
+                identifiers.setdefault("handle", []).append(i)
+            else:
+                if i == normalize_doi(row["deposit_doi"]):
+                    pass
+                else:
+                    _append_bad_data(
+                        row["id"], ("unknown identifier", i), bad_data_dict
+                    )
 
     # Identifiers
     # FIXME: Is it right that these are all datacite dois?
     if row["deposit_doi"]:
-        newrec.setdefault("pids", {})["doi"] = {
-            "identifier": row["deposit_doi"].replace("doi:", ""),
-            "provider": "datacite",
-            "client": "datacite",
-        }
-        newrec["metadata"].setdefault("identifiers", []).append(
-            {
-                "identifier": row["deposit_doi"].replace("doi:", ""),
-                "scheme": "datacite-doi",
-            }
-        )
-    if row["doi"]:
-        # FIXME: hc:24459 is getting description as doi value
-        if len(row["doi"]) < 100:
-            newrec["metadata"].setdefault("identifiers", []).append(
-                {
-                    "identifier": row["doi"].replace("https://doi.org/", ""),
-                    "scheme": "doi",
-                }
+        if not is_doi(row["deposit_doi"]):
+            _append_bad_data(
+                row["id"],
+                ("invalid primary doi", row["deposit_doi"]),
+                bad_data_dict,
             )
         else:
-            _append_bad_data(
-                row["id"], ("doi too long", row["doi"]), bad_data_dict
+            newrec.setdefault("pids", {})["doi"] = {
+                "identifier": normalize_doi(row["deposit_doi"]),
+                "provider": "datacite",
+                "client": "datacite",
+            }
+            newrec["metadata"].setdefault("identifiers", []).append(
+                {
+                    "identifier": normalize_doi(row["deposit_doi"]),
+                    "scheme": "datacite-doi",
+                }
             )
-    if row["url"]:
-        my_urls = re.split(r" and |;", row["url"])
-        for url in my_urls:
-            url = row["url"].replace(" ", "")
-            if validators.url(url) or validators.url(f"https://{url}"):
-                newrec["metadata"].setdefault("identifiers", []).append(
-                    {
-                        "identifier": row["url"].replace(
-                            "http://dx.", "https://"
-                        ),
-                        "scheme": "url",
-                    }
-                )
-            else:
-                # print(row['id'], url)
-                pass
-    if row["handle"] and not any(
-        n for n in newrec["metadata"]["identifiers"] if n["scheme"] == "url"
-    ):
+    for idx, d in enumerate(identifiers.get("doi", [])):
+        scheme = "doi" if idx == 0 else "alternate-doi"
         newrec["metadata"].setdefault("identifiers", []).append(
             {
-                "identifier": row["handle"].replace("http://dx.", "https://"),
+                "identifier": normalize_doi(d),
+                "scheme": scheme,
+            }
+        )
+    for u in identifiers.get("url", []):
+        newrec["metadata"].setdefault("identifiers", []).append(
+            {
+                "identifier": normalize_pid(u, "url"),
                 "scheme": "url",
             }
         )
+    for h in identifiers.get("handle", []):
+        print("handle", h)
+        if h:
+            newrec["metadata"].setdefault("identifiers", []).append(
+                {
+                    "identifier": normalize_pid(h, "handle"),
+                    "scheme": "handle",
+                }
+            )
+    for hc in identifiers.get("hc", []):
+        newrec["metadata"].setdefault("identifiers", []).append(
+            {
+                "identifier": hc,
+                "scheme": "hclegacy-pid",
+            }
+        )
+    for isbn in identifiers.get("isbn", []):
+        newrec["metadata"].setdefault("identifiers", []).append(
+            {
+                "identifier": normalize_pid(isbn, "isbn"),
+                "scheme": "isbn",
+            }
+        )
+    for isn in identifiers.get("issn", []):
+        newrec["metadata"].setdefault("identifiers", []).append(
+            {
+                "identifier": normalize_pid(isn, "issn"),
+                "scheme": "issn",
+            }
+        )
+    pprint(newrec["metadata"]["identifiers"])
     return newrec, bad_data_dict
 
 
