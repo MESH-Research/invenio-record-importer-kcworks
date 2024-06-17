@@ -340,6 +340,7 @@ request_header_keys = [
 ]
 
 
+@pytest.mark.skip(reason="The use of REST API calls is deprecated.")
 @pytest.mark.parametrize(
     "method,endpoint,args,json_dict,expected_response",
     [

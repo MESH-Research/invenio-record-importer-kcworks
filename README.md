@@ -33,8 +33,6 @@ The importer relies on several environment variables:
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | MIGRATION_SERVER_DATA_DIR       | The folder where the file with serialized metadata records can be found, named `records-for-import.json`                                                           |
 | MIGRATION_SERVER_FILES_LOCATION | The folder where the files for upload withe the new deposits may be found.                                                                                         |
-| MIGRATION_SERVER_DOMAIN         | The domain (without https://) at which your running Knowledge Commons Works instance can receive requests.                                                         |
-| MIGRATION_SERVER_PROTOCOL       | The protocol (usually "https") to be used for accessing the running Knowledge Commons Works instance.                                                              |
 | MIGRATION_SERVER_DATA_DIR       | The full path to the local directory where the source json files can be found. This is also where the serializer function will place the newly serialized records. |
 | MIGRATION_API_TOKEN             | The authentication token required by the InvenioRDM REST api.                                                                                                      |
 

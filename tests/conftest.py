@@ -126,8 +126,6 @@ test_config = {
     #     "R": "Remote",
     # },
     # "FILES_REST_DEFAULT_STORAGE_CLASS": "L",
-    "MIGRATION_SERVER_DOMAIN": "localhost:5000",
-    "MIGRATION_SERVER_PROTOCOL": "https",
 }
 
 parent_path = Path(__file__).parent.parent

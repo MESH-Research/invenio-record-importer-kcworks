@@ -300,6 +300,7 @@ def create_stats_aggregations(
         return True
 
 
+# TODO: Deprecated; remove
 def api_request(
     method: str = "GET",
     endpoint: str = "records",
@@ -2423,6 +2424,7 @@ def delete_records_from_invenio(record_ids, token: Optional[str] = None):
     """
     Delete the selected records from the invenioRDM instance.
     """
+    # FIXME: This is a temporary function for testing purposes
     print("Starting to delete records")
     for r in record_ids:
         print(f"deleting {r}")
