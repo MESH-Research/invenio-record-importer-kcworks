@@ -1,3 +1,4 @@
+from ast import In
 import arrow
 from halo import Halo
 from flask import current_app as app
@@ -24,11 +25,15 @@ from invenio_rdm_records.proxies import (
 )
 from invenio_rdm_records.services.errors import (
     ReviewNotFoundError,
+    ReviewStateError,
     InvalidAccessRestrictions,
 )
 from invenio_rdm_records.services.tasks import reindex_stats
+from invenio_records.systemfields.relations.errors import InvalidRelationValue
 from invenio_record_importer.errors import (
     ExistingRecordNotUpdatedError,
+    FileUploadError,
+    MissingNewUserEmailError,
     PublicationValidationError,
     TooManyDownloadEventsError,
     TooManyViewEventsError,
@@ -458,12 +463,11 @@ def create_invenio_record(
                 app.logger.info("   deleting extra records...")
                 for i in [h["id"] for h in list(same_doi.hits)[1:]]:
                     try:
-                        delete_result = delete_invenio_draft_record(i)
+                        delete_invenio_draft_record(i)
                     except Exception as e:
                         app.logger.error(
                             "    error deleting extra record with same DOI:"
                         )
-                        app.logger.error(delete_result)
                         raise e
             existing_metadata = next(same_doi.hits)
             # app.logger.debug(
@@ -603,7 +607,12 @@ def create_invenio_record(
     # Make draft and publish
     app.logger.info("    creating new draft record...")
     # app.logger.debug(pformat(metadata.get("access")))
-    result = records_service.create(system_identity, data=metadata)
+    try:
+        result = records_service.create(system_identity, data=metadata)
+    except InvalidRelationValue as e:
+        raise PublicationValidationError(
+            f"Validation error while creating new record: {str(e)}"
+        )
     result_recid = result._record.id
     app.logger.debug(f"    new draft record recid: {result_recid}")
     app.logger.debug(f"    new draft record: {pformat(result.to_dict())}")
@@ -758,9 +767,19 @@ def _upload_draft_files(
         app.logger.debug(source_filename)
         app.logger.debug(normalize_string(k))
         app.logger.debug(normalize_string(unquote(source_filename)))
-        assert normalize_string(k) in normalize_string(
-            unquote(source_filename)
-        )
+        try:
+            assert normalize_string(k) in normalize_string(
+                unquote(source_filename)
+            )
+        except AssertionError:
+            app.logger.error(
+                f"    file key {k} does not match source filename"
+                f" {source_filename}..."
+            )
+            raise UploadFileNotFoundError(
+                f"File key from metadata {k} not found in source file path"
+                f" {source_filename}"
+            )
         file_path = (
             Path(app.config["MIGRATION_SERVER_FILES_LOCATION"]) / long_filename
         )
@@ -843,8 +862,11 @@ def _upload_draft_files(
             assert v["key"] == k
             # app.logger.debug("status: " + v["status"])
             assert v["status"] == "completed"
-            # app.logger.debug(f"size: {v['size']}  {files_dict[k]['size']}")
-            assert str(v["size"]) == str(files_dict[k]["size"])
+            app.logger.debug(f"size: {v['size']}  {files_dict[k]['size']}")
+            if str(v["size"]) != str(files_dict[k]["size"]):
+                raise FileUploadError(
+                    f"Uploaded file size ({v['size']}) does not match expected size ({files_dict[k]['size']})"
+                )
             # TODO: Confirm correct checksum?
             # app.logger.debug(f"checksum: {v['checksum']}")
             # app.logger.debug(f"created: {v['created']}")
@@ -869,7 +891,6 @@ def _upload_draft_files(
             f" draft {draft_id}..."
         )
         app.logger.error(f"result is {pformat(result_record['entries'])}")
-        raise e
 
     return output
 
@@ -1097,7 +1118,9 @@ def create_invenio_user(
         ]
 
     if not user_email:
-        raise ValueError("No email address provided for new user account")
+        raise MissingNewUserEmailError(
+            "No email address provided for new user account"
+        )
 
     existing_user = current_accounts.datastore.get_user_by_email(user_email)
     if existing_user:
@@ -1370,7 +1393,6 @@ def _create_invenio_community(
 @unit_of_work()
 def publish_record_to_community(
     draft_id: str,
-    existing_record: Optional[dict],
     community_id: str,
     uow=None,
 ) -> dict:
@@ -1383,8 +1405,6 @@ def publish_record_to_community(
 
     params:
         draft_id (str): the id of the draft record
-        existing_record (dict): the existing record metadata record if the
-            import is updating an earlier draft or published record
         community_id (str): the id of the community to publish the record to
             (must be a UUID, not the community's slug)
 
@@ -1393,6 +1413,25 @@ def publish_record_to_community(
     """
     # Attachment to community unnecessary if the record is already published
     # or included in it, even if a new draft version
+    try:
+        existing_record = records_service.read(
+            system_identity, id_=draft_id
+        ).to_dict()
+        assert existing_record
+    except (AssertionError, PIDUnregistered):
+        try:
+            existing_record = (
+                records_service.search_drafts(
+                    system_identity, q=f"id:{draft_id}"
+                )
+                .to_dict()
+                .get("hits", {})
+                .get("hits", [])[0]
+            )
+        except IndexError:
+            existing_record = None
+    except NoResultFound:
+        existing_record = None
     if (
         existing_record
         and (existing_record["status"] not in ["draft", "draft_with_review"])
@@ -1407,7 +1446,7 @@ def publish_record_to_community(
         )
         # Publish new draft (otherwise would be published at community
         # review acceptance)
-        if existing_record["is_draft"] is True:
+        if existing_record["is_draft"] == True:
             app.logger.info("    publishing new draft record version...")
             app.logger.debug(
                 pformat(
@@ -1533,7 +1572,7 @@ def publish_record_to_community(
 
         # If the record is already published, we need to create/retrieve
         # and accept a 'community-inclusion' request instead
-        except NoResultFound:
+        except (NoResultFound, ReviewStateError):
             app.logger.debug("   record is already published")
             record_communities = current_rdm_records.record_communities_service
 
@@ -1697,7 +1736,6 @@ def add_record_to_group_collections(
                 )
                 add_result = publish_record_to_community(
                     metadata_record["id"],
-                    metadata_record,
                     coll_record["id"],
                 )
                 added_to_collections.append(add_result)
@@ -1869,6 +1907,7 @@ def import_record_to_invenio(
     record_created = create_invenio_record(import_data, no_updates)
     result["metadata_record_created"] = record_created
     result["status"] = record_created["status"]
+    app.logger.info(f"    record status: {record_created['status']}")
     draft_uuid = record_created["recid"]
     if record_created["status"] in [
         "updated_published",
@@ -1897,7 +1936,6 @@ def import_record_to_invenio(
     # Attach the record to the communities
     result["community_review_accepted"] = publish_record_to_community(
         draft_id,
-        existing_record,
         community_id,
     )
     # Publishing the record happens during community acceptance
@@ -2271,11 +2309,11 @@ def load_records_into_invenio(
                 successful_records += 1
                 if not result.get("existing_record"):
                     new_records += 1
-                if result.get("unchanged_existing"):
+                if "unchanged_existing" in result["status"]:
                     unchanged_existing += 1
-                if result.get("updated_published"):
+                if result["status"] == "updated_published":
                     updated_published += 1
-                if result.get("updated_draft"):
+                if result["status"] == "updated_draft":
                     updated_drafts += 1
                 if rec_hcid in existing_failed_hcids:
                     app.logger.info("    repaired previously failed record...")
@@ -2299,6 +2337,16 @@ def load_records_into_invenio(
                             residual_failed_records=residual_failed_records,
                         )
                     )
+                app.logger.debug("result status: %s", result.get("status"))
+                app.logger.debug(
+                    "result status: %s", result.get("unchanged_existing")
+                )
+                app.logger.debug(
+                    "result status: %s", result.get("updated_published")
+                )
+                app.logger.debug(
+                    "result status: %s", result.get("updated_draft")
+                )
             except Exception as e:
                 print("ERROR:", e)
                 print_exc()
@@ -2313,8 +2361,11 @@ def load_records_into_invenio(
                         pass
                 error_reasons = {
                     "ExistingRecordNotUpdatedError": msg,
+                    "FileKeyNotFoundError": msg,
+                    "FileUploadError": msg,
                     "UploadFileNotFoundError": msg,
                     "InvalidKeyError": msg,
+                    "MissingNewUserEmailError": msg,
                     "PublicationValidationError": msg,
                     "TooManyViewEventsError": msg,
                     "TooManyDownloadEventsError": msg,

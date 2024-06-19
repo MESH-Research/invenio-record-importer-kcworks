@@ -1,6 +1,15 @@
 """Custom exceptions for invenio-record-importer."""
 
 
+class FileUploadError(Exception):
+    """File upload error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(FileUploadError, self).__init__(message)
+        self.message = message
+
+
 class UploadFileNotFoundError(Exception):
     """Upload file not found error."""
 
@@ -43,4 +52,13 @@ class PublicationValidationError(Exception):
     def __init__(self, message):
         """Initialize the exception."""
         super(PublicationValidationError, self).__init__(message)
+        self.message = message
+
+
+class MissingNewUserEmailError(Exception):
+    """Missing new user email error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(MissingNewUserEmailError, self).__init__(message)
         self.message = message

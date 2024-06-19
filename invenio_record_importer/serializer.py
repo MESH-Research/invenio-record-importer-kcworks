@@ -154,7 +154,7 @@ genres = {
     "Conference poster": "presentation-conferencePoster",
     "Conference proceeding": "textDocument-conferenceProceeding",
     "Course material or learning objects": "instructionalResource-other",
-    "Course Material or learning objects": "instructionalResource- other",
+    "Course Material or learning objects": "instructionalResource-other",
     "Data set": "dataset",
     "Dissertation": "textDocument-thesis",
     "Documentary": "audiovisual-documentary",
@@ -176,6 +176,7 @@ genres = {
     "Newspaper article": "textDocument-newspaperArticle",
     "Online textDocument": "textDocument-onlinePublication",
     "Online textDocument": "textDocument-onlinePublication",
+    "Online publication": "textDocument-onlinePublication",
     "Other": "other",
     "Performance": "audiovisual-performance",
     "Photograph": "image-other",
@@ -367,7 +368,7 @@ def _add_resource_type(
         ):
             rec["custom_fields"]["hclegacy:publication_type"] = pubtype
     else:
-        rec["metadata"]["resource_type"] = {"id": ""}
+        rec["metadata"]["resource_type"] = {"id": "other"}
         bad_data.append(("genre", genre))
         rec["custom_fields"]["hclegacy:publication_type"] = pubtype
         if pubtype in publication_types.keys():
@@ -539,7 +540,6 @@ def _add_author_data(
         "project director",
     ]
     if row["authors"]:
-        # print(row['pid'])
         try:
             # row['authors'] = row['authors'].replace('\\', '&quot;')
             for a in row["authors"]:
@@ -570,7 +570,7 @@ def _add_author_data(
                             "id": "projectOrTeamLeader",
                             "title": {"en": "Project or team leader"},
                         }
-                    elif a["role"] == "creator":
+                    elif a["role"] == "creator" or not a["role"]:
                         new_person["role"] = {
                             "id": "author",
                             "title": {"en": "Author"},
@@ -594,7 +594,7 @@ def _add_author_data(
                     new_person["person_or_org"]["identifiers"] = [
                         {"identifier": a["uni"], "scheme": "hc_username"}
                     ]
-                if a["role"] in allowed_roles:
+                if a["role"] in allowed_roles or not a["role"]:
                     if a["role"] == "contributor":
                         new_person["role"] = {
                             "id": "other",
@@ -1078,7 +1078,6 @@ def add_identifiers(
         if i and not re.match(
             r"^(url|http|handle|doi)\:?$|^n/?a$", i, re.IGNORECASE
         ):
-            print(row["id"])
             detected = detect_identifier_schemes(i)
             if len(detected) < 1:
                 detected = detect_identifier_schemes(f"https://{i}")
@@ -1141,7 +1140,6 @@ def add_identifiers(
             }
         )
     for h in identifiers.get("handle", []):
-        print("handle", h)
         if h:
             newrec["metadata"].setdefault("identifiers", []).append(
                 {
@@ -1170,7 +1168,6 @@ def add_identifiers(
                 "scheme": "issn",
             }
         )
-    pprint(newrec["metadata"]["identifiers"])
     return newrec, bad_data_dict
 
 
@@ -1930,9 +1927,9 @@ def add_book_journal_title(
         if newrec["metadata"]["resource_type"]["id"] not in [
             *book_types,
             *article_types,
-        ] and publication_types[
-            newrec["custom_fields"]["hclegacy:publication_type"]
-        ] not in [
+        ] and publication_types.get(
+            newrec["custom_fields"].get("hclegacy:publication_type"), "none"
+        ) not in [
             *book_types,
             *article_types,
         ]:

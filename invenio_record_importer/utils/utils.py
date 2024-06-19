@@ -379,6 +379,19 @@ def compare_metadata(A: dict, B: dict) -> dict:
     VERBOSE = False
     output = {"A": {}, "B": {}}
 
+    def deep_compare(a, b):
+        if type(a) in [str, int, float]:
+            return a == b
+        elif type(a) is list:
+            return all(deep_compare(a[i], b[i]) for i in range(len(a)))
+        elif type(a) is dict:
+            # if the key "en" is present, then we only care about that
+            # because Invenio automatically adds other translations
+            # to things like titles
+            if "en" in list(a.keys()):
+                a = {k: v for k, v in a.items() if k == "en"}
+            return all(deep_compare(a[k], b[k]) for k in a.keys())
+
     def obj_list_compare(list_name, key, a, b, comparators):
         app.logger.debug(f"comparing {list_name} &&&&&&")
         app.logger.debug(a.get(list_name))
@@ -404,8 +417,11 @@ def compare_metadata(A: dict, B: dict) -> dict:
                     == _normalize_punctuation(i[key])
                 ][0]
                 for k in comparators:
-                    if _normalize_punctuation(i[k]) != _normalize_punctuation(
-                        i_2[k]
+                    if not (
+                        deep_compare(
+                            _normalize_punctuation(i[k]),
+                            _normalize_punctuation(i_2[k]),
+                        )
                     ):
                         if VERBOSE:
                             app.logger.debug(f"{k} is different: {i} != {i_2}")
@@ -427,6 +443,10 @@ def compare_metadata(A: dict, B: dict) -> dict:
 
     def compare_people(list_a, list_b):
         people_diff = {}
+        if not list_a:
+            people_diff["A"] = list_a
+            people_diff["B"] = list_b
+            return people_diff
         for idx, c in enumerate(list_b):
             same = True
             c_2 = list_a[idx]  # order should be the same
@@ -497,7 +517,9 @@ def compare_metadata(A: dict, B: dict) -> dict:
             meta_diff["A"]["resource_type"] = meta_a["resource_type"]
             meta_diff["B"]["resource_type"] = meta_b["resource_type"]
 
-        creators_comp = compare_people(meta_a["creators"], meta_b["creators"])
+        creators_comp = compare_people(
+            meta_a.get("creators"), meta_b["creators"]
+        )
         if creators_comp:
             meta_diff["A"]["creators"] = creators_comp["A"]
             meta_diff["B"]["creators"] = creators_comp["B"]
