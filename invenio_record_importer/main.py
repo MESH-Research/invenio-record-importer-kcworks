@@ -27,11 +27,15 @@ from flask.cli import with_appcontext
 from typing import Optional
 
 from invenio_record_importer.serializer import serialize_json
+from invenio_record_importer.services import SerializationService
 from invenio_record_importer.record_loader import (
     load_records_into_invenio,
     delete_records_from_invenio,
 )
-from invenio_record_importer.legacy.fedora_fetcher import fetch_fedora_records
+
+# from invenio_record_importer.legacy.fedora_fetcher import fetch_fedora_records
+import json
+from pprint import pprint
 
 
 @click.group()
@@ -132,8 +136,16 @@ def serialize_command_wrapper():
 @click.option(
     "-v",
     "--verbose",
+    is_flag=True,
     default=False,
     help="Print and log verbose output",
+)
+@click.option(
+    "-x",
+    "--stop-on-error",
+    is_flag=True,
+    default=False,
+    help="Stop loading records if an error is encountered",
 )
 @with_appcontext
 def load_records(
@@ -147,6 +159,7 @@ def load_records(
     end_date: Optional[str],
     clean_filenames: bool,
     verbose: bool,
+    stop_on_error: bool,
 ):
     """
     Load serialized exported records into InvenioRDM.
@@ -286,6 +299,9 @@ def load_records(
         verbose (bool, optional): Print and log verbose output. Defaults to
             False.
 
+        stop_on_error (bool, optional): Stop loading records if an error is
+            encountered. Defaults to False.
+
     Returns:
 
         None
@@ -300,6 +316,7 @@ def load_records(
         "end_date": end_date,
         "clean_filenames": clean_filenames,
         "verbose": verbose,
+        "stop_on_error": stop_on_error,
     }
     if len(records) > 0 and "-" in records[0]:
         if use_sourceids:
@@ -327,6 +344,94 @@ def load_records(
     load_records_into_invenio(**named_params)
 
 
+@cli.command(name="read")
+@click.argument("records", nargs=-1)
+@click.option(
+    "-s",
+    "--use-sourceids",
+    is_flag=True,
+    default=False,
+)
+@click.option(
+    "--scheme",
+    default="doi",
+    help=(
+        "The identifier scheme to use for the records when the --use-sourceids "
+        "flag is True. Defaults to 'doi'."
+    ),
+)
+@click.option(
+    "-r",
+    "--raw-input",
+    is_flag=True,
+    default=False,
+    help=(
+        "If True, the returned records will be in the raw format read from the"
+        " source file, rather than the serialized format."
+    ),
+)
+@click.option(
+    "-p",
+    "--field-path",
+    default="",
+    help=(
+        "A dot-separated string of field names to specify a subfield of the"
+        " record(s) to read."
+    ),
+)
+@with_appcontext
+def read_records(
+    records, scheme, raw_input, use_sourceids, field_path
+) -> None:
+    """
+    Read serialized records or raw input from the source file or original data.
+
+    params:
+        records: list
+            A list of positional arguments specifying which records to read.
+            If positional arguments are provided, they should be either
+            integers specifying the line numbers of the records to read,
+            or source ids specifying the ids of the records to read in
+            the source system. These will be interpreted as line numbers
+            in the jsonl file of records for import (beginning at 1)
+            unless the --use-sourceids flag is set.
+
+        scheme: str
+            The identifier scheme to use for the records when the --use-sourceids
+            flag is True. Defaults to 'doi'.
+
+        raw_input: bool
+            If True, the returned records will be in the raw format read from the
+            source file, rather than the serialized format.
+
+        use_sourceids: bool
+            If True, the positional arguments are interpreted as ids in the
+            source system instead of positional indices.
+
+        field_path: str
+            A dot-separated string of field names to specify a subfield of the
+            record(s) to read.
+    """
+    service = SerializationService()
+    args = {"field_path": field_path}
+    if use_sourceids:
+        args["id_scheme"] = scheme
+        args["identifiers"] = records
+    else:
+        args["indices"] = records
+
+    if raw_input:
+        raw_records = service.read_raw(**args)
+        for r in raw_records:
+            print(f"Raw (unserialized) source data for record {r['id']}:")
+            pprint(r["record"])
+    else:
+        records = service.read_serialized(**args)
+        for c in records:
+            print(f"Processed (serialized) input data for record {c['id']}:")
+            pprint(c["record"])
+
+
 @cli.command(name="delete")
 @click.argument("records", nargs=-1)
 def delete_records(records):
@@ -336,43 +441,43 @@ def delete_records(records):
     delete_records_from_invenio(records)
 
 
-@cli.command(name="fedora")
-@click.option(
-    "--count", default=20, help="Maximum number of records to return"
-)
-@click.option(
-    "--query", default=None, help="A query string to limit the records"
-)
-@click.option(
-    "--protocol",
-    default="fedora-xml",
-    help="The api protocol to use for the request",
-)
-@click.option(
-    "--pid",
-    default=None,
-    help="A pid or regular expression to select records by pid",
-)
-@click.option(
-    "--terms",
-    default=None,
-    help="One or more subject terms to filter the records",
-)
-@click.option(
-    "--fields",
-    default=None,
-    help="A comma separated string list of fields to return for each record",
-)
-def fetch_fedora(
-    query: Optional[str],
-    protocol: str,
-    pid: Optional[str],
-    terms: Optional[str],
-    fields: Optional[str],
-    count: int,
-) -> list[dict]:
-    """Deprecated: Fetch records from the Fedora repository."""
-    fetch_fedora_records(query, protocol, pid, terms, fields, count)
+# @cli.command(name="fedora")
+# @click.option(
+#     "--count", default=20, help="Maximum number of records to return"
+# )
+# @click.option(
+#     "--query", default=None, help="A query string to limit the records"
+# )
+# @click.option(
+#     "--protocol",
+#     default="fedora-xml",
+#     help="The api protocol to use for the request",
+# )
+# @click.option(
+#     "--pid",
+#     default=None,
+#     help="A pid or regular expression to select records by pid",
+# )
+# @click.option(
+#     "--terms",
+#     default=None,
+#     help="One or more subject terms to filter the records",
+# )
+# @click.option(
+#     "--fields",
+#     default=None,
+#     help="A comma separated string list of fields to return for each record",
+# )
+# def fetch_fedora(
+#     query: Optional[str],
+#     protocol: str,
+#     pid: Optional[str],
+#     terms: Optional[str],
+#     fields: Optional[str],
+#     count: int,
+# ) -> list[dict]:
+#     """Deprecated: Fetch records from the Fedora repository."""
+#     fetch_fedora_records(query, protocol, pid, terms, fields, count)
 
 
 if __name__ == "__main__":

@@ -34,6 +34,7 @@ from invenio_record_importer.errors import (
     ExistingRecordNotUpdatedError,
     FileUploadError,
     MissingNewUserEmailError,
+    MissingParentMetadataError,
     PublicationValidationError,
     TooManyDownloadEventsError,
     TooManyViewEventsError,
@@ -68,7 +69,7 @@ from marshmallow.exceptions import ValidationError
 from pathlib import Path
 import requests
 from requests.exceptions import JSONDecodeError as RequestsJSONDecodeError
-from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy.orm.exc import NoResultFound, StaleDataError
 from traceback import format_exception, print_exc
 from typing import Optional, Union
 from pprint import pformat, pprint
@@ -1550,11 +1551,22 @@ def publish_record_to_community(
             app.logger.debug("submitted to community")
 
             if submitted_request.data["status"] != "accepted":
-                review_accepted = current_requests_service.execute_action(
-                    system_identity,
-                    submitted_request.id,
-                    "accept",
-                )
+                try:
+                    review_accepted = current_requests_service.execute_action(
+                        system_identity,
+                        submitted_request.id,
+                        "accept",
+                    )
+                except StaleDataError as e:
+                    if (
+                        "UPDATE statement on table 'rdm_parents_metadata'"
+                        in e.message
+                    ):
+                        raise MissingParentMetadataError(
+                            "Missing parent metadata for record during "
+                            "community submission acceptance. Original "
+                            f"error message: {e.message}"
+                        )
             else:
                 review_accepted = submitted_request
 
@@ -2106,6 +2118,7 @@ def load_records_into_invenio(
     end_date: str = "",
     clean_filenames: bool = False,
     verbose: bool = False,
+    stop_on_error: bool = False,
 ) -> None:
     """
     Create new InvenioRDM records and upload files for serialized deposits.
@@ -2131,6 +2144,8 @@ def load_records_into_invenio(
             aggregate is True
         verbose (bool): whether to print and log verbose output during the
             loading process
+        stop_on_error (bool): whether to stop the loading process if an error
+            is encountered
 
     returns:
         None
@@ -2302,9 +2317,19 @@ def load_records_into_invenio(
                         previously_touched_sourceids
                     ),
                 )
-                result = import_record_to_invenio(
-                    rec, no_updates, record_source
-                )
+                result = {}
+                # FIXME: This is a hack to handle StaleDataError which
+                # is consistently resolved on a second attempt -- seems
+                # to arise when a record is being added to several
+                # communities at once
+                try:
+                    result = import_record_to_invenio(
+                        rec, no_updates, record_source
+                    )
+                except StaleDataError:
+                    result = import_record_to_invenio(
+                        rec, no_updates, record_source
+                    )
                 print(f"    loaded record {current_record}")
                 successful_records += 1
                 if not result.get("existing_record"):
@@ -2366,7 +2391,9 @@ def load_records_into_invenio(
                     "UploadFileNotFoundError": msg,
                     "InvalidKeyError": msg,
                     "MissingNewUserEmailError": msg,
+                    "MissingParentMetadataError": msg,
                     "PublicationValidationError": msg,
+                    "StaleDataError": msg,
                     "TooManyViewEventsError": msg,
                     "TooManyDownloadEventsError": msg,
                 }
@@ -2385,6 +2412,8 @@ def load_records_into_invenio(
                 failed_records, residual_failed_records = _log_failed_record(
                     **log_object
                 )
+                if stop_on_error and failed_records:
+                    break
 
             spinner.stop()
             app.logger.info(f"....done with record {current_record}")

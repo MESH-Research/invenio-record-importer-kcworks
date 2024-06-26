@@ -10,6 +10,15 @@ class FileUploadError(Exception):
         self.message = message
 
 
+class MissingParentMetadataError(Exception):
+    """Missing parent metadata error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(MissingParentMetadataError, self).__init__(message)
+        self.message = message
+
+
 class UploadFileNotFoundError(Exception):
     """Upload file not found error."""
 
