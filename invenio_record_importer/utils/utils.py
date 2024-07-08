@@ -380,8 +380,10 @@ def compare_metadata(A: dict, B: dict) -> dict:
     output = {"A": {}, "B": {}}
 
     def deep_compare(a, b):
-        if type(a) in [str, int, float]:
+        if type(a) in [str, int, float, bool]:
             return a == b
+        elif a is None:
+            return a is b
         elif type(a) is list:
             return all(deep_compare(a[i], b[i]) for i in range(len(a)))
         elif type(a) is dict:
@@ -393,9 +395,10 @@ def compare_metadata(A: dict, B: dict) -> dict:
             return all(deep_compare(a[k], b[k]) for k in a.keys())
 
     def obj_list_compare(list_name, key, a, b, comparators):
-        app.logger.debug(f"comparing {list_name} &&&&&&")
-        app.logger.debug(a.get(list_name))
-        app.logger.debug(b.get(list_name))
+        if VERBOSE:
+            app.logger.debug(f"comparing {list_name} &&&&&&")
+            app.logger.debug(a.get(list_name))
+            app.logger.debug(b.get(list_name))
         out = {}
         if list_name not in a.keys():
             a[list_name] = []
@@ -451,8 +454,8 @@ def compare_metadata(A: dict, B: dict) -> dict:
             same = True
             c_2 = list_a[idx]  # order should be the same
             if _normalize_punctuation(
-                c_2["person_or_org"]["name"]
-            ) != _normalize_punctuation(c["person_or_org"]["name"]):
+                c_2["person_or_org"].get("name")
+            ) != _normalize_punctuation(c["person_or_org"].get("name")):
                 same = False
             for k in c["person_or_org"].keys():
                 if k == "identifiers":
@@ -480,6 +483,17 @@ def compare_metadata(A: dict, B: dict) -> dict:
                 people_diff.setdefault("B", []).append(c)
         return people_diff
 
+    if "access" in B.keys():
+        if VERBOSE:
+            app.logger.debug("comparing access")
+            app.logger.debug(A.get("access", {}))
+            app.logger.debug(B["access"])
+        same_access = deep_compare(A.get("access", {}), B["access"])
+        app.logger.debug(same_access)
+        if not same_access:
+            output["A"]["access"] = A.get("access", {})
+            output["B"]["access"] = B["access"]
+
     if "pids" in B.keys():
         pids_diff = {"A": {}, "B": {}}
         if B["pids"]["doi"] != A["pids"]["doi"]:
@@ -502,6 +516,10 @@ def compare_metadata(A: dict, B: dict) -> dict:
             "publisher",
         ]
         for s in simple_fields:
+            if VERBOSE:
+                app.logger.debug(f"comparing {s}")
+                app.logger.debug(meta_a.get(s))
+                app.logger.debug(meta_a.get(s))
             if s in meta_a.keys():
                 if s in meta_b.keys():
                     if _normalize_punctuation(
@@ -512,6 +530,9 @@ def compare_metadata(A: dict, B: dict) -> dict:
                 else:
                     meta_diff["A"][s] = meta_a[s]
                     meta_diff["B"][s] = None
+            elif s in meta_b.keys():
+                meta_diff["A"][s] = None
+                meta_diff["B"][s] = meta_b[s]
 
         if meta_b["resource_type"]["id"] != meta_a["resource_type"]["id"]:
             meta_diff["A"]["resource_type"] = meta_a["resource_type"]

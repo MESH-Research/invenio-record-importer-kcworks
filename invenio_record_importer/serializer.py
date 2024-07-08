@@ -563,6 +563,14 @@ def _add_author_data(
                         a["family"] if a["family"] else a["fullname"]
                     ),
                 }
+                # Some authors have no name (None or empty strings)
+                if new_person["person_or_org"]["name"] in ["", None]:
+                    _append_bad_data(
+                        row["id"],
+                        ("authors:missing name or family", a),
+                        bad_data_dict,
+                    )
+                    continue
                 if a["role"] and a["role"] in allowed_roles or not a["role"]:
                     # TODO: are null roles a problem?
                     if a["role"] == "project director":
@@ -843,7 +851,8 @@ def add_legacy_commons_info(
     newrec["custom_fields"]["kcr:commons_domain"] = row["domain"]
 
     # HC submitter info
-    newrec["custom_fields"]["kcr:submitter_email"] = row["submitter_email"]
+    if row["submitter_email"]:
+        newrec["custom_fields"]["kcr:submitter_email"] = row["submitter_email"]
     newrec["custom_fields"]["kcr:submitter_username"] = row["submitter_login"]
     if row["submitter"]:
         try:
@@ -930,7 +939,7 @@ def add_embargo_info(
             "until": end_date_iso,
             "reason": None,
         }
-        newrec["access"]["record"] = "restricted"
+        newrec["access"]["record"] = "public"
         newrec["access"]["files"] = "restricted"
         newrec["access"]["status"] = "embargoed"
     return newrec, bad_data_dict
@@ -1057,6 +1066,9 @@ def add_identifiers(
         - the CORE record's URL as an `identifier` with scheme `url`
         - the CORE record's handle as an `identifier` with scheme `url`
 
+    Note that Invenio only allows one identifier per scheme, so multiple
+    identifiers of the same type will be discarded.
+
     Args:
         newrec (_type_): The new record being prepared for serialization
         row (_type_): The CORE record being processed
@@ -1104,7 +1116,7 @@ def add_identifiers(
                     )
 
     # Identifiers
-    # FIXME: Is it right that these are all datacite dois?
+    # TODO: Is it right that these are all datacite dois?
     if row["deposit_doi"]:
         if not is_doi(row["deposit_doi"]):
             _append_bad_data(
@@ -1118,56 +1130,97 @@ def add_identifiers(
                 "provider": "datacite",
                 "client": "datacite",
             }
+            # newrec["metadata"].setdefault("identifiers", []).append(
+            #     {
+            #         "identifier": normalize_doi(row["deposit_doi"]),
+            #         "scheme": "datacite-doi",
+            #     }
+            # )
+    for idx, d in enumerate(list(set(identifiers.get("doi", [])))):
+        if d != row["deposit_doi"]:
+            scheme = "doi" if idx == 0 else "alternate-doi"
             newrec["metadata"].setdefault("identifiers", []).append(
                 {
-                    "identifier": normalize_doi(row["deposit_doi"]),
-                    "scheme": "datacite-doi",
+                    "identifier": normalize_doi(d),
+                    "scheme": scheme,
                 }
             )
-    for idx, d in enumerate(identifiers.get("doi", [])):
-        scheme = "doi" if idx == 0 else "alternate-doi"
-        newrec["metadata"].setdefault("identifiers", []).append(
-            {
-                "identifier": normalize_doi(d),
-                "scheme": scheme,
-            }
-        )
-    for u in identifiers.get("url", []):
-        newrec["metadata"].setdefault("identifiers", []).append(
-            {
-                "identifier": normalize_pid(u, "url"),
-                "scheme": "url",
-            }
-        )
-    for h in identifiers.get("handle", []):
-        if h:
+
+    # to avoid duplicates in url, handle
+    dois = identifiers.get("doi", [])
+    if newrec.get("pids", []).get("doi", []).get("identifier"):
+        dois.append(newrec["pids"]["doi"]["identifier"])
+
+    url_found = False
+    for u in list(set(identifiers.get("url", []))):
+        if dois and any([d in u for d in dois]):
+            continue
+        if u and not url_found:
+            newrec["metadata"].setdefault("identifiers", []).append(
+                {
+                    "identifier": normalize_pid(u, "url"),
+                    "scheme": "url",
+                }
+            )
+            url_found = True
+        else:
+            _append_bad_data(
+                row["id"], ("more than one url not allowed", u), bad_data_dict
+            )
+    handle_found = False
+    for h in list(set(identifiers.get("handle", []))):
+        if dois and any([d in h for d in dois]):
+            continue
+        if h and not handle_found:
             newrec["metadata"].setdefault("identifiers", []).append(
                 {
                     "identifier": normalize_pid(h, "handle"),
                     "scheme": "handle",
                 }
             )
-    for hc in identifiers.get("hc", []):
+        else:
+            _append_bad_data(
+                row["id"],
+                ("more than one handle not allowed", h),
+                bad_data_dict,
+            )
+    for hc in list(set(identifiers.get("hc", []))):
         newrec["metadata"].setdefault("identifiers", []).append(
             {
                 "identifier": hc,
                 "scheme": "hclegacy-pid",
             }
         )
-    for isbn in identifiers.get("isbn", []):
-        newrec["metadata"].setdefault("identifiers", []).append(
-            {
-                "identifier": normalize_pid(isbn, "isbn"),
-                "scheme": "isbn",
-            }
-        )
-    for isn in identifiers.get("issn", []):
-        newrec["metadata"].setdefault("identifiers", []).append(
-            {
-                "identifier": normalize_pid(isn, "issn"),
-                "scheme": "issn",
-            }
-        )
+    isbn_found = False
+    for isbn in list(set(identifiers.get("isbn", []))):
+        if isbn and not isbn_found:
+            newrec["metadata"].setdefault("identifiers", []).append(
+                {
+                    "identifier": normalize_pid(isbn, "isbn"),
+                    "scheme": "isbn",
+                }
+            )
+        else:
+            _append_bad_data(
+                row["id"],
+                ("more than one isbn not allowed", isbn),
+                bad_data_dict,
+            )
+    issn_found = False
+    for isn in list(set(identifiers.get("issn", []))):
+        if isn and not issn_found:
+            newrec["metadata"].setdefault("identifiers", []).append(
+                {
+                    "identifier": normalize_pid(isn, "issn"),
+                    "scheme": "issn",
+                }
+            )
+        else:
+            _append_bad_data(
+                row["id"],
+                ("more than one issn not allowed", isn),
+                bad_data_dict,
+            )
     return newrec, bad_data_dict
 
 
@@ -1429,6 +1482,7 @@ def add_date_info(
             "jan": "01",
             "janv": "01",
             "ja": "01",
+            "ene": "01",
             "feb": "02",
             "febr": "02",
             "fe": "02",
@@ -1599,10 +1653,12 @@ def add_date_info(
     def restore_2digit_year(date: str) -> str:
         pattern = r"^\d{2}[/,-\.]\d{2}[/,-\.]\d{2}$"
         if re.match(pattern, date):
-            date = arrow.get(dateparser.parse("03-02-18")).date().isoformat()
+            date = arrow.get(dateparser.parse(date)).date().isoformat()
         return date
 
     def repair_date(date: str) -> tuple[bool, str]:
+        if row["id"] == "hc:16967":
+            print(f"repairing date: {date}")
         invalid = True
         newdate = date
         for date_func in [
@@ -1611,18 +1667,23 @@ def add_date_info(
             convert_date_words,
             parse_human_readable,
         ]:
-            newdate = date_func(row["date"])
-            # print(date_func)
-            # print(newdate)
+            newdate = date_func(date)
+            if row["id"] == "hc:16967":
+                print(date_func)
+                print(newdate)
             if valid_date(newdate):
-                # print(valid_date(newdate))
                 invalid = False
                 break
-
-        if invalid and is_seasonal_date(date):
-            invalid = False
+        # if invalid and is_seasonal_date(date):
+        #     invalid = False
 
         return invalid, newdate
+
+    def extract_year(s):
+        match = re.search(r"\b(19|20)\d{2}\b", s)
+        if match:
+            return match.group(0)
+        return None
 
     def repair_range(date: str) -> tuple[bool, str]:
         # print("repairing range")
@@ -1630,6 +1691,8 @@ def add_date_info(
         range_parts = re.split(r"[\-–\/]", date)
         if len(range_parts) == 1:
             range_parts = re.split(r" to ", date)
+        if row["id"] == "hc:16967":
+            print(f"range_parts: {range_parts}")
         # print(range_parts)
         if (
             len(range_parts) == 2
@@ -1641,11 +1704,28 @@ def add_date_info(
                 range_parts[1] = "20" + range_parts[1]
             elif range_parts[1].isdigit() and int(range_parts[1]) > 30:
                 range_parts[1] = "19" + range_parts[1]
+        global_years = [
+            extract_year(part) for part in range_parts if extract_year(part)
+        ]
         for i, part in enumerate(range_parts):
+            if row["id"] == "hc:16967":
+                print(f"part: {part}")
             if not valid_date(part):
-                invalid, range_parts[i] = repair_date(part)
+                if not extract_year(part) and len(global_years) > 0:
+                    invalid, repaired = repair_date(
+                        part + " " + global_years[0]
+                    )
+                else:
+                    invalid, repaired = repair_date(part)
+                range_parts[i] = repaired
+                if row["id"] == "hc:16967":
+                    print(f"repaired: {repaired}")
+            if not valid_date(range_parts[i]):
+                invalid = True
             else:
                 invalid = False
+            if row["id"] == "hc:16967":
+                print(f"range_parts[i]: {range_parts[i]}")
         # print(range_parts)
         if not invalid:
             date = "/".join(range_parts)
@@ -1686,6 +1766,8 @@ def add_date_info(
                 # be accepted by InvenioRDM in any date field
                 date_to_insert = None
         if date_to_insert:
+            if row["id"] == "hc:16967":
+                print(f"good date_to_insert: {date_to_insert}")
             newrec["metadata"].setdefault("dates", []).append(
                 {
                     "date": date_to_insert,

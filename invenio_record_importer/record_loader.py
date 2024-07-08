@@ -9,7 +9,9 @@ from invenio_accounts import current_accounts
 from invenio_accounts.models import User
 from invenio_communities.proxies import current_communities
 from invenio_db import db
+from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
 from invenio_files_rest.errors import InvalidKeyError
+from regex import P
 from invenio_group_collections.errors import (
     CollectionNotFoundError,
     CommonsGroupNotFoundError,
@@ -31,13 +33,16 @@ from invenio_rdm_records.services.errors import (
 from invenio_rdm_records.services.tasks import reindex_stats
 from invenio_records.systemfields.relations.errors import InvalidRelationValue
 from invenio_record_importer.errors import (
+    DraftDeletionFailedError,
     ExistingRecordNotUpdatedError,
     FileUploadError,
     MissingNewUserEmailError,
     MissingParentMetadataError,
     PublicationValidationError,
+    RestrictedRecordPublicationError,
     TooManyDownloadEventsError,
     TooManyViewEventsError,
+    UpdateValidationError,
     UploadFileNotFoundError,
 )
 from invenio_record_importer.tasks import aggregate_events
@@ -46,8 +51,10 @@ from invenio_records_resources.services.errors import (
 )
 from invenio_records_resources.services.uow import (
     unit_of_work,
+    RecordIndexOp,
 )
 from invenio_requests.proxies import current_requests_service
+from invenio_requests.errors import CannotExecuteActionError
 from invenio_remote_user_data.service import RemoteUserDataService
 from invenio_search import current_search_client
 from invenio_search.proxies import current_search
@@ -63,6 +70,7 @@ from invenio_users_resources.proxies import (
 )
 import itertools
 import json
+from opensearchpy.exceptions import NotFoundError
 from simplejson.errors import JSONDecodeError as SimpleJSONDecodeError
 import jsonlines
 from marshmallow.exceptions import ValidationError
@@ -462,14 +470,30 @@ def create_invenio_record(
                     f" {rec_list}"
                 )
                 app.logger.info("   deleting extra records...")
-                for i in [h["id"] for h in list(same_doi.hits)[1:]]:
+                for i in [
+                    h["id"]
+                    for h in list(same_doi.hits)[1:]
+                    if "draft" in h["status"]
+                ]:
                     try:
                         delete_invenio_draft_record(i)
-                    except Exception as e:
+                    except PIDUnregistered as e:
                         app.logger.error(
                             "    error deleting extra record with same DOI:"
                         )
-                        raise e
+                        raise DraftDeletionFailedError(
+                            f"Draft deletion failed because PID for record "
+                            f"{i} was unregistered: {str(e)}"
+                        )
+                    except Exception as e:
+                        app.logger.error(
+                            f"    error deleting extra record {i} with "
+                            "same DOI:"
+                        )
+                        raise DraftDeletionFailedError(
+                            f"Draft deletion failed for record {i} with "
+                            f"same DOI: {str(e)}"
+                        )
             existing_metadata = next(same_doi.hits)
             # app.logger.debug(
             #     f"existing_metadata: {pformat(existing_metadata)}"
@@ -571,9 +595,22 @@ def create_invenio_record(
                             id_=create_draft_result.id,
                             data=update_payload,
                         )
-                        db.session.commit()
+                        if result.to_dict().get("errors"):
+                            errors = [
+                                e
+                                for e in result.to_dict()["errors"]
+                                if e.get("field") != "metadata.rights.0.icon"
+                                and e.get("messages") != ["Unknown field."]
+                            ]
+                            if errors:
+                                raise UpdateValidationError(
+                                    f"Validation error when trying to update existing record: {pformat(errors)}"
+                                )
                         app.logger.info(
-                            f"updated published: {pformat(result.to_dict())}"
+                            f"updated new draft of published: {pformat(result.to_dict())}"
+                        )
+                        app.logger.debug(
+                            f"****title: {result.to_dict()['metadata'].get('title')}"
                         )
                         return {
                             "status": "updated_published",
@@ -1032,7 +1069,7 @@ def _compare_existing_files(
 
 def delete_invenio_draft_record(
     record_id: str, token: Optional[str] = None
-) -> dict:
+) -> Optional[dict]:
     """
     Delete a draft Invenio record with the provided Id
 
@@ -1044,42 +1081,59 @@ def delete_invenio_draft_record(
 
     :param str record_id:   The id string for the Invenio draft record
     """
+    result = None
     if not token:
         token = app.config["MIGRATION_API_TOKEN"]
-    record = records_service.read(system_identity, id_=record_id).to_dict()
+    app.logger.info(f"    deleting draft record {record_id}...")
+
+    # TODO: Is this read necessary anymore?
+    # In case the record is actually published
+    try:
+        record = records_service.read(system_identity, id_=record_id).to_dict()
+    except PIDUnregistered:
+        record = records_service.search_drafts(
+            system_identity, q=f'id:"{record_id}'
+        ).to_dict()
+
     try:
         reviews = records_service.review.read(system_identity, id_=record_id)
-        # if reviews["status_code"] == 200:
-        #     request_id = reviews["json"]["id"]
-        #     cancellation = api_request(
-        #         method="POST",
-        #         endpoint="requests",
-        #         args=f"{request_id}/actions/cancel",
-        #         token=token,
-        #     )
-        #     if cancellation["status_code"] != 200:
-        #         raise requests.HTTPError(cancellation)
-        # FIXME: What if there are multiple reviews?
-        app.logger.debug(
-            f"    deleting review request for draft record {record_id}..."
-        )
-        records_service.review.delete(system_identity, id_=record_id)
+        if reviews:
+            # FIXME: What if there are multiple reviews?
+            app.logger.debug(
+                f"    deleting review request for draft record {record_id}..."
+            )
+            records_service.review.delete(system_identity, id_=record_id)
     except ReviewNotFoundError:
         app.logger.info(
             f"    no review requests found for draft record {record_id}..."
         )
-    # result = api_request(
-    #     method="DELETE",
-    #     endpoint="records",
-    #     args=f"{record_id}/draft",
-    #     token=token,
-    # )
-    try:
+
+    try:  # In case the record is actually published
         result = records_service.delete_record(
             system_identity, id_=record_id, data=record
         )
-    except PIDUnregistered:
-        result = records_service.delete_draft(system_identity, id_=record_id)
+    except PIDUnregistered:  # this draft not published
+        try:  # no published version exists, so unregistered DOI can be deleted
+            result = records_service.delete_draft(
+                system_identity, id_=record_id
+            )
+        # TODO: if published version exists (so DOI registered) or DOI
+        # is reserved, the draft can't be manually deleted (involves deleting
+        # DOI from PID registry). We let the draft be cleaned up by the
+        # system after a period of time.
+        except ValidationError as e:
+            if (
+                "Cannot discard a reserved or registered persistent identifier"
+                in str(e)
+            ):
+                app.logger.warning(
+                    f"Cannot delete draft record {record_id} "
+                    "immediately because its DOI is reserved "
+                    "or registered. It will be left for later "
+                    "cleanup."
+                )
+            else:
+                raise e
 
     return result
 
@@ -1093,6 +1147,13 @@ def create_invenio_user(
     """
     Create a new user account in the Invenio instance
 
+    Where a user account already exists with the provided email address,
+    the existing account is returned. If the user account does not exist,
+    a new account is created.
+
+    If the source_username is provided, the user account is configured
+    to use SAML login with the provided source service.
+
     Parameters
     ----------
     user_email : str
@@ -1104,6 +1165,13 @@ def create_invenio_user(
     record_source : str
         The name of the source service for the new user account
         if the user's login will be handled by a SAML identity provider
+
+    Returns
+    -------
+    dict
+        A dictionary with the new user account metadata dictionary ("user")
+        and a boolean flag indicating whether the account is new or
+        existing ("new_user")
     """
     new_user_flag = True
     active_user = None
@@ -1119,8 +1187,12 @@ def create_invenio_user(
         ]
 
     if not user_email:
-        raise MissingNewUserEmailError(
-            "No email address provided for new user account"
+        user_email = app.config.get("RECORD_IMPORTER_ADMIN_EMAIL")
+        source_username = None
+        app.logger.warning(
+            "No email address provided in source cata for uploader of "
+            f"record ({source_username} from {record_source}). Using "
+            "default admin account as owner."
         )
 
     existing_user = current_accounts.datastore.get_user_by_email(user_email)
@@ -1433,6 +1505,7 @@ def publish_record_to_community(
             existing_record = None
     except NoResultFound:
         existing_record = None
+
     if (
         existing_record
         and (existing_record["status"] not in ["draft", "draft_with_review"])
@@ -1464,6 +1537,19 @@ def publish_record_to_community(
     # for records that haven't been attached to the community yet
     # submit and accept a review request
     else:
+        # DOIs cannot be registered at publication if the record
+        # is restricted (see datacite provider `validate_restriction_level`
+        # method called in pid component's `publish` method)
+        if (
+            existing_record
+            and existing_record["access"]["record"] == "restricted"
+        ):
+            app.logger.error(pformat(existing_record))
+            raise RestrictedRecordPublicationError(
+                "Record is restricted and cannot be published to the community"
+                " because its DOI cannot be registered"
+            )
+
         request_id = None
         # Try to cancel any existing review request for the record
         # with another community, since it will conflict
@@ -1475,18 +1561,41 @@ def publish_record_to_community(
                 "    cancelling existing review request for the record to the"
                 f" community...: {existing_review.id}"
             )
-            # app.logger.debug(
-            #     f"existing_review: {pformat(existing_review.to_dict())}"
-            # )
-            if (
-                existing_review.to_dict()["receiver"].get("community")
-                == community_id
-            ):
-                app.logger.info(
-                    "    skipping cancelling the existing review request"
-                    " (already for the community)..."
+            app.logger.debug(
+                f"existing_review: {pformat(existing_review.to_dict())}"
+            )
+            # if (
+            #     existing_review.to_dict()["receiver"].get("community")
+            #     == community_id
+            # ):
+            #     app.logger.info(
+            #         "    skipping cancelling the existing review request"
+            #         " (already for the community)..."
+            #     )
+            if not existing_review.data["is_open"]:
+                app.logger.debug(
+                    "   existing review request is not open, deleting"
                 )
-
+                try:
+                    records_service.review.delete(
+                        system_identity, id_=draft_id
+                    )
+                    app.logger.debug("   existing review request deleted")
+                except (
+                    NotFoundError,
+                    CannotExecuteActionError,
+                ):  # already deleted
+                    # Sometimes the review request is already deleted but
+                    # hasn't been removed from the record's metadata
+                    draft_record = records_service.read_draft(
+                        system_identity, id_=draft_id
+                    )._record
+                    draft_record.parent.review = None
+                    uow.register(ParentRecordCommitOp(draft_record.parent))
+                    uow.register(RecordIndexOp(draft_record))
+                    app.logger.debug(
+                        "   existing review request was already deleted, manually removed from record metadata"
+                    )
             else:
                 request_id = existing_review.id
                 cancel_existing_request = (
@@ -1521,7 +1630,7 @@ def publish_record_to_community(
             new_request = records_service.review.update(  # noqa: F841
                 system_identity, draft_id, review_body
             )
-            # app.logger.debug(f"new_request: {pformat(new_request.to_dict())}")
+            app.logger.debug(f"new_request: {pformat(new_request.to_dict())}")
 
             submitted_body = {
                 "payload": {
@@ -1530,7 +1639,10 @@ def publish_record_to_community(
                 }
             }
             submitted_request = records_service.review.submit(
-                system_identity, draft_id, data=submitted_body
+                system_identity,
+                draft_id,
+                data=submitted_body,
+                require_review=True,
             )
             if submitted_request.data["status"] not in [
                 "submitted",
@@ -1788,11 +1900,11 @@ def assign_record_ownership(
     if not new_owner_email and not new_owner_username:
         app.logger.warning(
             "    no submitter email or username found in source metadata. "
-            "Assigning ownership to first admin user..."
+            "Assigning ownership to configured admin user..."
         )
-        admin = UsersHelper.get_admins()[0]
-        new_owner_email = admin.email
-        new_owner_username = admin.username
+        # admin = UsersHelper.get_admins()[0]
+        new_owner_email = app.config["RECORD_IMPORTER_ADMIN_EMAIL"]
+        new_owner_username = None
     full_name = ""
     for c in [
         *core_data["metadata"].get("creators", []),
@@ -1833,19 +1945,18 @@ def assign_record_ownership(
             f"{pformat(existing_user)} {existing_user.email}"
         )
     else:
-        app.logger.debug(f"new owner email: {new_owner_email}")
         new_owner_result = create_invenio_user(
             new_owner_email, new_owner_username, full_name, record_source
         )
         new_owner = new_owner_result["user"]
-        app.logger.debug(f"    new user created: {pformat(new_owner)}")
+        app.logger.info(f"    new user created: {pformat(new_owner)}")
 
-    if existing_record:
-        app.logger.debug("existing record data")
-        # app.logger.debug(
-        #     existing_record["custom_fields"]["kcr:submitter_email"]
-        # )
-        # app.logger.debug(existing_record["parent"])
+    # if existing_record:
+    #     app.logger.debug("existing record data")
+    # app.logger.debug(
+    #     existing_record["custom_fields"]["kcr:submitter_email"]
+    # )
+    # app.logger.debug(existing_record["parent"])
     if (
         existing_record
         and existing_record["custom_fields"].get("kcr:submitter_email")
@@ -2393,9 +2504,11 @@ def load_records_into_invenio(
                     "MissingNewUserEmailError": msg,
                     "MissingParentMetadataError": msg,
                     "PublicationValidationError": msg,
+                    "RestrictedRecordPublicationError": msg,
                     "StaleDataError": msg,
                     "TooManyViewEventsError": msg,
                     "TooManyDownloadEventsError": msg,
+                    "UpdateValidationError": msg,
                 }
                 log_object = {
                     "index": current_record,

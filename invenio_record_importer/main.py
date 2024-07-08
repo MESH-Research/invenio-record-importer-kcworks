@@ -418,7 +418,7 @@ def read_records(
         args["id_scheme"] = scheme
         args["identifiers"] = records
     else:
-        args["indices"] = records
+        args["indices"] = [int(r) - 1 for r in records]
 
     if raw_input:
         raw_records = service.read_raw(**args)
@@ -426,6 +426,7 @@ def read_records(
             print(f"Raw (unserialized) source data for record {r['id']}:")
             pprint(r["record"])
     else:
+        pprint(args)
         records = service.read_serialized(**args)
         for c in records:
             print(f"Processed (serialized) input data for record {c['id']}:")

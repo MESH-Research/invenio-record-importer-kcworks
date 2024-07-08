@@ -15,8 +15,9 @@ from pathlib import Path
 class ImporterConfig:
 
     def __init__(self, app):
+        self.RECORD_IMPORTER_ADMIN_EMAIL = app.config.get("ADMIN_EMAIL", "")
         # FIXME: Change these names to begin with RECORD_IMPORTER_
-        # instead of MIGRATION_
+        # instead of MIGRATION_ and change env variables to use INVENIO_ prefix
         if app.config.get("MIGRATION_SERVER_DATA_DIR"):
             DATA_DIR = Path(app.config.get("MIGRATION_SERVER_DATA_DIR"))
         elif os.getenv("MIGRATION_SERVER_DATA_DIR"):

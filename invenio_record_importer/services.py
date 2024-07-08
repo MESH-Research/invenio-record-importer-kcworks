@@ -47,8 +47,15 @@ class SerializationService:
         indices: list[int] = [],
         id_scheme: str = "doi",
         field_path: str = "",
-    ) -> dict:
-        """Read serialized data."""
+    ) -> list[dict]:
+        """Read serialized data.
+
+        When indices are provided they are treated as 0-based indices,
+        not 1-based line numbers.
+
+        Returns:
+            list[dict]: List of serialized json records as python dictionaries.
+        """
 
         file_path = Path(__file__).parent / "data" / "serialized_data.jsonl"
 
