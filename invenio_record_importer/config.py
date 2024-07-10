@@ -59,6 +59,10 @@ class ImporterConfig:
         else:
             raise ValueError("Missing config value: MIGRATION_API_TOKEN")
 
+        self.RECORD_IMPORTER_OVERRIDES_FOLDER = Path(
+            app.config.get("RECORD_IMPORTER_OVERRIDES_FOLDER", "")
+        )
+
         if app.config.get("RECORD_IMPORTER_LOGS_LOCATION"):
             self.RECORD_IMPORTER_LOGS_LOCATION = Path(
                 app.config.get("RECORD_IMPORTER_LOGS_LOCATION")

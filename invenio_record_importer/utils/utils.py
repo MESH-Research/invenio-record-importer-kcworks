@@ -21,11 +21,12 @@ from invenio_communities import current_communities
 from invenio_search.proxies import current_search_client
 from isbnlib import is_isbn10, is_isbn13, clean
 import os
+from pprint import pformat
 import random
 import re
 import requests
 import string
-from typing import Union
+from typing import Any, Union
 import unicodedata
 
 
@@ -395,6 +396,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
             return all(deep_compare(a[k], b[k]) for k in a.keys())
 
     def obj_list_compare(list_name, key, a, b, comparators):
+        VERBOSE = True
         if VERBOSE:
             app.logger.debug(f"comparing {list_name} &&&&&&")
             app.logger.debug(a.get(list_name))
@@ -548,12 +550,13 @@ def compare_metadata(A: dict, B: dict) -> dict:
         if "contributors" in meta_b.keys():
             if "contributors" not in meta_a.keys():
                 meta_a["contributors"] = []
-            comp = compare_people(
-                meta_a["contributors"], meta_b["contributors"]
-            )
-            if comp:
-                meta_diff["A"]["contributors"] = comp["A"]
-                meta_diff["B"]["contributors"] = comp["B"]
+            if meta_b["contributors"] != meta_a["contributors"]:
+                comp = compare_people(
+                    meta_a["contributors"], meta_b["contributors"]
+                )
+                if comp:
+                    meta_diff["A"]["contributors"] = comp["A"]
+                    meta_diff["B"]["contributors"] = comp["B"]
 
         if "additional_titles" in meta_b.keys():
             if "additional_titles" not in meta_a.keys():
@@ -716,7 +719,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
         ):
             comp = obj_list_compare(
                 "hclegacy:groups_for_deposit",
-                "group_name",
+                "group_identifier",
                 custom_a,
                 custom_b,
                 ["group_name", "group_identifier"],
@@ -900,3 +903,55 @@ def update_nested_dict(original, update):
         else:
             original[key] = value
     return original
+
+
+def replace_value_in_nested_dict(d: dict, path: str, new_value: Any) -> dict:
+    """
+    Replace a in a nested dictionary based on a bar-separated path string.
+
+    Numbers in the path are treated as list indices.
+
+    Usage examples:
+
+    >>> replace_value_in_nested_dict({"a": {"b": {"c": 1}}}, "a|b|c", 2)
+    {'a': {'b': {'c': 2}}}
+
+    >>> e = {"a": {"b": [{"c": 1}, {"d": 2}]}}
+    >>> replace_value_in_nested_dict(e, "a|b|1|c", 3)
+    {'a': {'b': [{'c': 1}, {'d': 2, 'c': 3}]}}
+
+    >>> f = {"a": {"b": [{"c": 1}, {"d": 2}]}}
+    >>> replace_value_in_nested_dict(f, "a|b", {"e": 3})
+    {'a': {'b': {'e': 3}}
+
+    :param d: The dictionary or list to update.
+    :param path: The dot-separated path string to the value.
+    :param new_value: The new value to set.
+
+    returns: dict: The updated dictionary.
+    """
+    keys = path.split("|")
+    current = d
+    for i, key in enumerate(keys):
+        if i == len(keys) - 1:  # If this is the last key
+            if key.isdigit() and isinstance(
+                current, list
+            ):  # Handle list index
+                current[int(key)] = new_value
+            else:  # Handle dictionary key
+                current[key] = new_value
+        else:
+            if key.isdigit():  # Next level is a list
+                key = int(key)  # Convert to integer for list access
+                if not isinstance(current, list) or key >= len(current):
+                    # If current is not a list or index is out of bounds
+                    return False
+                current = current[key]
+            else:  # Next level is a dictionary
+                if key not in current or not isinstance(
+                    current[key], (dict, list)
+                ):
+                    # If key not found or next level is not a dict/list
+                    return False
+                current = current[key]
+    return d

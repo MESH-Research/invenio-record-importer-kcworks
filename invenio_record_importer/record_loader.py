@@ -92,6 +92,8 @@ from invenio_record_importer.utils.utils import (
     CommunityRecordHelper,
     UsersHelper,
     normalize_string,
+    update_nested_dict,
+    replace_value_in_nested_dict,
     valid_date,
     compare_metadata,
     FilesHelper,
@@ -429,14 +431,36 @@ def _coerce_types(metadata: dict) -> dict:
 def create_invenio_record(
     metadata: dict,
     no_updates: bool,
+    overrides: dict = {},
 ) -> dict:
     """
     Create a new Invenio record from the provided dictionary of metadata
+
+    Values provided in the optional `overrides` dictionary will be used
+    to update the metadata before creating the record. This is useful
+    for correcting values from a data source at import time.
+
+    params:
+        metadata (dict): the metadata for the new record
+        no_updates (bool): whether to update an existing record with the
+            same DOI if it exists
+        overrides (dict): optional dictionary of values to update the
+            metadata before creating the record
+
+    returns:
+        dict: a dictionary containing the status of the record creation
+            and the record data. The keys are 'status', 'record_data',
+            and 'recid'. Possible values for 'status' are 'new_record',
+            'updated_draft', 'updated_published', 'unchanged_existing_draft'
+            or 'unchanged_existing_published'.
     """
     app.logger.debug("~~~~~~~~")
     metadata = _coerce_types(metadata)
     app.logger.debug("metadata for new record:")
     app.logger.debug(pformat(metadata))
+    for key, val in overrides.items():
+        app.logger.debug(f"updating metadata key {key} with value {val}")
+        metadata = replace_value_in_nested_dict(metadata, key, val)
 
     # Check for existing record with same DOI
     if "pids" in metadata.keys() and "doi" in metadata["pids"].keys():
@@ -554,6 +578,13 @@ def create_invenio_record(
                             "pids",
                         ]
                     }
+                    if existing_metadata["files"].get("enabled") and (
+                        len(existing_metadata["files"]["entries"].keys()) > 0
+                    ):
+                        app.logger.info(
+                            "    existing record has files attached..."
+                        )
+                        update_payload["files"] = existing_metadata["files"]
                     app.logger.info(
                         "    metadata updated to match migration source..."
                     )
@@ -1989,9 +2020,43 @@ def import_record_to_invenio(
     no_updates: bool = False,
     record_source: Optional[str] = None,
     token: Optional[str] = None,
+    overrides: dict = {},
 ) -> dict:
     """
     Create an invenio record with file uploads, ownership, communities.
+
+    Parameters
+    ----------
+    import_data : dict
+        The data to import into Invenio. This should be a dictionary
+        with the following keys:
+        - custom_fields: a dictionary of custom metadata fields
+        - metadata: a dictionary of standard metadata fields
+        - pids: a dictionary of PID values
+        - files: a dictionary of file uploads
+    no_updates : bool
+        If True, do not update existing records
+    record_source : str
+        The name of the source service for the record
+    token : str
+        The API token to use for the migration API
+    overrides : dict
+        A dictionary of metadata fields to override in the import data
+        if manual corrections are necessary
+
+    Returns
+    -------
+    dict
+        A dictionary with the results of the import. It has the following
+        keys:
+        - community: the community data dictionary for the record's
+            primary community
+        - metadata_record_created: the metadata record creation result
+        - status: the status of the metadata record
+        - uploaded_files: the file upload results
+        - community_review_accepted: the community review acceptance result
+        - assigned_ownership: the record ownership assignment result
+        - added_to_collections: the group collection addition
     """
     if not token:
         token = app.config["MIGRATION_API_TOKEN"]
@@ -2027,7 +2092,7 @@ def import_record_to_invenio(
 
     # Create the basic metadata record
     app.logger.info("    finding or creating draft metadata record...")
-    record_created = create_invenio_record(import_data, no_updates)
+    record_created = create_invenio_record(import_data, no_updates, overrides)
     result["metadata_record_created"] = record_created
     result["status"] = record_created["status"]
     app.logger.info(f"    record status: {record_created['status']}")
@@ -2276,6 +2341,10 @@ def load_records_into_invenio(
     else:
         range_args.append(start_index)
 
+    metadata_overrides_folder = Path(
+        app.config["RECORD_IMPORTER_OVERRIDES_FOLDER"]
+    )
+
     touched_log_path = Path(
         app.config["RECORD_IMPORTER_LOGS_LOCATION"],
         "invenio_record_importer_touched.jsonl",
@@ -2385,6 +2454,27 @@ def load_records_into_invenio(
 
         for rec in record_set:
             record_source = rec.pop("record_source")
+            # get metadata overrides for the record (for manual fixing
+            # of inport data after serialization)
+            overrides = {}
+            with jsonlines.open(
+                metadata_overrides_folder
+                / f"record-importer-overrides_{record_source}.jsonl",
+                "r",
+            ) as override_reader:
+                app.logger.debug("    checking for overrides...")
+                for o in override_reader:
+                    if o["source_id"] in [
+                        i["identifier"]
+                        for i in rec["metadata"]["identifiers"]
+                        if i["scheme"] == "hclegacy-pid"
+                    ]:
+                        app.logger.debug(
+                            f"    found overrides for record..."
+                            f"{rec['metadata']['identifiers']}"
+                            f"{o['source_id']}"
+                        )
+                        overrides = o["overrides"]
             if "jsonl_index" in rec.keys():
                 current_record = rec["jsonl_index"]
             else:
@@ -2434,12 +2524,15 @@ def load_records_into_invenio(
                 # to arise when a record is being added to several
                 # communities at once
                 try:
+                    app.logger.debug(
+                        f"    loading record with overrides: {overrides}..."
+                    )
                     result = import_record_to_invenio(
-                        rec, no_updates, record_source
+                        rec, no_updates, record_source, None, overrides
                     )
                 except StaleDataError:
                     result = import_record_to_invenio(
-                        rec, no_updates, record_source
+                        rec, no_updates, record_source, None, overrides
                     )
                 print(f"    loaded record {current_record}")
                 successful_records += 1
@@ -2483,6 +2576,18 @@ def load_records_into_invenio(
                 app.logger.debug(
                     "result status: %s", result.get("updated_draft")
                 )
+                if result.get("metadata_record_created").get("id"):
+                    touched_records = _log_touched_record(
+                        index=current_record,
+                        invenio_id=rec_doi,
+                        invenio_recid=rec_invenioid,
+                        commons_id=rec_hcid,
+                        core_record_id=rec_recid,
+                        touched_records=touched_records,
+                        previously_touched_sourceids=(
+                            previously_touched_sourceids
+                        ),
+                    )
             except Exception as e:
                 print("ERROR:", e)
                 print_exc()

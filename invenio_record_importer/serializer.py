@@ -2443,98 +2443,73 @@ def add_subjects_keywords(
             "Urban studies",
         ]
         bad_subjects = {
-            "1411635:Criticism, interpretation, etc.:topical": (
-                "1411635:Criticism, interpretation, etc.:form"
-            ),
-            "863509:Classsical literature:topical": (
-                "863509:Classical literature:topical"
-            ),
-            "Art history": "815264:Art--History:topical",
-            "Medieval literature": "1000151:Literature, Medieval:topical",
-            "Literary theory": "1353577:Literature--Theory:topical",
-            "Cultural studies": "885059:Culture:topical",
-            "Political philosophy": (
-                "1060799:Philosophy--Political aspects:topical"
-            ),
-            "History of religions": "1093783:Religion--History:topical",
-            "Religious studies": "1093763:Religion:topical",
-            "Translation": "1154795:Translating and interpreting:topical",
-            "Australasian/Pacific literature": (
-                "821406:Australasian literature:topical"
-            ),
-            "Comics": "1921613:Comics (Graphic works):form",
-            "Graphic novels": "1726630:Graphic novels:form",
-            "Cultural history": "885069:Culture--History:topical",
-            "Epigraphy": "973837:Inscriptions:topical",
-            "Latin American studies": "1245945:Latin America:geographic",
-            "Sociology of agriculture": (
-                "801646:Agriculture--Social aspects:topical"
-            ),
-            "Ancient law": "993683:Law--Antiquities:topical",
-            "Digital communication": "893634:Digital communications:topical",
-            "Internet sociology": "1766793:Internet--Social aspects:topical",
-            "Library and information science": (
-                "997916:Library science:topical"
-            ),
-            "Social anthropology": (
-                "810233:Anthropology--Social aspects:topical"
-            ),
-            "History of the arts": "817758:Arts--History:topical",
-            "Music history": "1030330:Music--History:topical",
-            "Interdisciplinary studies": (
-                "976131:Interdisciplinary research:topical"
-            ),
-            "Illuminated manuscripts": (
-                "967235:Illumination of books and manuscripts:topical"
-            ),
-            "India": "1210276:India:geographic",
-            "Apostle Paul": "288253:St. Paul:personal",
+            "1020301:Middles Ages:topical": "1020301:Middle Ages:topical",
+            "1208380:Greece:topical": "1208380:Greece:geographic",
+            "1242804:Scandinavia:topical": "1242804:Scandinavia:geographic",
+            "1411635:Criticism, interpretation, etc.:topical": "1411635:Criticism, interpretation, etc.:form",
+            "21st-century American literature": "807113:American literature:topical",
+            "863509:Classsical literature:topical": "863509:Classical literature:topical",
             "Academic librarianship": "794993:Academic librarians:topical",
-            "Sociology of aging": "800348:Aging--Social aspects:topical",
-            "Sociology of culture": "885083:Culture--Social aspects:topical",
-            "Holocaust studies": "958866:Jewish Holocaust (1939-1945):topical",
-            "Literature and psychology": (
-                "1081551:Psychology and literature:topical"
-            ),
-            "Gender studies": "939598:Gender identity--Research:topical",
-            "Historical musicology": "1030896:Musicology--History:topical",
-            "Shakespeare": "314312:Shakespeare, William, 1849-1931:personal",
-            "Sociology of finance": (
-                "842573:Business enterprises--Finance--Social aspects:topical"
-            ),
+            "Ancient law": "993683:Law--Antiquities:topical",
+            "Apostle Paul": "288253:St. Paul:personal",
+            "Art history": "815264:Art--History:topical",
+            "Australasian/Pacific literature": "821406:Australasian literature:topical",
+            "Aesthetic theory": "798702:Aesthetics:topical",
+            "Book history": "836420:Books--History:topical",
             "Central Europe": "1244544:Central Europe:geographic",
-            "Contemporary history": (
-                "1865054:History of contemporary events:topical"
-            ),
-            "Labor history": "989812:Labor--History:topical",
+            "Comics": "1921613:Comics (Graphic works):form",
+            "Contemporary history": "1865054:History of contemporary events:topical",
+            "Cultural history": "885069:Culture--History:topical",
+            "Cultural studies": "885059:Culture:topical",
+            "Digital communication": "893634:Digital communications:topical",
             "Epicurus": "44478:Epicurus:personal",
-            "Stanley Cavell": "28565:Cavell, Stanley, 1926-2018:personal",
-            "Translation of poetry": "1067745:Poetry--Translating:topical",
-            "James Joyce": "370728:Joyce, James:personal",
-            "Jack Kerouac": "52352:Kerouac, Jack, 1922-1969:personal",
+            "Epigraphy": "973837:Inscriptions:topical",
+            "Ethnic studies": "916061:Ethnicity--Study and teaching:topical",
             "Feminisms": "922671:Feminism:topical",
             "Feminist art history": "922756:Feminist art criticism:topical",
+            "Gender studies": "939598:Gender identity--Research:topical",
             "Gospels": "1766655:Bible stories, English--N.T. Gospels:topical",
-            "Manuscript studies": "1008230:Manuscripts:topical",
-            "Book history": "836420:Books--History:topical",
+            "Graphic novels": "1726630:Graphic novels:form",
             "Harlem Renaissance": "951467:Harlem Renaissance:topical",
-            "Music performance": "1030398:Music--Performance:topical",
+            "Historical musicology": "1030896:Musicology--History:topical",
+            "History of religions": "1093783:Religion--History:topical",
+            "History of the arts": "817758:Arts--History:topical",
+            "Holocaust studies": "958866:Jewish Holocaust (1939-1945):topical",
+            "Illuminated manuscripts": "967235:Illumination of books and manuscripts:topical",
+            "India": "1210276:India:geographic",
+            "Interdisciplinary studies": "976131:Interdisciplinary research:topical",
+            "Internet sociology": "1766793:Internet--Social aspects:topical",
+            "Jack Kerouac": "52352:Kerouac, Jack, 1922-1969:personal",
+            "James Joyce": "370728:Joyce, James:personal",
+            "Labor history": "989812:Labor--History:topical",
             "Latin America": "1245945:Latin America:geographic",
-            "Portuguese culture": (
-                "1072404:Portuguese--Ethnic identity:topical"
-            ),
-            "Venezuela": "1204166:Venezuela:geographic",
-            "Aesthetic theory": "798702:Aesthetics:topical",
-            "21st-century American literature": (
-                "807113:American literature:topical"
-            ),
+            "Latin American studies": "1245945:Latin America:geographic",
+            "Library and information science": "997916:Library science:topical",
+            "Literary theory": "1353577:Literature--Theory:topical",
+            "Literature and psychology": "1081551:Psychology and literature:topical",
+            "Manuscript studies": "1008230:Manuscripts:topical",
+            "Medieval literature": "1000151:Literature, Medieval:topical",
+            "Music history": "1030330:Music--History:topical",
+            "Music performance": "1030398:Music--Performance:topical",
             "Poetics and poetry": "1067682:Poetics:topical",
-            "1208380:Greece:topical": "1208380:Greece:geographic",
+            "Political philosophy": "1060799:Philosophy--Political aspects:topical",
+            "Portuguese culture": "1072404:Portuguese--Ethnic identity:topical",
+            "Religious studies": "1093763:Religion:topical",
+            "Shakespeare": "314312:Shakespeare, William, 1849-1931:personal",
+            "Social anthropology": "810233:Anthropology--Social aspects:topical",
+            "Sociology of aging": "800348:Aging--Social aspects:topical",
+            "Sociology of agriculture": "801646:Agriculture--Social aspects:topical",
+            "Sociology of culture": "885083:Culture--Social aspects:topical",
+            "Sociology of finance": "842573:Business enterprises--Finance--Social aspects:topical",
+            "Stanley Cavell": "28565:Cavell, Stanley, 1926-2018:personal",
+            "Translation": "1154795:Translating and interpreting:topical",
+            "Translation of poetry": "1067745:Poetry--Translating:topical",
+            "Venezuela": "1204166:Venezuela:geographic",
         }
         covered_subjects = []
         if isinstance(row["subject"], dict):
             row["subject"] = row["subject"].values()
-        for s in row["subject"]:
+        for s in list(set(row["subject"])):
             if s in missing_subjects:
                 newrec["custom_fields"].setdefault(
                     "kcr:user_defined_tags", []
