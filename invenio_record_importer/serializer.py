@@ -1688,7 +1688,8 @@ def add_date_info(
     def repair_range(date: str) -> tuple[bool, str]:
         # print("repairing range")
         invalid = True
-        range_parts = re.split(r"[\-–\/]", date)
+        raw_range_parts = re.split(r"[\-–\/]", date)
+        range_parts = [*raw_range_parts]
         if len(range_parts) == 1:
             range_parts = re.split(r" to ", date)
         if row["id"] == "hc:16967":
@@ -1728,6 +1729,25 @@ def add_date_info(
                 print(f"range_parts[i]: {range_parts[i]}")
         # print(range_parts)
         if not invalid:
+            if range_parts[0] > range_parts[1]:
+                app.logger.debug(f"invalid date range from {raw_range_parts}")
+                # handle winter dates where year is ambiguous
+                if any(
+                    [
+                        p
+                        for p in ["Winter", "winter"]
+                        if p in raw_range_parts[0]
+                    ]
+                ):
+                    range_parts[0] = (
+                        f"{str(int(range_parts[0][:4]) - 1)}{range_parts[0][4:]}"
+                    )
+                    app.logger.debug(f"adjusted winter date: {range_parts[0]}")
+                else:
+                    app.logger.debug(
+                        f"failed repairing invalid: {range_parts}"
+                    )
+                    invalid = True
             date = "/".join(range_parts)
         # print(date)
         return invalid, date
