@@ -2173,17 +2173,19 @@ def import_record_to_invenio(
     return result
 
 
-def _log_touched_record(
+def _log_created_record(
     index: int = 0,
     invenio_id: str = "",
     invenio_recid: str = "",
     commons_id: str = "",
     core_record_id: str = "",
-    touched_records: list = [],
-    previously_touched_records: list = [],
+    created_records: list = [],
 ) -> list:
     """
-    Log a touched record to the touched records log file.
+    Log a created record to the created records log file.
+
+    This does not update the log file if the record has already been created.
+    If the record does not appear in the log file, it is added at the end.
 
     :param index: the index of the record in the source file
     :param invenio_id: the doi of the record in Invenio
@@ -2191,15 +2193,13 @@ def _log_touched_record(
     :param commons_id: the user-facing id of the record in the source system
     :param core_record_id: the Fedora system id of the record in the
         source database
-    :param touched_records: the list of previously touched records in this
+    :param created_records: the list of previously created records in this
         run
-    :param previously_touched_records: the list of previously touched records
-        from all previous runs
 
-    :returns: the updated list of touched records
+    :returns: the updated list of created records
     """
-    touched_log_path = app.config["RECORD_IMPORTER_TOUCHED_LOG_PATH"]
-    touched = {
+    created_log_path = app.config["RECORD_IMPORTER_CREATED_LOG_PATH"]
+    created_rec = {
         "index": index,
         "invenio_id": invenio_id,
         "invenio_recid": invenio_recid,
@@ -2207,33 +2207,37 @@ def _log_touched_record(
         "core_record_id": core_record_id,
         "timestamp": arrow.now().format(),
     }
-    existing_line = [
+    existing_lines = [
         (idx, t)
-        for idx, t in enumerate(touched_records)
+        for idx, t in enumerate(created_records)
         if t["commons_id"] == commons_id and t["invenio_id"] == invenio_id
     ]
-    existing_line_prev = [
-        (idx, t)
-        for idx, t in enumerate(previously_touched_records)
-        if t["commons_id"] == commons_id and t["invenio_id"] == invenio_id
-    ]
-    if not existing_line:
-        touched_records.append(touched)
-    else:
-        touched_records[existing_line[0][0]] = touched
+    if not existing_lines:
+        created_records.append(created_rec)
 
-    if not existing_line_prev:
-        previously_touched_records.append(touched)
-    else:
-        previously_touched_records[existing_line_prev[0][0]] = touched
+        with jsonlines.open(
+            created_log_path,
+            "a",
+        ) as created_writer:
+            created_writer.write(created_rec)
+    elif (
+        existing_lines
+        and existing_lines[0][1]["invenio_recid"] != invenio_recid
+    ):
+        i = existing_lines[0][0]
+        created_records = [
+            *created_records[:i],
+            *created_records[i + 1 :],  # noqa: E203
+            created_rec,
+        ]
+        with jsonlines.open(
+            created_log_path,
+            "w",
+        ) as created_writer:
+            for t in created_records:
+                created_writer.write(t)
 
-    with jsonlines.open(
-        touched_log_path,
-        "a",
-    ) as touched_writer:
-        touched_writer.write(touched)
-
-    return touched_records, previously_touched_records
+    return created_records
 
 
 def _log_failed_record(
@@ -2271,8 +2275,7 @@ def _log_failed_record(
         total_failed = [
             r for r in failed_records if r["commons_id"] not in skipped_ids
         ]
-        if len(failed_records) > 0:
-            failed_ids = [r["commons_id"] for r in failed_records if r]
+        failed_ids = [r["commons_id"] for r in failed_records if r]
         for e in residual_failed_records:
             if e["commons_id"] not in failed_ids and e not in total_failed:
                 total_failed.append(e)
@@ -2304,32 +2307,6 @@ def _load_prior_failed_records() -> tuple[list, list, list, list]:
         existing_failed_indices,
         existing_failed_hcids,
     )
-
-
-def _sort_touched_records(
-    previously_touched_records: list = [],
-) -> None:
-    """Order touched records and write them to the touched records log file.
-
-    We separate this sorting so that we avoid duplicating it for each record
-    and execute it just once at the end of each run.
-    """
-    touched_log_path = Path(app.config["RECORD_IMPORTER_TOUCHED_LOG_PATH"])
-
-    with jsonlines.open(
-        touched_log_path,
-        "w",
-    ) as touched_writer:
-        if len(previously_touched_records) < 2:
-            ordered_touched_records = previously_touched_records
-        else:
-            ordered_touched_records = sorted(
-                previously_touched_records, key=lambda r: r["index"]
-            )
-        for o in ordered_touched_records:
-            touched_writer.write(o)
-
-    app.logger.info(f"Touched records written to {touched_log_path}...")
 
 
 def load_records_into_invenio(
@@ -2379,7 +2356,7 @@ def load_records_into_invenio(
     """
     record_counter = 0
     failed_records = []
-    touched_records = []
+    created_records = []
     skipped_records = []
     successful_records = 0
     updated_drafts = 0
@@ -2397,12 +2374,14 @@ def load_records_into_invenio(
         app.config["RECORD_IMPORTER_OVERRIDES_FOLDER"]
     )
 
-    touched_log_path = Path(
-        app.config["RECORD_IMPORTER_LOGS_LOCATION"],
-        "invenio_record_importer_touched.jsonl",
+    created_log_path = Path(
+        app.config.get(
+            "RECORD_IMPORTER_CREATED_LOG_PATH",
+            "invenio_record_importer_created.jsonl",
+        )
     )
 
-    # Sanitize the names of files before upload to avoid
+    # sanitize the names of files before upload to avoid
     # issues with special characters
     if clean_filenames:
         app.logger.info("Sanitizing file names...")
@@ -2410,16 +2389,16 @@ def load_records_into_invenio(
             app.config["RECORD_IMPORTER_FILES_LOCATION"]
         )
 
-    # Load list of previously touched records
-    previously_touched_records = []
+    # Load list of previously created records
+    created_records = []
     try:
         with jsonlines.open(
-            touched_log_path,
+            created_log_path,
             "r",
         ) as reader:
-            previously_touched_records = [obj for obj in reader]
+            created_records = [obj for obj in reader]
     except FileNotFoundError:
-        app.logger.info("**no existing touched records log file found...**")
+        app.logger.info("**no existing created records log file found...**")
 
     # Load list of failed records from prior runs
     (
@@ -2561,13 +2540,6 @@ def load_records_into_invenio(
                 "core_record_id": rec_recid,
             }
             try:
-                touched_records, previously_touched_records = (
-                    _log_touched_record(
-                        **rec_log_object,
-                        touched_records=touched_records,
-                        previously_touched_records=previously_touched_records,
-                    )
-                )
                 result = {}
                 # FIXME: This is a hack to handle StaleDataError which
                 # is consistently resolved on a second attempt -- seems
@@ -2586,6 +2558,16 @@ def load_records_into_invenio(
                     result = import_record_to_invenio(
                         rec, no_updates, record_source, overrides
                     )
+                created_records = _log_created_record(
+                    index=current_record,
+                    invenio_id=rec_doi,
+                    invenio_recid=result.get("metadata_record_created")
+                    .get("record_data")
+                    .get("id"),
+                    commons_id=rec_hcid,
+                    core_record_id=rec_recid,
+                    created_records=created_records,
+                )
                 successful_records += 1
                 if not result.get("existing_record"):
                     new_records += 1
@@ -2612,24 +2594,6 @@ def load_records_into_invenio(
                         )
                     )
                 app.logger.debug("result status: %s", result.get("status"))
-                if (
-                    result.get("metadata_record_created")
-                    .get("record_data")
-                    .get("id")
-                ):
-                    touched_records, previously_touched_records = (
-                        _log_touched_record(
-                            index=current_record,
-                            invenio_id=rec_doi,
-                            invenio_recid=result.get("metadata_record_created")
-                            .get("record_data")
-                            .get("id"),
-                            commons_id=rec_hcid,
-                            core_record_id=rec_recid,
-                            touched_records=touched_records,
-                            previously_touched_records=previously_touched_records,
-                        )
-                    )
             except Exception as e:
                 print("ERROR:", e)
                 print_exc()
@@ -2758,12 +2722,6 @@ def load_records_into_invenio(
             "Failed records written to"
             f" {app.config['RECORD_IMPORTER_FAILED_LOG_PATH']}"
         )
-
-    # Order touched records in log file (saved time earlier by not
-    # doing this on each iteration)
-    _sort_touched_records(
-        previously_touched_records=previously_touched_records,
-    )
 
 
 def delete_records_from_invenio(record_ids):

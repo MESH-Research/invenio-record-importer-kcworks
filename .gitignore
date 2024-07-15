@@ -169,7 +169,7 @@ cython_debug/
 
 # Log files
 invenio_record_importer/logs/invenio_record_importer_failed.jsonl
-invenio_record_importer/logs/invenio_record_importer_touched.jsonl
+invenio_record_importer/logs/invenio_record_importer_created.jsonl
 invenio_record_importer/logs/invenio_record_importer.log
 invenio_record_importer/logs/invenio_record_importer.log.*
 invenio_record_importer/logs/serializer_failed.jsonl

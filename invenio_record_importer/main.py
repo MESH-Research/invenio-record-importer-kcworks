@@ -230,9 +230,9 @@ def load_records(
         be run as a background process (adding & to the end of the command).
         A running log of the program's progress will be written to the file
         invenio_record_importer.log in the base invenio_record_importer/logs
-        directory. A record of all records that have been touched (a load
+        directory. A record of all records that have been created (a load
         attempt has been made) is recorded in the file
-        invenio_record_importer_touched.json in the base
+        invenio_record_importer_created.json in the base
         invenio_record_importer/logs directory. A record of all records that
         have failed to load is recorded in the file
         invenio_record_importer_failed.json in the

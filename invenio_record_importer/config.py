@@ -54,12 +54,12 @@ class ImporterConfig:
             )
         )
 
-        self.RECORD_IMPORTER_TOUCHED_LOG_PATH = Path(
+        self.RECORD_IMPORTER_CREATED_LOG_PATH = Path(
             app.config.get(
-                "RECORD_IMPORTER_TOUCHED_LOG_PATH",
+                "RECORD_IMPORTER_CREATED_LOG_PATH",
                 Path(
                     self.RECORD_IMPORTER_LOGS_LOCATION,
-                    "invenio_record_importer_touched.jsonl",
+                    "invenio_record_importer_created.jsonl",
                 ),
             )
         )
