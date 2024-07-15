@@ -1,6 +1,15 @@
 """Custom exceptions for invenio-record-importer."""
 
 
+class CommonsGroupServiceError(Exception):
+    """Commons group service error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(CommonsGroupServiceError, self).__init__(message)
+        self.message = message
+
+
 class DraftDeletionFailedError(Exception):
     """Draft deletion failed error."""
 
@@ -61,6 +70,15 @@ class RestrictedRecordPublicationError(Exception):
     def __init__(self, message):
         """Initialize the exception."""
         super(RestrictedRecordPublicationError, self).__init__(message)
+        self.message = message
+
+
+class SkipRecord(Exception):
+    """Skip record exception."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(SkipRecord, self).__init__(message)
         self.message = message
 
 

@@ -33,6 +33,7 @@ from invenio_rdm_records.services.errors import (
 from invenio_rdm_records.services.tasks import reindex_stats
 from invenio_records.systemfields.relations.errors import InvalidRelationValue
 from invenio_record_importer.errors import (
+    CommonsGroupServiceError,
     DraftDeletionFailedError,
     ExistingRecordNotUpdatedError,
     FileUploadError,
@@ -40,6 +41,7 @@ from invenio_record_importer.errors import (
     MissingParentMetadataError,
     PublicationValidationError,
     RestrictedRecordPublicationError,
+    SkipRecord,
     TooManyDownloadEventsError,
     TooManyViewEventsError,
     UpdateValidationError,
@@ -98,6 +100,7 @@ from invenio_record_importer.utils.utils import (
     compare_metadata,
     FilesHelper,
 )
+from werkzeug.exceptions import UnprocessableEntity
 
 
 def create_stats_events(
@@ -449,10 +452,30 @@ def create_invenio_record(
 
     returns:
         dict: a dictionary containing the status of the record creation
-            and the record data. The keys are 'status', 'record_data',
-            and 'recid'. Possible values for 'status' are 'new_record',
-            'updated_draft', 'updated_published', 'unchanged_existing_draft'
-            or 'unchanged_existing_published'.
+            and the record data. The keys are
+
+            'community': The Invenio community to which the record belongs
+                if any. This is the primary community to which it was
+                initially published, although the record may then have
+                been added to other collections as well.
+            'status': The kind of record operation that produced the new/
+                current metadata record. Possible values: 'new_record',
+                'updated_draft', 'updated_published', 'unchanged_existing_draft'
+                'unchanged_existing_published'
+            'metadata_record_created': The metadata record created or updated
+                by the operation. This dictionary has three keys:
+                'record_data', 'status', and 'recid' (with the Invenio
+                internal UUID for the record object).
+            'existing_record': The existing record with the same DOI if
+                one was found.
+            'uploaded_files': The files uploaded for the record, if any.
+            'community_review_accepted': The response object from the
+                community review acceptance at publication, if any.
+            'assigned_ownership': The response object from the assignment
+                of ownership to the record's uploader, if any.
+            'added_to_collections': The response object from the addition
+                of the record to collections in addition to the publication
+                collection, if any.
     """
     app.logger.debug("~~~~~~~~")
     metadata = _coerce_types(metadata)
@@ -861,7 +884,7 @@ def _upload_draft_files(
             )
 
         # FIXME: Change the identity throughout the process to the user
-        # for the token and permission protect the top-level functions
+        # and permission protect the top-level functions
         try:
             initialization = files_service.init_files(
                 system_identity, draft_id, data=[{"key": k}]
@@ -1098,9 +1121,7 @@ def _compare_existing_files(
         return same_files
 
 
-def delete_invenio_draft_record(
-    record_id: str, token: Optional[str] = None
-) -> Optional[dict]:
+def delete_invenio_draft_record(record_id: str) -> Optional[dict]:
     """
     Delete a draft Invenio record with the provided Id
 
@@ -1113,8 +1134,6 @@ def delete_invenio_draft_record(
     :param str record_id:   The id string for the Invenio draft record
     """
     result = None
-    if not token:
-        token = app.config["MIGRATION_API_TOKEN"]
     app.logger.info(f"    deleting draft record {record_id}...")
 
     # TODO: Is this read necessary anymore?
@@ -1357,17 +1376,12 @@ def prepare_invenio_community(community_string: str) -> dict:
     return community_check
 
 
-def _create_invenio_community(
-    community_label: str, token: Optional[str] = None
-) -> dict:
+def _create_invenio_community(community_label: str) -> dict:
     """Create a new community in Invenio.
 
     Return the community data as a dict. (The result
     of the CommunityItem.to_dict() method.)
     """
-    if not token:
-        token = app.config["MIGRATION_API_TOKEN"]
-
     # FIXME: Get this from config
     community_data = {
         "hcommons": {
@@ -1877,13 +1891,27 @@ def add_record_to_group_collections(
                         record_source,
                     )
                     app.logger.debug("   created group collection...")
+                except UnprocessableEntity as e:
+                    if (
+                        "Something went wrong requesting group"
+                        in e.description
+                    ):
+                        app.logger.warning(
+                            f"Failed requesting group collection from API "
+                            f"{e.description}"
+                        )
+                        raise CommonsGroupServiceError(
+                            f"Failed requesting group collection from API "
+                            f"{e.description}"
+                        )
                 except CommonsGroupNotFoundError:
-                    app.logger.warning(
+                    message = (
                         f"    group {group_id} ({group_name})"
                         f"not found on Knowledge Commons. Could not "
                         f"create a group collection..."
                     )
-                    continue
+                    app.logger.warning(message)
+                    raise CommonsGroupNotFoundError(message)
             if coll_record:
                 app.logger.debug(
                     f"    adding record to group collection "
@@ -2019,7 +2047,6 @@ def import_record_to_invenio(
     import_data: dict,
     no_updates: bool = False,
     record_source: Optional[str] = None,
-    token: Optional[str] = None,
     overrides: dict = {},
 ) -> dict:
     """
@@ -2038,8 +2065,6 @@ def import_record_to_invenio(
         If True, do not update existing records
     record_source : str
         The name of the source service for the record
-    token : str
-        The API token to use for the migration API
     overrides : dict
         A dictionary of metadata fields to override in the import data
         if manual corrections are necessary
@@ -2058,8 +2083,6 @@ def import_record_to_invenio(
         - assigned_ownership: the record ownership assignment result
         - added_to_collections: the group collection addition
     """
-    if not token:
-        token = app.config["MIGRATION_API_TOKEN"]
     existing_record = None
     result = {}
     file_data = import_data["files"]
@@ -2157,10 +2180,23 @@ def _log_touched_record(
     commons_id: str = "",
     core_record_id: str = "",
     touched_records: list = [],
-    previously_touched_sourceids: list = [],
+    previously_touched_records: list = [],
 ) -> list:
     """
     Log a touched record to the touched records log file.
+
+    :param index: the index of the record in the source file
+    :param invenio_id: the doi of the record in Invenio
+    :param invenio_recid: the recid of the record in Invenio
+    :param commons_id: the user-facing id of the record in the source system
+    :param core_record_id: the Fedora system id of the record in the
+        source database
+    :param touched_records: the list of previously touched records in this
+        run
+    :param previously_touched_records: the list of previously touched records
+        from all previous runs
+
+    :returns: the updated list of touched records
     """
     touched_log_path = app.config["RECORD_IMPORTER_TOUCHED_LOG_PATH"]
     touched = {
@@ -2169,16 +2205,35 @@ def _log_touched_record(
         "invenio_recid": invenio_recid,
         "commons_id": commons_id,
         "core_record_id": core_record_id,
+        "timestamp": arrow.now().format(),
     }
-    if touched not in touched_records:
+    existing_line = [
+        (idx, t)
+        for idx, t in enumerate(touched_records)
+        if t["commons_id"] == commons_id and t["invenio_id"] == invenio_id
+    ]
+    existing_line_prev = [
+        (idx, t)
+        for idx, t in enumerate(previously_touched_records)
+        if t["commons_id"] == commons_id and t["invenio_id"] == invenio_id
+    ]
+    if not existing_line:
         touched_records.append(touched)
-        if commons_id not in previously_touched_sourceids:
-            with jsonlines.open(
-                touched_log_path,
-                "a",
-            ) as touched_writer:
-                touched_writer.write(touched)
-    return touched_records
+    else:
+        touched_records[existing_line[0][0]] = touched
+
+    if not existing_line_prev:
+        previously_touched_records.append(touched)
+    else:
+        previously_touched_records[existing_line_prev[0][0]] = touched
+
+    with jsonlines.open(
+        touched_log_path,
+        "a",
+    ) as touched_writer:
+        touched_writer.write(touched)
+
+    return touched_records, previously_touched_records
 
 
 def _log_failed_record(
@@ -2189,6 +2244,7 @@ def _log_failed_record(
     failed_records=None,
     residual_failed_records=None,
     reason=None,
+    skipped_records=None,
 ) -> None:
     """
     Log a failed record to the failed records log file.
@@ -2201,18 +2257,22 @@ def _log_failed_record(
         "commons_id": commons_id,
         "core_record_id": core_record_id,
         "reason": reason,
+        "datestamp": arrow.now().format(),
     }
     if index > -1:
         failed_records.append(failed_obj)
+    skipped_ids = []
+    if len(skipped_records) > 0:
+        skipped_ids = [r["commons_id"] for r in skipped_records if r]
     with jsonlines.open(
         failed_log_path,
         "w",
     ) as failed_writer:
-        total_failed = [*failed_records]
+        total_failed = [
+            r for r in failed_records if r["commons_id"] not in skipped_ids
+        ]
         if len(failed_records) > 0:
             failed_ids = [r["commons_id"] for r in failed_records if r]
-        else:
-            failed_ids = []
         for e in residual_failed_records:
             if e["commons_id"] not in failed_ids and e not in total_failed:
                 total_failed.append(e)
@@ -2247,7 +2307,6 @@ def _load_prior_failed_records() -> tuple[list, list, list, list]:
 
 
 def _sort_touched_records(
-    touched_records: list = [],
     previously_touched_records: list = [],
 ) -> None:
     """Order touched records and write them to the touched records log file.
@@ -2261,19 +2320,11 @@ def _sort_touched_records(
         touched_log_path,
         "w",
     ) as touched_writer:
-        total_touched = []
-        for t in touched_records:
-            if t not in total_touched:
-                total_touched.append(t)
-        for e in previously_touched_records:
-            if e not in total_touched:
-                total_touched.append(e)
-
-        if len(total_touched) < 2:
-            ordered_touched_records = total_touched
+        if len(previously_touched_records) < 2:
+            ordered_touched_records = previously_touched_records
         else:
             ordered_touched_records = sorted(
-                total_touched, key=lambda r: r["index"]
+                previously_touched_records, key=lambda r: r["index"]
             )
         for o in ordered_touched_records:
             touched_writer.write(o)
@@ -2329,6 +2380,7 @@ def load_records_into_invenio(
     record_counter = 0
     failed_records = []
     touched_records = []
+    skipped_records = []
     successful_records = 0
     updated_drafts = 0
     updated_published = 0
@@ -2368,9 +2420,6 @@ def load_records_into_invenio(
             previously_touched_records = [obj for obj in reader]
     except FileNotFoundError:
         app.logger.info("**no existing touched records log file found...**")
-    previously_touched_sourceids = [
-        r["commons_id"] for r in previously_touched_records
-    ]
 
     # Load list of failed records from prior runs
     (
@@ -2457,24 +2506,24 @@ def load_records_into_invenio(
             # get metadata overrides for the record (for manual fixing
             # of inport data after serialization)
             overrides = {}
+            skip = False  # allow skipping records in the source file
             with jsonlines.open(
                 metadata_overrides_folder
                 / f"record-importer-overrides_{record_source}.jsonl",
                 "r",
             ) as override_reader:
-                app.logger.debug("    checking for overrides...")
                 for o in override_reader:
                     if o["source_id"] in [
                         i["identifier"]
                         for i in rec["metadata"]["identifiers"]
                         if i["scheme"] == "hclegacy-pid"
                     ]:
-                        app.logger.debug(
-                            f"    found overrides for record..."
-                            f"{rec['metadata']['identifiers']}"
-                            f"{o['source_id']}"
+                        overrides = o.get("overrides")
+                        skip = (
+                            True
+                            if o.get("skip") in [True, "True", "true", 1, "1"]
+                            else False
                         )
-                        overrides = o["overrides"]
             if "jsonl_index" in rec.keys():
                 current_record = rec["jsonl_index"]
             else:
@@ -2494,9 +2543,7 @@ def load_records_into_invenio(
                 for r in rec["metadata"]["identifiers"]
                 if r["scheme"] == "hclegacy-record-id"
             ][0]["identifier"]
-            # FIXME: Can we get the Invenio record ID from the failed record
-            # that didn't complete processing?
-            rec_invenioid = rec.get("id")
+            rec_invenioid = None
             app.logger.info(f"....starting to load record {current_record}")
             app.logger.info(
                 f"    DOI:{rec_doi} {rec_invenioid} {rec_hcid} {rec_recid}"
@@ -2506,35 +2553,39 @@ def load_records_into_invenio(
                 text=f"    Loading record {current_record}", spinner="dots"
             )
             spinner.start()
+            rec_log_object = {
+                "index": current_record,
+                "invenio_recid": rec_invenioid,
+                "invenio_id": rec_doi,
+                "commons_id": rec_hcid,
+                "core_record_id": rec_recid,
+            }
             try:
-                touched_records = _log_touched_record(
-                    index=current_record,
-                    invenio_recid=rec_invenioid,
-                    invenio_id=rec_doi,
-                    commons_id=rec_hcid,
-                    core_record_id=rec_recid,
-                    touched_records=touched_records,
-                    previously_touched_sourceids=(
-                        previously_touched_sourceids
-                    ),
+                touched_records, previously_touched_records = (
+                    _log_touched_record(
+                        **rec_log_object,
+                        touched_records=touched_records,
+                        previously_touched_records=previously_touched_records,
+                    )
                 )
                 result = {}
                 # FIXME: This is a hack to handle StaleDataError which
                 # is consistently resolved on a second attempt -- seems
                 # to arise when a record is being added to several
                 # communities at once
-                try:
-                    app.logger.debug(
-                        f"    loading record with overrides: {overrides}..."
+                if skip:
+                    skipped_records.append(rec_log_object)
+                    raise SkipRecord(
+                        "Record marked for skipping in override file"
                     )
+                try:
                     result = import_record_to_invenio(
-                        rec, no_updates, record_source, None, overrides
+                        rec, no_updates, record_source, overrides
                     )
                 except StaleDataError:
                     result = import_record_to_invenio(
-                        rec, no_updates, record_source, None, overrides
+                        rec, no_updates, record_source, overrides
                     )
-                print(f"    loaded record {current_record}")
                 successful_records += 1
                 if not result.get("existing_record"):
                     new_records += 1
@@ -2552,41 +2603,32 @@ def load_records_into_invenio(
                         for d in residual_failed_records
                         if d["commons_id"] != rec_hcid
                     ]
-                    repaired_failed.append(
-                        {
-                            "index": current_record,
-                            "invenio_id": rec_doi,
-                            "commons_id": rec_hcid,
-                            "core_record_id": rec_recid,
-                        }
-                    )
+                    repaired_failed.append(rec_log_object)
                     failed_records, residual_failed_records = (
                         _log_failed_record(
                             failed_records=failed_records,
                             residual_failed_records=residual_failed_records,
+                            skipped_records=skipped_records,
                         )
                     )
                 app.logger.debug("result status: %s", result.get("status"))
-                app.logger.debug(
-                    "result status: %s", result.get("unchanged_existing")
-                )
-                app.logger.debug(
-                    "result status: %s", result.get("updated_published")
-                )
-                app.logger.debug(
-                    "result status: %s", result.get("updated_draft")
-                )
-                if result.get("metadata_record_created").get("id"):
-                    touched_records = _log_touched_record(
-                        index=current_record,
-                        invenio_id=rec_doi,
-                        invenio_recid=rec_invenioid,
-                        commons_id=rec_hcid,
-                        core_record_id=rec_recid,
-                        touched_records=touched_records,
-                        previously_touched_sourceids=(
-                            previously_touched_sourceids
-                        ),
+                if (
+                    result.get("metadata_record_created")
+                    .get("record_data")
+                    .get("id")
+                ):
+                    touched_records, previously_touched_records = (
+                        _log_touched_record(
+                            index=current_record,
+                            invenio_id=rec_doi,
+                            invenio_recid=result.get("metadata_record_created")
+                            .get("record_data")
+                            .get("id"),
+                            commons_id=rec_hcid,
+                            core_record_id=rec_recid,
+                            touched_records=touched_records,
+                            previously_touched_records=previously_touched_records,
+                        )
                     )
             except Exception as e:
                 print("ERROR:", e)
@@ -2601,6 +2643,8 @@ def load_records_into_invenio(
                     except AttributeError:
                         pass
                 error_reasons = {
+                    "CommonsGroupServiceError": msg,
+                    "DraftDeletionFailedError": msg,
                     "ExistingRecordNotUpdatedError": msg,
                     "FileKeyNotFoundError": msg,
                     "FileUploadError": msg,
@@ -2627,9 +2671,12 @@ def load_records_into_invenio(
                     log_object.update(
                         {"reason": error_reasons[e.__class__.__name__]}
                     )
-                failed_records, residual_failed_records = _log_failed_record(
-                    **log_object
-                )
+                if e.__class__.__name__ != "SkipRecord":
+                    failed_records, residual_failed_records = (
+                        _log_failed_record(
+                            **log_object, skipped_records=skipped_records
+                        )
+                    )
                 if stop_on_error and failed_records:
                     break
 
@@ -2659,6 +2706,8 @@ def load_records_into_invenio(
         f" {str(unchanged_existing)} unchanged existing records \n       "
         f" {str(len(repaired_failed))} previously failed records repaired \n "
         f"   {str(len(failed_records))} failed \n"
+        f"   {str(len(skipped_records))} records skipped (marked in overrides)"
+        f"\n   "
     )
     app.logger.info(message)
 
@@ -2713,12 +2762,11 @@ def load_records_into_invenio(
     # Order touched records in log file (saved time earlier by not
     # doing this on each iteration)
     _sort_touched_records(
-        touched_records=touched_records,
         previously_touched_records=previously_touched_records,
     )
 
 
-def delete_records_from_invenio(record_ids, token: Optional[str] = None):
+def delete_records_from_invenio(record_ids):
     """
     Delete the selected records from the invenioRDM instance.
     """

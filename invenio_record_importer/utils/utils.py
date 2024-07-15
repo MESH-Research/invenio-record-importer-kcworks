@@ -449,9 +449,12 @@ def compare_metadata(A: dict, B: dict) -> dict:
     def compare_people(list_a, list_b):
         people_diff = {}
         if not list_a:
-            people_diff["A"] = list_a
-            people_diff["B"] = list_b
-            return people_diff
+            if not list_b:
+                return {}
+            else:
+                people_diff["A"] = list_a
+                people_diff["B"] = list_b
+                return people_diff
         for idx, c in enumerate(list_b):
             same = True
             c_2 = list_a[idx]  # order should be the same
@@ -541,7 +544,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
             meta_diff["B"]["resource_type"] = meta_b["resource_type"]
 
         creators_comp = compare_people(
-            meta_a.get("creators"), meta_b["creators"]
+            meta_a.get("creators"), meta_b.get("creators")
         )
         if creators_comp:
             meta_diff["A"]["creators"] = creators_comp["A"]
@@ -698,10 +701,9 @@ def compare_metadata(A: dict, B: dict) -> dict:
                 same = True
                 if s in custom_a.keys():
                     if type(custom_a[s]) is str:
-                        if (
-                            unicodedata.normalize("NFC", custom_b[s])
-                            != custom_a[s]
-                        ):
+                        if unicodedata.normalize(
+                            "NFC", custom_b[s]
+                        ) != unicodedata.normalize("NFC", custom_a[s]):
                             same = False
                     elif type(custom_a[s]) is list:
                         if custom_b[s] != custom_a[s]:

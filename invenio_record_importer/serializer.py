@@ -1022,14 +1022,24 @@ def add_descriptions(
     # Descriptions/Abstracts
     normalized_desc = normalize_string(row["abstract_unchanged"])
     normalized_abstr = normalize_string(row["abstract"])
-    newrec["metadata"]["description"] = normalized_desc
-    if normalized_desc != normalized_abstr:
-        newrec["metadata"].setdefault("additional_descriptions", []).append(
-            {
-                "description": normalized_abstr,
-                "type": {"id": "other", "title": {"en": "Other"}},
-            }
+    if len(normalized_desc) > 2:
+        newrec["metadata"]["description"] = normalized_desc
+        if normalized_desc != normalized_abstr and len(normalized_abstr) > 2:
+            newrec["metadata"].setdefault(
+                "additional_descriptions", []
+            ).append(
+                {
+                    "description": normalized_abstr,
+                    "type": {"id": "other", "title": {"en": "Other"}},
+                }
+            )
+    else:
+        _append_bad_data(
+            row["id"],
+            ("abstract/description too short", row["abstract_unchanged"]),
+            bad_data_dict,
         )
+
     return newrec, bad_data_dict
 
 
@@ -2162,6 +2172,8 @@ def add_subjects_keywords(
         ]
         bad_subjects = {
             "1020301:Middles Ages:topical": "1020301:Middle Ages:topical",
+            "1204082:Japan:topical": "1204082:Japan:geographic",
+            "1204543:Australia:topical": "1204543:Australia:geographic",
             "1208380:Greece:topical": "1208380:Greece:geographic",
             "1242804:Scandinavia:topical": "1242804:Scandinavia:geographic",
             "1411635:Criticism, interpretation, etc.:topical": "1411635:Criticism, interpretation, etc.:form",
