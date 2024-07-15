@@ -552,7 +552,9 @@ def test_create_invenio_record(
     #  - parent
     #  - pids
     #  -
-    TESTING_SERVER_DOMAIN = app.config.get("RECORD_IMPORTER_DOMAIN")
+    TESTING_SERVER_DOMAIN = app.config.get("SITE_UI_URL").replace(
+        "https://", ""
+    )
 
     expected_headers = {
         "Server": "nginx/1.23.4",
