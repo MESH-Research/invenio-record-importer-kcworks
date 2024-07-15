@@ -13,7 +13,7 @@ Functions to convert and migrate legacy CORE deposits to InvenioRDM
 
 Relies on the following environment variables:
 
-MIGRATION_SERVER_DATA_DIR   The full path to the local directory where
+RECORD_IMPORTER_DATA_DIR   The full path to the local directory where
                             the source json files (exported from legacy
                             CORE) can be found.
 
@@ -201,7 +201,7 @@ def load_records(
 
         This program must be run from the base knowledge_commons_works
         directory. It will look for the exported records in the directory
-        specified by the MIGRATION_SERVER_DATA_DIR environment variable.
+        specified by the RECORD_IMPORTER_DATA_DIR environment variable.
 
         The program must also be run inside the pipenv virtual environment for
         the knowledge_commons_works instance. All of the commands must be
@@ -210,9 +210,7 @@ def load_records(
 
         The operations involved require authenitcation as an admin user in the
         knowledge_commons_works instance. This program will look for the
-        admin user's api token in the MIGRATION_API_TOKEN environment variable.
-        Where it's necessary to invite this user to a community, the program
-        will look for the community's id in the P_TOKEN environment variable.
+        admin user's api token in the RECORD_IMPORTER_API_TOKEN environment variable.
 
         Where necessary this program will create top-level domain communities,
         assign the records to the correct domain communities, create

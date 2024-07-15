@@ -131,7 +131,7 @@ class SerializationService:
         """Read raw data."""
 
         file_path = Path(
-            app.config["MIGRATION_SERVER_DATA_DIR"],
+            app.config["RECORD_IMPORTER_DATA_DIR"],
             "records-for-import.json",
         )
 

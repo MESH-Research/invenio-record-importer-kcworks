@@ -357,7 +357,7 @@ def test_api_request(
     app, admin, method, endpoint, args, json_dict, expected_response
 ):
     """ """
-    server = app.config.get("MIGRATION_SERVER_DOMAIN")
+    server = app.config.get("RECORD_IMPORTER_DOMAIN")
     token = admin.allowed_token
     other_args = {}
     if json_dict:
@@ -552,7 +552,7 @@ def test_create_invenio_record(
     #  - parent
     #  - pids
     #  -
-    TESTING_SERVER_DOMAIN = app.config.get("MIGRATION_SERVER_DOMAIN")
+    TESTING_SERVER_DOMAIN = app.config.get("RECORD_IMPORTER_DOMAIN")
 
     expected_headers = {
         "Server": "nginx/1.23.4",
@@ -1009,7 +1009,7 @@ def test_create_invenio_user(
 
 
 def test_record_loader(app, admin):
-    app.config["MIGRATION_API_TOKEN"] = admin.allowed_token
+    app.config["RECORD_IMPORTER_API_TOKEN"] = admin.allowed_token
     runner = CliRunner()
     result = runner.invoke(cli, ["load", "0", "1"])
     assert result.exit_code == 0

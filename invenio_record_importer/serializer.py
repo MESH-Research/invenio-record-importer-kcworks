@@ -2394,7 +2394,7 @@ def serialize_json() -> tuple[list[dict], dict]:
     with app.app_context():
         with open(
             Path(
-                app.config["MIGRATION_SERVER_DATA_DIR"],
+                app.config["RECORD_IMPORTER_DATA_DIR"],
                 "records-for-import.json",
             )
         ) as json_file:

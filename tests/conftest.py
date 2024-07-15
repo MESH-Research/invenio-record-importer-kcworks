@@ -133,11 +133,11 @@ parent_path = Path(__file__).parent.parent
 raw_data_path = (
     parent_path / "invenio_record_importer/tests/helpers/sample_records"
 )
-test_config["MIGRATION_SERVER_DATA_DIR"] = str(raw_data_path)
+test_config["RECORD_IMPORTER_DATA_DIR"] = str(raw_data_path)
 
 # TODO: change to something local for testing
 files_dir = Path(Path(__file__).parents[2], "kcr-untracked-files/humcore")
-test_config["MIGRATION_SERVER_FILES_LOCATION"] = str(files_dir)
+test_config["RECORD_IMPORTER_FILES_LOCATION"] = str(files_dir)
 
 log_file_ = parent_path / "invenio_record_importer" / "logs" / "invenio.log"
 if not log_file_path.exists():

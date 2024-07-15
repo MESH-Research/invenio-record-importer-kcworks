@@ -42,7 +42,7 @@ class InvenioRecordImporter(object):
         """
         self.config = ImporterConfig(app)
         for k in dir(self.config):
-            if k.startswith("RECORD_IMPORTER_") or k.startswith("MIGRATION_"):
+            if k.startswith("RECORD_IMPORTER_"):
                 app.config.setdefault(k, getattr(self.config, k))
 
         app.logger.handlers[0].setFormatter(

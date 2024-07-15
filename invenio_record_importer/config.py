@@ -8,7 +8,6 @@ where applicable. Flask configuration variables take precedence over
 environment variables.
 """
 
-import os
 from pathlib import Path
 
 
@@ -16,26 +15,25 @@ class ImporterConfig:
 
     def __init__(self, app):
         self.RECORD_IMPORTER_ADMIN_EMAIL = app.config.get("ADMIN_EMAIL", "")
-        # FIXME: Change these names to begin with RECORD_IMPORTER_
-        # instead of MIGRATION_ and change env variables to use INVENIO_ prefix
-        self.MIGRATION_SERVER_DATA_DIR = Path(
+
+        self.RECORD_IMPORTER_DATA_DIR = Path(
             app.config.get(
-                "MIGRATION_SERVER_DATA_DIR",
-                Path(Path(__file__).parents[2], "kcr-untracked-files"),
+                "RECORD_IMPORTER_DATA_DIR",
+                Path(Path(__file__).parent, "data"),
             )
         )
 
-        self.MIGRATION_SERVER_FILES_LOCATION = Path(
+        self.RECORD_IMPORTER_FILES_LOCATION = Path(
             app.config.get(
-                "MIGRATION_SERVER_FILES_LOCATION",
-                Path(self.MIGRATION_SERVER_DATA_DIR / "humcore"),
+                "RECORD_IMPORTER_FILES_LOCATION",
+                Path(self.RECORD_IMPORTER_DATA_DIR / "import_files"),
             )
         )
 
         self.RECORD_IMPORTER_OVERRIDES_FOLDER = Path(
             app.config.get(
                 "RECORD_IMPORTER_OVERRIDES_FOLDER",
-                self.MIGRATION_SERVER_DATA_DIR,
+                self.RECORD_IMPORTER_DATA_DIR,
             )
         )
 

@@ -29,7 +29,7 @@ pipenv install {path/to/invenio-record-importer}
 
 ## Setup
 
-Prior to running the importer, the required configuration variables listed below must be set either in the `invenio.cfg` file or as environment variables. A jsonlines file containing the serialized metadata records named `records-for-import.json` must also be placed in the folder identified by the MIGRATION_SERVER_DATA_DIR environment variable. All files for the records to be imported should be placed in the folder identified by the MIGRATION_SERVER_FILES_LOCATION environment variable.
+Prior to running the importer, the required configuration variables listed below must be set either in the `invenio.cfg` file or as environment variables. A jsonlines file containing the serialized metadata records named `records-for-import.json` must also be placed in the folder identified by the RECORD_IMPORTER_DATA_DIR environment variable. All files for the records to be imported should be placed in the folder identified by the RECORD_IMPORTER_FILES_LOCATION environment variable.
 
 ## Configuration
 
@@ -38,8 +38,8 @@ The importer relies on several environment variables. These can be set in the `i
 | Variable name                   | Required | Description                                                                                                                                                        |
 | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | RECORD_IMPORTER_ADMIN_EMAIL                     | Y | The email address of the admin user in the InvenioRDM instance. This defaults to the global ADMIN_EMAIL Flask environment variable.                                                                                                     |
-| MIGRATION_SERVER_DATA_DIR       | Y | The folder where the file with serialized metadata records can be found, named `records-for-import.json`                                                           |
-| MIGRATION_SERVER_FILES_LOCATION | N | The folder where the files for upload withe the new deposits may be found. It defaults to a subfolder of the MIGRATION_SERVER_DATA_DIR directory.                                                                                         |
+| RECORD_IMPORTER_DATA_DIR       | Y | The folder where the file with serialized metadata records can be found, named `records-for-import.json`                                                           |
+| RECORD_IMPORTER_FILES_LOCATION | N | The folder where the files for upload withe the new deposits may be found. It defaults to a subfolder of the RECORD_IMPORTER_DATA_DIR directory.                                                                                         |
 | RECORD_IMPORTER_LOGS_LOCATION   | N | The full path to the local directory where the record import log files will be written. It defaults to the `logs` folder of the `invenio-record-importer` modules.                                                                                          |
 | RECORD_IMPORTER_OVERRIDES_FOLDER | N | The full path to the local directory where the overrides files can be found. It defaults to the `app_data/importer` subfolder of the InvenioRDM instance folder (`/opt/invenio/src/app_data/importer` in the ui container).                                                                                       |
 | RECORD_IMPORTER_TOUCHED_LOG_PATH | N | The full path to the local file where the touched records log will be written. It defaults to the `invenio_record_importer_touched.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
@@ -54,7 +54,7 @@ The `serialize` command is run within the knowledge_commons_repository ui contai
 `invenio importer serialize`
 ```
 
-This will create a jsonl file named `records-for-import.json` in the directory specified by the MIGRATION_SERVER_DATA_DIR environment variable. This file will contain the serialized metadata records for import into InvenioRDM. There is at present no way to specify which records to serialize, so all records will be serialized.
+This will create a jsonl file named `records-for-import.json` in the directory specified by the RECORD_IMPORTER_DATA_DIR environment variable. This file will contain the serialized metadata records for import into InvenioRDM. There is at present no way to specify which records to serialize, so all records will be serialized.
 
 ### Metadata repair
 
@@ -168,7 +168,7 @@ pipenv run invenio importer load --use-sourceids hc:4723 hc:8271 hc:2246
 
 ### Source file locations
 
-The `load` command must be run from the base knowledge_commons_repository directory. It will look for the exported records in the directory specified by the MIGRATION_SERVER_DATA_DIR environment variable. It will look for the files to be uploaded in the directory specified by the MIGRATION_SERVER_FILES_LOCATION environment variable.
+The `load` command must be run from the base knowledge_commons_repository directory. It will look for the exported records in the directory specified by the RECORD_IMPORTER_DATA_DIR environment variable. It will look for the files to be uploaded in the directory specified by the RECORD_IMPORTER_FILES_LOCATION environment variable.
 
 ### Overriding metadata during loading
 

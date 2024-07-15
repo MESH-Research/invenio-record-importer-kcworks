@@ -335,11 +335,11 @@ def api_request(
     Make an api request and return the response
     """
     if not server:
-        server = app.config.get("MIGRATION_SERVER_DOMAIN")
+        server = app.config.get("RECORD_IMPORTER_DOMAIN")
     if not token:
-        token = app.config.get("MIGRATION_API_TOKEN")
+        token = app.config.get("RECORD_IMPORTER_API_TOKEN")
     if not protocol:
-        protocol = app.config.get("MIGRATION_SERVER_PROTOCOL")
+        protocol = app.config.get("RECORD_IMPORTER_PROTOCOL")
 
     payload_args = {}
 
@@ -873,7 +873,7 @@ def _upload_draft_files(
                 f" {source_filename}"
             )
         file_path = (
-            Path(app.config["MIGRATION_SERVER_FILES_LOCATION"]) / long_filename
+            Path(app.config["RECORD_IMPORTER_FILES_LOCATION"]) / long_filename
         )
         app.logger.debug(f"    uploading file: {file_path}")
         try:
@@ -2407,7 +2407,7 @@ def load_records_into_invenio(
     if clean_filenames:
         app.logger.info("Sanitizing file names...")
         FilesHelper.sanitize_filenames(
-            app.config["MIGRATION_SERVER_FILES_LOCATION"]
+            app.config["RECORD_IMPORTER_FILES_LOCATION"]
         )
 
     # Load list of previously touched records
