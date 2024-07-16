@@ -2377,7 +2377,7 @@ def load_records_into_invenio(
     created_log_path = Path(
         app.config.get(
             "RECORD_IMPORTER_CREATED_LOG_PATH",
-            "invenio_record_importer_created.jsonl",
+            "record_importer_created_records.jsonl",
         )
     )
 

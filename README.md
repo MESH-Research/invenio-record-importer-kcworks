@@ -42,9 +42,9 @@ The importer relies on several environment variables. These can be set in the `i
 | RECORD_IMPORTER_FILES_LOCATION | N | The folder where the files for upload withe the new deposits may be found. It defaults to a subfolder of the RECORD_IMPORTER_DATA_DIR directory.                                                                                         |
 | RECORD_IMPORTER_LOGS_LOCATION   | N | The full path to the local directory where the record import log files will be written. It defaults to the `logs` folder of the `invenio-record-importer` modules.                                                                                          |
 | RECORD_IMPORTER_OVERRIDES_FOLDER | N | The full path to the local directory where the overrides files can be found. It defaults to the `app_data/importer` subfolder of the InvenioRDM instance folder (`/opt/invenio/src/app_data/importer` in the ui container).                                                                                       |
-| RECORD_IMPORTER_CREATED_LOG_PATH | N | The full path to the local file where the created records log will be written. It defaults to the `invenio_record_importer_created.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
-| RECORD_IMPORTER_FAILED_LOG_PATH | N | The full path to the local file where the failed records log will be written. It defaults to the `invenio_record_importer_failed.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
-| RECORD_IMPORTER_SERIALIZED_FAILED_PATH | N | The full path to the local file where the serialized failed records will be written. It defaults to the `invenio_record_importer_failed_serialized.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
+| RECORD_IMPORTER_CREATED_LOG_PATH | N | The full path to the local file where the created records log will be written. It defaults to the `record_importer_created_records.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
+| RECORD_IMPORTER_FAILED_LOG_PATH | N | The full path to the local file where the failed records log will be written. It defaults to the `record_importer_failed_records.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
+| RECORD_IMPORTER_SERIALIZED_FAILED_PATH | N | The full path to the local file where the serialized failed records will be written. It defaults to the `record_importer_failed_serialized.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
 
 ## Serializer usage
 
@@ -210,7 +210,7 @@ If a record with the same DOI already exists in Invenio, the program will try to
 
 ### Logging
 
-Details about the program's progress are sent to Invenio's logging system as it runs. In addition, a running list of all records that have been created (a load attempt has been made) is recorded in the file `invenio_record_importer_created.json` in the RECORD_IMPORTER_LOGS_LOCATION directory. A record of all records that have failed to load is kept in the file `invenio_record_importer_failed.json` in the same directory. If failed records are later successfully
+Details about the program's progress are sent to Invenio's logging system as it runs. In addition, a running list of all records that have been created (a load attempt has been made) is recorded in the file `record_importer_created_records.json` in the RECORD_IMPORTER_LOGS_LOCATION directory. A record of all records that have failed to load is kept in the file `record_importer_failed_records.json` in the same directory. If failed records are later successfully
 repaired, they will be removed from the failed records file.
 
 ## Copyright

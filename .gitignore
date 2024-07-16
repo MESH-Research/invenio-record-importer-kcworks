@@ -168,8 +168,8 @@ cython_debug/
 #.idea/
 
 # Log files
-invenio_record_importer/logs/invenio_record_importer_failed.jsonl
-invenio_record_importer/logs/invenio_record_importer_created.jsonl
+invenio_record_importer/logs/record_importer_failed_records.jsonl
+invenio_record_importer/logs/record_importer_created_records.jsonl
 invenio_record_importer/logs/invenio_record_importer.log
 invenio_record_importer/logs/invenio_record_importer.log.*
 invenio_record_importer/logs/serializer_failed.jsonl

@@ -49,7 +49,7 @@ class ImporterConfig:
                 "RECORD_IMPORTER_FAILED_LOG_PATH",
                 Path(
                     self.RECORD_IMPORTER_LOGS_LOCATION,
-                    "invenio_record_importer_failed.jsonl",
+                    "record_importer_failed_records.jsonl",
                 ),
             )
         )
@@ -59,7 +59,7 @@ class ImporterConfig:
                 "RECORD_IMPORTER_CREATED_LOG_PATH",
                 Path(
                     self.RECORD_IMPORTER_LOGS_LOCATION,
-                    "invenio_record_importer_created.jsonl",
+                    "record_importer_created_records.jsonl",
                 ),
             )
         )
@@ -69,7 +69,7 @@ class ImporterConfig:
                 "RECORD_IMPORTER_SERIALIZED_FAILED_PATH",
                 Path(
                     self.RECORD_IMPORTER_LOGS_LOCATION,
-                    "invenio_record_importer_serialized_failed.jsonl",
+                    "record_importer_serialized_failed.jsonl",
                 ),
             )
         )

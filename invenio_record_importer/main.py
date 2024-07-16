@@ -232,11 +232,11 @@ def load_records(
         invenio_record_importer.log in the base invenio_record_importer/logs
         directory. A record of all records that have been created (a load
         attempt has been made) is recorded in the file
-        invenio_record_importer_created.json in the base
-        invenio_record_importer/logs directory. A record of all records that
+        record_importer_created_records.jsonl in a configurable directory.
+        A record of all records that
         have failed to load is recorded in the file
-        invenio_record_importer_failed.json in the
-        invenio_record_importer/logs directory. If failed records are later
+        record_importer_failed_records.json in the
+        same directory. If failed records are later
         successfully repaired, they will be removed from the failed records
         file.
 
