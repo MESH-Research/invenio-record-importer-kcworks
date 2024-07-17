@@ -28,6 +28,15 @@ class ExistingRecordNotUpdatedError(Exception):
         self.message = message
 
 
+class FailedCreatingUsageEventsError(Exception):
+    """Failed creating usage events error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(FailedCreatingUsageEventsError, self).__init__(message)
+        self.message = message
+
+
 class FileUploadError(Exception):
     """File upload error."""
 

@@ -36,6 +36,7 @@ from invenio_record_importer.errors import (
     CommonsGroupServiceError,
     DraftDeletionFailedError,
     ExistingRecordNotUpdatedError,
+    FailedCreatingUsageEventsError,
     FileUploadError,
     MissingNewUserEmailError,
     MissingParentMetadataError,
@@ -251,19 +252,28 @@ def create_stats_events(
                 download_events.append(build_file_unique_id(doc))
             current_stats.publish("file-download", download_events)
 
-    if eager:
-        # process_task.apply(throw=True)
-        # events = process_events.delay(
-        #     ["record-view", "file-download"]
-        # ).get()
-        events = process_events(["record-view", "file-download"])
-        app.logger.info(f"Events processed successfully. {pformat(events)}")
-        return events
-    else:
-        process_task = process_events.si(["record-view", "file-download"])
-        process_task.delay()
-        app.logger.info("Event processing task sent...")
-        return True
+    try:
+        if eager:
+            # process_task.apply(throw=True)
+            # events = process_events.delay(
+            #     ["record-view", "file-download"]
+            # ).get()
+            events = process_events(["record-view", "file-download"])
+            app.logger.info(
+                f"Events processed successfully. {pformat(events)}"
+            )
+            return events
+        else:
+            process_task = process_events.si(["record-view", "file-download"])
+            process_task.delay()
+            app.logger.info("Event processing task sent...")
+            return True
+    except Exception as e:
+        app.logger.error("Error creating usage events:")
+        app.logger.error(str(e))
+        raise FailedCreatingUsageEventsError(
+            "Error creating usage events: {str(e)}"
+        )
 
 
 def create_stats_aggregations(
@@ -335,11 +345,11 @@ def api_request(
     Make an api request and return the response
     """
     if not server:
-        server = app.config.get("RECORD_IMPORTER_DOMAIN")
+        server = app.config.get("APP_UI_URL")
     if not token:
         token = app.config.get("RECORD_IMPORTER_API_TOKEN")
     if not protocol:
-        protocol = app.config.get("RECORD_IMPORTER_PROTOCOL")
+        protocol = app.config.get("RECORD_IMPORTER_PROTOCOL", "http")
 
     payload_args = {}
 
@@ -2611,6 +2621,7 @@ def load_records_into_invenio(
                     "DraftDeletionFailedError": msg,
                     "ExistingRecordNotUpdatedError": msg,
                     "FileKeyNotFoundError": msg,
+                    "FailedCreatingUsageEventsError": msg,
                     "FileUploadError": msg,
                     "UploadFileNotFoundError": msg,
                     "InvalidKeyError": msg,
