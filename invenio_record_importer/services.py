@@ -57,7 +57,7 @@ class SerializationService:
             list[dict]: List of serialized json records as python dictionaries.
         """
 
-        file_path = Path(__file__).parent / "data" / "serialized_data.jsonl"
+        file_path = Path(app.config["RECORD_IMPORTER_SERIALIZED_PATH"])
 
         serialized_recs = []
 

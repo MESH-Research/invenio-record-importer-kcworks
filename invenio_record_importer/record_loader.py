@@ -2440,10 +2440,10 @@ def load_records_into_invenio(
 
     app.logger.info(
         f"Loading records from serialized data: "
-        f"{Path(__file__).parent / 'data' / 'serialized_data.jsonl'}..."
+        f"{app.config.get('RECORD_IMPORTER_SERIALIZED_PATH')}..."
     )
     with jsonlines.open(
-        Path(__file__).parent / "data" / "serialized_data.jsonl", "r"
+        Path(app.config.get("RECORD_IMPORTER_SERIALIZED_PATH")), "r"
     ) as json_source:
         # decide how to determine the record set
         if retry_failed:

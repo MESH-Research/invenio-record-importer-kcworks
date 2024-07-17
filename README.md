@@ -41,10 +41,15 @@ The importer relies on several environment variables. These can be set in the `i
 | RECORD_IMPORTER_DATA_DIR       | Y | The folder where the file with serialized metadata records can be found, named `records-for-import.json`                                                           |
 | RECORD_IMPORTER_FILES_LOCATION | N | The folder where the files for upload withe the new deposits may be found. It defaults to a subfolder of the RECORD_IMPORTER_DATA_DIR directory.                                                                                         |
 | RECORD_IMPORTER_LOGS_LOCATION   | N | The full path to the local directory where the record import log files will be written. It defaults to the `logs` folder of the `invenio-record-importer` modules.                                                                                          |
-| RECORD_IMPORTER_OVERRIDES_FOLDER | N | The full path to the local directory where the overrides files can be found. It defaults to the `app_data/importer` subfolder of the InvenioRDM instance folder (`/opt/invenio/src/app_data/importer` in the ui container).                                                                                       |
+| RECORD_IMPORTER_OVERRIDES_FOLDER | N | The full path to the local directory where the overrides files can be found. It defaults to the `overrides` subfolder of the folder at RECORD_IMPORTER_DATA_DIR.                                                                                       |
 | RECORD_IMPORTER_CREATED_LOG_PATH | N | The full path to the local file where the created records log will be written. It defaults to the `record_importer_created_records.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
 | RECORD_IMPORTER_FAILED_LOG_PATH | N | The full path to the local file where the failed records log will be written. It defaults to the `record_importer_failed_records.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
+| RECORD_IMPORTER_SERIALIZED_PATH | N | The full path to the local file where the serialized records will be written. It defaults to the `record_importer_serialized_records.jsonl` file in the RECORD_IMPORTER_DATA_DIR folder.                                                                                       |
 | RECORD_IMPORTER_SERIALIZED_FAILED_PATH | N | The full path to the local file where the serialized failed records will be written. It defaults to the `record_importer_failed_serialized.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
+
+The required folders must of course be created before the importer is run. The importer will not create these folders if they do not exist. The various log files and serialized records files will be created by the importer if they do not already exist.
+
+Remember that in containerized environments, the directories holding data and logs must be persistent. In a Docker environment, these directories should be mounted as volumes in the container.
 
 ## Serializer usage
 

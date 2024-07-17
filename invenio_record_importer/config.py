@@ -33,7 +33,7 @@ class ImporterConfig:
         self.RECORD_IMPORTER_OVERRIDES_FOLDER = Path(
             app.config.get(
                 "RECORD_IMPORTER_OVERRIDES_FOLDER",
-                self.RECORD_IMPORTER_DATA_DIR,
+                Path(self.RECORD_IMPORTER_DATA_DIR, "overrides"),
             )
         )
 
@@ -60,6 +60,18 @@ class ImporterConfig:
                 Path(
                     self.RECORD_IMPORTER_LOGS_LOCATION,
                     "record_importer_created_records.jsonl",
+                ),
+            )
+        )
+
+        # TODO: For testing was Path(__file__).parent / "data"
+        # / "serialized_data.jsonl"
+        self.RECORD_IMPORTER_SERIALIZED_PATH = Path(
+            app.config.get(
+                "RECORD_IMPORTER_SERIALIZED_PATH",
+                Path(
+                    self.RECORD_IMPORTER_DATA_DIR,
+                    "record_importer_serialized_records.jsonl",
                 ),
             )
         )

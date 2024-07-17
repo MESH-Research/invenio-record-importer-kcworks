@@ -175,3 +175,4 @@ invenio_record_importer/logs/invenio_record_importer.log.*
 invenio_record_importer/logs/serializer_failed.jsonl
 
 invenio_record_importer/data/serialized_data.jsonl
+invenio_record_importer/data/record_importer_serialized_records.jsonl

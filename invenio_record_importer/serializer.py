@@ -2518,7 +2518,7 @@ def serialize_json() -> tuple[list[dict], dict]:
                 failed_writer.write({"id": k, "errors": v})
 
         with jsonlines.open(
-            Path(__file__).parent / "data" / "serialized_data.jsonl", mode="w"
+            Path(app.config["RECORD_IMPORTER_SERIALIZED_PATH"]), mode="w"
         ) as output_file:
             for rec in newrec_list:
                 output_file.write(rec)
