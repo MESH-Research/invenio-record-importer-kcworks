@@ -31,6 +31,16 @@ pipenv install {path/to/invenio-record-importer}
 
 Prior to running the importer, the required configuration variables listed below must be set either in the `invenio.cfg` file or as environment variables. A jsonlines file containing the serialized metadata records named `records-for-import.json` must also be placed in the folder identified by the RECORD_IMPORTER_DATA_DIR environment variable. All files for the records to be imported should be placed in the folder identified by the RECORD_IMPORTER_FILES_LOCATION environment variable.
 
+## Dependencies
+
+In addition to the normal InvenioRDM packages and KCWorks, this module relies in particular
+on the following packages, which are also installed in the standard KCWorks environment:
+
+- invenio-remote-user-data
+- invenio-group-collections
+
+Fetching of user data and creation of group collections relies on these packages being properly configured.
+
 ## Configuration
 
 The importer relies on several environment variables. These can be set in the `invenio.cfg` file of the InvenioRDM instance, or in a `.env` file in the base directory of the InvenioRDM instance. If they are set in the `.env` file they must be prefixed with `INVENIO_`.

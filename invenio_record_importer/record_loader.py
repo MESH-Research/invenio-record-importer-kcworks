@@ -1241,10 +1241,10 @@ def create_invenio_user(
             f"record_source {record_source} not found in SSO_SAML_IDPS"
         )
 
-    if source_username and not user_email:
-        user_email = UsersHelper.get_user_by_source_id(source_username)[
-            "email"
-        ]
+    if source_username and record_source and not user_email:
+        user_email = UsersHelper.get_user_by_source_id(
+            source_username, record_source
+        )["email"]
 
     if not user_email:
         user_email = app.config.get("RECORD_IMPORTER_ADMIN_EMAIL")

@@ -127,16 +127,35 @@ class UsersHelper:
         return admin_role_holders
 
     @staticmethod
-    def get_user_by_source_id(source_id: str):
-        """Get a user by their source id."""
-        remote_api_token = os.environ["COMMONS_API_TOKEN"]
-        # FIXME: Change for production and make configurable
-        api_url = (
-            f"https://hcommons-dev.org/wp-json/commons/v1/users/{source_id}"
-        )
+    def get_user_by_source_id(source_id: str, record_source: str) -> dict:
+        """Get a user by their source id.
+
+        Note that this method depends on the invenio_remote_user_data module
+        being installed and configured. The record_source parameter should
+        correspond to the name of a remote api in the REMOTE_USER_DATA_API_ENDPOINTS config variable.
+
+        :param source_id: The id of the user on the source service from which
+            the record is coming (e.g. '1234')
+        :param record_source: The name of the source service from which the
+            record is coming (e.g. 'knowledgeCommons')
+
+        :returns: A dictionary containing the user data
+        """
+        endpoint_config = app.config.get("REMOTE_USER_DATA_API_ENDPOINTS")[
+            record_source
+        ]["users"]
+
+        remote_api_token = os.environ[
+            endpoint_config["token_env_variable_label"]
+        ]
+        api_url = f"{endpoint_config['remote_endpoint']}/{source_id}"
         headers = {"Authorization": f"Bearer {remote_api_token}"}
-        response = requests.get(
-            api_url, headers=headers, verify=False, timeout=10
+        response = requests.request(
+            endpoint_config["remote_method"],
+            url=api_url,
+            headers=headers,
+            verify=False,
+            timeout=10,
         )
         if response.status_code != 200:
             app.logger.error(
