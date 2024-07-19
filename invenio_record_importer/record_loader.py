@@ -1368,6 +1368,10 @@ def prepare_invenio_community(community_string: str) -> dict:
     else:
         community_label = community_label[0]
 
+    # FIXME: remnant of name change
+    if community_label == "hcommons":
+        community_label = "kcommons"
+
     app.logger.debug(f"checking for community {community_label}")
     community_check = current_communities.service.search(
         system_identity, q=f"slug:{community_label}"
