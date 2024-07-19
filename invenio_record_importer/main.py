@@ -32,6 +32,7 @@ from invenio_record_importer.record_loader import (
     delete_records_from_invenio,
     load_records_into_invenio,
 )
+import json
 
 from pprint import pformat, pprint
 from typing import Optional
@@ -490,19 +491,64 @@ def create_user(
             The user's full name for the new account.
     """
     create_response = create_invenio_user(
-        email, origin, source_username, full_name
+        email,
+        record_source=origin,
+        source_username=source_username,
+        full_name=full_name,
     )
+    print(dir(create_response["user"]))
     user_data = create_response["user"]
     if create_response["new_user"]:
-        print(f"User {user_data['id']} created successfully.")
-        print(f"User data: {pformat(user_data)}")
+        print(f"User {user_data.id} created successfully.")
+        # print(f"User data: {pformat(user_data.__dict__)}")
+        print(f"username: {pformat(user_data.username)}")
+        print(f"email: {pformat(user_data.email)}")
+        print(f"profile: {pformat(user_data.user_profile)}")
+        print(f"remote accounts: {pformat(user_data.remote_accounts)}")
+        print(
+            f"external identifiers: {pformat(user_data.external_identifiers)}"
+        )
+        print(f"domain: {pformat(user_data.domain)}")
+        print(f"authenticated: {pformat(user_data.is_authenticated)}")
+        print(f"preferences: {pformat(user_data.preferences)}")
+        print(f"active: {pformat(user_data.active)}")
     else:
         admin_email = app.config.get("RECORD_IMPORTER_ADMIN_EMAIL")
-        if user_data["email"] == admin_email:
+        if user_data.email == admin_email:
             print("Error: The user could not be created.")
         else:
             print("Error: The user already exists in the system:")
-            print(f"User data: {pformat(user_data)}")
+            # print(f"User data: {pformat(user_data.__dict__)}")
+            print(f"username: {pformat(user_data.username)}")
+            print(f"email: {pformat(user_data.email)}")
+            print(f"profile: {pformat(user_data.user_profile)}")
+            print(f"remote accounts: {pformat(user_data.remote_accounts)}")
+            print(
+                f"external identifiers: "
+                f"{pformat(user_data.external_identifiers)}"
+            )
+            print(f"domain: {pformat(user_data.domain)}")
+            print(f"authenticated: {pformat(user_data.is_authenticated)}")
+            print(f"preferences: {pformat(user_data.preferences)}")
+            print(f"active: {pformat(user_data.active)}")
+
+
+@cli.command(name="count")
+@with_appcontext
+def count_objects():
+    """
+    Count the number of objects in the JSON file for import.
+
+    The file location is specified by the RECORD_IMPORTER_SERIALIZED_PATH
+    config variable.
+    """
+    serialized_path = app.config.get("RECORD_IMPORTER_SERIALIZED_PATH")
+    try:
+        with open(serialized_path, "r") as file:
+            lines_count = sum(1 for line in file)
+            print(f"Total objects in {serialized_path}: {lines_count}")
+    except FileNotFoundError:
+        print(f"Error: File not found at {serialized_path}")
 
 
 @cli.command(name="delete")

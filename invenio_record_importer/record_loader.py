@@ -6,6 +6,7 @@ from invenio_access.permissions import system_identity
 
 # from invenio_access.utils import get_identity
 from invenio_accounts import current_accounts
+from invenio_accounts.errors import AlreadyLinkedError
 from invenio_accounts.models import User
 from invenio_communities.proxies import current_communities
 from invenio_db import db
@@ -1301,28 +1302,37 @@ def create_invenio_user(
         ).one_or_none()
 
         if not existing_saml:
-            UserIdentity.create(active_user, record_source, source_username)
-            db.session.commit()
-            app.logger.info(
-                f"    configured SAML login for {user_email} as"
-                f" {source_username} on {record_source}..."
-            )
-            assert UserIdentity.query.filter_by(
-                id_user=active_user.id,
-                method=record_source,
-                id=source_username,
-            ).one_or_none()
+            try:
+                UserIdentity.create(active_user, record_source, source_username)
+                db.session.commit()
+                app.logger.info(
+                    f"    configured SAML login for {user_email} as"
+                    f" {source_username} on {record_source}..."
+                )
+                assert UserIdentity.query.filter_by(
+                    id_user=active_user.id,
+                    method=record_source,
+                    id=source_username,
+                ).one_or_none()
 
-            app.logger.info(active_user.external_identifiers)
-            assert any(
-                [
-                    a
-                    for a in active_user.external_identifiers
-                    if a.method == record_source
-                    and a.id == source_username
-                    and a.id_user == active_user.id
-                ]
-            )
+                app.logger.info(active_user.external_identifiers)
+                assert any(
+                    [
+                        a
+                        for a in active_user.external_identifiers
+                        if a.method == record_source
+                        and a.id == source_username
+                        and a.id_user == active_user.id
+                    ]
+                )
+            except AlreadyLinkedError as e:
+                if source_username in str(e):
+                    app.logger.warning(
+                        f"    SAML login already configured for"
+                        f" {source_username} on {record_source}..."
+                    )
+                else:
+                    raise e
         else:
             app.logger.info(
                 f"   found existing SAML login for {user_email},"
