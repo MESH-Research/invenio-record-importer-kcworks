@@ -24,18 +24,17 @@ knowledge_commons_works directory.
 import click
 from flask import current_app as app
 from flask.cli import with_appcontext
-from typing import Optional
 
 from invenio_record_importer.serializer import serialize_json
 from invenio_record_importer.services import SerializationService
 from invenio_record_importer.record_loader import (
-    load_records_into_invenio,
+    create_invenio_user,
     delete_records_from_invenio,
+    load_records_into_invenio,
 )
 
-# from invenio_record_importer.legacy.fedora_fetcher import fetch_fedora_records
-import json
-from pprint import pprint
+from pprint import pformat, pprint
+from typing import Optional
 
 
 @click.group()
@@ -429,6 +428,81 @@ def read_records(
         for c in records:
             print(f"Processed (serialized) input data for record {c['id']}:")
             pprint(c["record"])
+
+
+@cli.command(name="create_user")
+@click.option(
+    "-e",
+    "--email",
+    help=(
+        "The email address of the user to create. This must be the same "
+        "Required."
+    ),
+)
+@click.option(
+    "-o",
+    "--origin",
+    default="knowledgeCommons",
+    help=(
+        "The commons instance or id provider where the users are being created."
+        "flag is True. Defaults to 'doi'."
+    ),
+)
+@click.option(
+    "-n",
+    "--source-username",
+    help=("The username of the user in the source system. Required."),
+)
+@click.option(
+    "-p",
+    "--full-name",
+    help=("The user's full name for the new account."),
+)
+@with_appcontext
+def create_user(
+    email: str, origin: str, source_username: str, full_name: str
+) -> None:
+    """
+    Create a new user in InvenioRDM linked to an external service.
+
+    This function does not just create a new user in the Invenio database,
+    but also links the user's account to an external service as a SAML
+    identity provider and a source of user data. (Depends on a service
+    being configured for the invenio-saml and invenio-remote-user-data
+    extensions.)
+
+    This operation assumes that usernames on the source system are unique
+    and that the email address is the same as the one used in the source
+    system.
+
+    params:
+        email: str
+            The email address of the user to create. This must be the same
+            email address that the user used in the source system.
+
+        origin: str
+            The commons instance or id provider where the users are being created.
+
+        source_username: str
+            The username of the user in the source system.
+
+        full_name: str
+            The user's full name for the new account.
+    """
+    create_response = create_invenio_user(
+        email, origin, source_username, full_name
+    )
+    user_data = create_response["user"]
+    if create_response["new_user"]:
+        print(f"User {user_data['id']} created successfully.")
+        print(f"User data: {pformat(user_data)}")
+    else:
+        admin_email = app.config.get("RECORD_IMPORTER_ADMIN_EMAIL")
+        if user_data["email"] == admin_email:
+            print("Error: The user could not be created.")
+        else:
+            print("Error: The user already exists in the system:")
+            print(f"User data: {pformat(user_data)}")
 
 
 @cli.command(name="delete")
