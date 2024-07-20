@@ -619,6 +619,13 @@ def create_invenio_record(
                             "    existing record has files attached..."
                         )
                         update_payload["files"] = existing_metadata["files"]
+                    # Invenio validator will reject other rights metadata
+                    # values from existing records
+                    if existing_metadata["metadata"].get("rights"):
+                        existing_metadata["metadata"]["rights"] = [
+                            {"id": r["id"]}
+                            for r in existing_metadata["metadata"]["rights"]
+                        ]
                     app.logger.info(
                         "    metadata updated to match migration source..."
                     )
@@ -890,9 +897,31 @@ def _upload_draft_files(
         try:
             assert file_path.is_file()
         except AssertionError:
-            raise UploadFileNotFoundError(
-                f"    file not found for upload {file_path}..."
-            )
+            # FIXME: Weird production error where hclegacy:file_location gets
+            # accents converted to precombined glyphs (not on dev!)
+            try:
+                full_length = len(long_filename.split("."))
+                try_index = -2
+                while abs(try_index) + 2 <= full_length:
+                    file_path = Path(
+                        app.config["RECORD_IMPORTER_FILES_LOCATION"],
+                        ".".join(long_filename.split(".")[:try_index])
+                        + "."
+                        + k,
+                    )
+                    if file_path.is_file():
+                        break
+                    else:
+                        try_index -= 1
+                assert file_path.is_file()
+            except AssertionError:
+                try:
+                    file_path = unicodedata.normalize("NFD", str(file_path))
+                    assert file_path.is_file()
+                except AssertionError:
+                    raise UploadFileNotFoundError(
+                        f"    file not found for upload {file_path}..."
+                    )
 
         # FIXME: Change the identity throughout the process to the user
         # and permission protect the top-level functions
@@ -1245,7 +1274,7 @@ def create_invenio_user(
     if source_username and record_source and not user_email:
         user_email = UsersHelper.get_user_by_source_id(
             source_username, record_source
-        )["email"]
+        ).get("email")
 
     if not user_email:
         user_email = app.config.get("RECORD_IMPORTER_ADMIN_EMAIL")
@@ -1303,7 +1332,9 @@ def create_invenio_user(
 
         if not existing_saml:
             try:
-                UserIdentity.create(active_user, record_source, source_username)
+                UserIdentity.create(
+                    active_user, record_source, source_username
+                )
                 db.session.commit()
                 app.logger.info(
                     f"    configured SAML login for {user_email} as"
@@ -1863,6 +1894,16 @@ def add_record_to_group_collections(
     returns:
         list: the list of group collections the record was added to
     """
+    bad_groups = [
+        "1003749",
+        "1000743",
+        "1004285",
+        "1000737",
+        "1000754",
+        "1003111",
+        "1001232",
+        "1004181",
+    ]
     # FIXME: See whether this can be generalized
     if record_source == "knowledgeCommons":
         added_to_collections = []
@@ -1871,7 +1912,9 @@ def add_record_to_group_collections(
             for g in metadata_record["custom_fields"].get(
                 "hclegacy:groups_for_deposit", []
             )
-            if g.get("group_identifier") and g.get("group_name")
+            if g.get("group_identifier")
+            and g.get("group_name")
+            and g.get("group_identifier") not in bad_groups
         ]
         for group in group_list:
             group_id = group["group_identifier"]
@@ -2631,6 +2674,7 @@ def load_records_into_invenio(
                     except AttributeError:
                         pass
                 error_reasons = {
+                    "CommonsGroupNotFoundError": msg,
                     "CommonsGroupServiceError": msg,
                     "DraftDeletionFailedError": msg,
                     "ExistingRecordNotUpdatedError": msg,

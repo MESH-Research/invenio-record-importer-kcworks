@@ -970,7 +970,9 @@ def add_titles(
     # Titles
     # FIXME: Filter out titles with punctuation from full biblio ref in
     #    field?
-    normalized_title = normalize_string(row["title_unchanged"])
+    normalized_title = normalize_string(
+        row["title_unchanged"] if row["title_unchanged"] else row["title"]
+    )
     normalized_changed = normalize_string(row["title"])
     newrec["metadata"]["title"] = normalize_string(normalized_title)
     # FIXME: Why is this here?
