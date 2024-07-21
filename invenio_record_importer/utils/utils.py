@@ -17,7 +17,8 @@ from flask_security.utils import hash_password
 import fnmatch
 from invenio_access.permissions import system_identity
 from invenio_accounts.proxies import current_accounts
-from invenio_communities import current_communities
+from invenio_communities.proxies import current_communities
+from invenio_communities.members.records.api import Member
 from invenio_search.proxies import current_search_client
 from isbnlib import is_isbn10, is_isbn13, clean
 import os
@@ -323,6 +324,59 @@ class CommunityRecordHelper:
         )
         assert updated["access"]["review_policy"] == review_policy
         return True
+
+    @staticmethod
+    def add_owner(community_id: str, owner_id: int):
+        """Add an owner to a community.
+
+        params:
+            community_id: str: The id of the community to update
+            owner_id: int: The id of the user to add as an owner
+
+        raises:
+            AssertionError: If the owner was not added successfully
+
+        returns:
+            bool: True if the owner was added successfully
+        """
+        try:
+            record_data = current_communities.service.read(
+                system_identity, community_id
+            ).to_dict()
+        except Exception as e:
+            raise e
+            community_list = current_communities.service.search(
+                identity=system_identity, q=f"slug:{community_id}"
+            )
+            assert community_list.total == 1
+            record_data = next(community_list.hits).to_dict()
+
+        community_members = Member.get_members(record_data["id"])
+        owners = [o.user_id for o in community_members if o.role == "owner"]
+        if owner_id not in owners:
+            owner = current_communities.service.members.add(
+                system_identity,
+                record_data["id"],
+                data={
+                    "members": [{"type": "user", "id": str(owner_id)}],
+                    "role": "owner",
+                },
+            )
+
+        community_members_b = Member.get_members(record_data["id"])
+
+        owner = [
+            {
+                "user_id": o.user_id,
+                "role": o.role,
+                "community_id": o.community_id,
+                "community_slug": record_data["slug"],
+            }
+            for o in community_members_b
+            if o.role == "owner" and o.user_id == owner_id
+        ][0]
+
+        return owner
 
 
 def generate_random_string(length):
@@ -733,6 +787,9 @@ def compare_metadata(A: dict, B: dict) -> dict:
                 if not same:
                     custom_diff["A"][s] = custom_a[s]
                     custom_diff["B"][s] = custom_b[s]
+            elif s in custom_a.keys():
+                custom_diff["A"][s] = custom_a[s]
+                custom_diff["B"][s] = None
 
         if (
             "hclegacy:groups_for_deposit" in custom_b.keys()

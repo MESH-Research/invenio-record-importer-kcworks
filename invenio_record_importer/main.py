@@ -24,6 +24,7 @@ knowledge_commons_works directory.
 import click
 from flask import current_app as app
 from flask.cli import with_appcontext
+from halo import Halo
 
 from invenio_record_importer.serializer import serialize_json
 from invenio_record_importer.services import SerializationService
@@ -32,7 +33,6 @@ from invenio_record_importer.record_loader import (
     delete_records_from_invenio,
     load_records_into_invenio,
 )
-import json
 
 from pprint import pformat, pprint
 from typing import Optional
@@ -446,7 +446,7 @@ def read_records(
     default="knowledgeCommons",
     help=(
         "The commons instance or id provider where the users are being created."
-        "flag is True. Defaults to 'doi'."
+        "flag is True. Defaults to 'knowledgeCommons'."
     ),
 )
 @click.option(
@@ -455,13 +455,27 @@ def read_records(
     help=("The username of the user in the source system. Required."),
 )
 @click.option(
-    "-p",
+    "-f",
     "--full-name",
     help=("The user's full name for the new account."),
 )
+@click.option(
+    "-c",
+    "--community-owner",
+    multiple=True,
+    help=(
+        "The id (slug or UUID) of the community to which the user will be "
+        "assigned as owner. To submit multiple values, repeat the flag for "
+        "each value."
+    ),
+)
 @with_appcontext
 def create_user(
-    email: str, origin: str, source_username: str, full_name: str
+    email: str,
+    origin: str,
+    source_username: str,
+    full_name: str,
+    community_owner: list,
 ) -> None:
     """
     Create a new user in InvenioRDM linked to an external service.
@@ -476,31 +490,44 @@ def create_user(
     and that the email address is the same as the one used in the source
     system.
 
+    If desired, the user can be assigned as the owner of one or more
+    communities in the Invenio instance.
+
     params:
         email: str
             The email address of the user to create. This must be the same
             email address that the user used in the source system.
 
         origin: str
-            The commons instance or id provider where the users are being created.
+            The commons instance or id provider where the users are
+            being created.
 
         source_username: str
             The username of the user in the source system.
 
         full_name: str
             The user's full name for the new account.
+
+        community_owner: list
+            The id of the community to which the user will be assigned as
+            owner. To submit multiple values, repeat the flag for each value.
     """
+    spinner = Halo(
+        text=f"Creating user {email}, {source_username}, from {origin}...",
+        spinner="dots",
+    )
+    spinner.start()
+
     create_response = create_invenio_user(
         email,
         record_source=origin,
         source_username=source_username,
         full_name=full_name,
+        community_owner=community_owner,
     )
-    print(dir(create_response["user"]))
     user_data = create_response["user"]
-    if create_response["new_user"]:
-        print(f"User {user_data.id} created successfully.")
-        # print(f"User data: {pformat(user_data.__dict__)}")
+
+    def print_user_data(user_data, community_owner, communities_owned):
         print(f"username: {pformat(user_data.username)}")
         print(f"email: {pformat(user_data.email)}")
         print(f"profile: {pformat(user_data.user_profile)}")
@@ -512,25 +539,44 @@ def create_user(
         print(f"authenticated: {pformat(user_data.is_authenticated)}")
         print(f"preferences: {pformat(user_data.preferences)}")
         print(f"active: {pformat(user_data.active)}")
+        if community_owner:
+            print_community_owner(
+                community_owner, create_response["communities_owned"]
+            )
+
+    def print_community_owner(community_owner, communities_owned):
+        print(
+            f"User {email} has been assigned as owner of the "
+            "following communities:"
+        )
+        for community_id in community_owner:
+            matches = [
+                c
+                for c in communities_owned
+                if community_id in [c["community_id"], c["community_slug"]]
+            ]
+            if matches[0]:
+                print(matches[0]["community_id"], matches[0]["community_slug"])
+            else:
+                print(f"Error: Not assigned ownership of {community_id}.")
+
+    if create_response["new_user"]:
+        spinner.stop()
+        print_user_data(
+            user_data, community_owner, create_response["communities_owned"]
+        )
     else:
+        spinner.stop()
         admin_email = app.config.get("RECORD_IMPORTER_ADMIN_EMAIL")
         if user_data.email == admin_email:
             print("Error: The user could not be created.")
         else:
-            print("Error: The user already exists in the system:")
-            # print(f"User data: {pformat(user_data.__dict__)}")
-            print(f"username: {pformat(user_data.username)}")
-            print(f"email: {pformat(user_data.email)}")
-            print(f"profile: {pformat(user_data.user_profile)}")
-            print(f"remote accounts: {pformat(user_data.remote_accounts)}")
-            print(
-                f"external identifiers: "
-                f"{pformat(user_data.external_identifiers)}"
+            print("NOTE: The user already exists in the system:")
+            print_user_data(
+                user_data,
+                community_owner,
+                create_response["communities_owned"],
             )
-            print(f"domain: {pformat(user_data.domain)}")
-            print(f"authenticated: {pformat(user_data.is_authenticated)}")
-            print(f"preferences: {pformat(user_data.preferences)}")
-            print(f"active: {pformat(user_data.active)}")
 
 
 @cli.command(name="count")
@@ -557,7 +603,10 @@ def delete_records(records):
     """
     Delete one or more records from InvenioRDM by record id.
     """
-    delete_records_from_invenio(records)
+    print("Starting to delete records")
+    results = delete_records_from_invenio(records)
+    pprint(results)
+    print(f"All done deleting records: {[k for k in results.keys()]}")
 
 
 # @cli.command(name="fedora")

@@ -854,7 +854,10 @@ def add_legacy_commons_info(
     # HC submitter info
     if row["submitter_email"]:
         newrec["custom_fields"]["kcr:submitter_email"] = row["submitter_email"]
-    newrec["custom_fields"]["kcr:submitter_username"] = row["submitter_login"]
+    if row["submitter_login"]:
+        newrec["custom_fields"]["kcr:submitter_username"] = row[
+            "submitter_login"
+        ]
     if row["submitter"]:
         try:
             row["submitter"] = str(row["submitter"])
@@ -890,9 +893,11 @@ def add_legacy_commons_info(
             if type(row["society_id"]) is list
             else [row["society_id"]]
         )
-        newrec["custom_fields"]["hclegacy:submitter_org_memberships"] = row[
-            "society_id"
-        ]
+        row["society_id"] = [r for r in row["society_id"] if r]
+        if row["society_id"]:
+            newrec["custom_fields"]["hclegacy:submitter_org_memberships"] = (
+                row["society_id"]
+            )
 
     # Was CORE deposit previously published?
     if row["published"]:
@@ -2173,6 +2178,8 @@ def add_subjects_keywords(
             "Urban studies",
         ]
         bad_subjects = {
+            "1239509:Africa:topical": "1239509:Africa:geographic",
+            "29097:Dante Alighieri, 1265-1321:topical": "29097:Dante Alighieri, 1265-1321:personal",
             "1020301:Middles Ages:topical": "1020301:Middle Ages:topical",
             "1204082:Japan:topical": "1204082:Japan:geographic",
             "1204543:Australia:topical": "1204543:Australia:geographic",

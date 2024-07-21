@@ -4,7 +4,7 @@ from halo import Halo
 from flask import current_app as app
 from invenio_access.permissions import system_identity
 
-# from invenio_access.utils import get_identity
+from invenio_access.utils import get_identity
 from invenio_accounts import current_accounts
 from invenio_accounts.errors import AlreadyLinkedError
 from invenio_accounts.models import User
@@ -22,6 +22,7 @@ from invenio_group_collections.proxies import (
 )
 from invenio_oauthclient.models import UserIdentity
 from invenio_pidstore.errors import PIDUnregistered, PIDDoesNotExistError
+from invenio_rdm_records.records.api import RDMRecord
 from invenio_rdm_records.proxies import (
     current_rdm_records,
     current_rdm_records_service as records_service,
@@ -492,9 +493,6 @@ def create_invenio_record(
     metadata = _coerce_types(metadata)
     app.logger.debug("metadata for new record:")
     app.logger.debug(pformat(metadata))
-    for key, val in overrides.items():
-        app.logger.debug(f"updating metadata key {key} with value {val}")
-        metadata = replace_value_in_nested_dict(metadata, key, val)
 
     # Check for existing record with same DOI
     if "pids" in metadata.keys() and "doi" in metadata["pids"].keys():
@@ -580,9 +578,12 @@ def create_invenio_record(
                         "pids",
                     ]:
                         for k2 in val.keys():
-                            update_payload.setdefault(key, {})[k2] = metadata[
-                                key
-                            ][k2]
+                            if val[k2] is None:
+                                update_payload.setdefault(key, {}).pop(k2)
+                            else:
+                                update_payload.setdefault(key, {})[k2] = (
+                                    metadata[key][k2]
+                                )
                 app.logger.info(
                     "    updating existing record with new metadata..."
                 )
@@ -1233,6 +1234,7 @@ def create_invenio_user(
     source_username: str = "",
     full_name: str = "",
     record_source: str = "",
+    community_owner: list = [],
 ) -> dict:
     """
     Create a new user account in the Invenio instance
@@ -1255,13 +1257,21 @@ def create_invenio_user(
     record_source : str
         The name of the source service for the new user account
         if the user's login will be handled by a SAML identity provider
+    community_owner : list
+        The list of communities to which the user will be assigned as
+        owner. These may be slug strings or community record UUIDs.
 
     Returns
     -------
     dict
-        A dictionary with the new user account metadata dictionary ("user")
-        and a boolean flag indicating whether the account is new or
-        existing ("new_user")
+        A dictionary with the following keys:
+
+        "user": the user account metadata dictionary for the created or
+            existing user
+        "new_user": a boolean flag indicating whether the account is new or
+            existing ("new_user")
+        "communities_owned": a list of the communities to which the user
+            was assigned as owner
     """
     new_user_flag = True
     active_user = None
@@ -1293,12 +1303,13 @@ def create_invenio_user(
     else:
         # FIXME: make proper password here
         app.logger.debug(f"creating new user for email {user_email}...")
+        profile = {} if not full_name else {"full_name": full_name}
         new_user = current_accounts.datastore.create_user(
             email=user_email,
             # password=generate_password(16),
             active=True,
             confirmed_at=arrow.utcnow().datetime,
-            user_profile={},
+            user_profile=profile,
             username=f"{record_source}-{source_username}",
         )
         current_accounts.datastore.commit()
@@ -1370,7 +1381,17 @@ def create_invenio_user(
                 f" {existing_saml.method}, {existing_saml.id}..."
             )
 
-    return {"user": active_user, "new_user": new_user_flag}
+    communities_owned = []
+    for c in community_owner:
+        communities_owned.append(
+            CommunityRecordHelper.add_owner(c, active_user.id)
+        )
+
+    return {
+        "user": active_user,
+        "new_user": new_user_flag,
+        "communities_owned": communities_owned,
+    }
 
 
 def change_record_ownership(
@@ -1903,6 +1924,14 @@ def add_record_to_group_collections(
         "1003111",
         "1001232",
         "1004181",
+        "344",
+        "1002956",
+        "1002947",
+        "1003017",
+        "1003436",
+        "1003608",
+        "1003410",
+        "1004047",
     ]
     # FIXME: See whether this can be generalized
     if record_source == "knowledgeCommons":
@@ -2152,6 +2181,11 @@ def import_record_to_invenio(
     """
     existing_record = None
     result = {}
+
+    for key, val in overrides.items():
+        app.logger.debug(f"updating metadata key {key} with value {val}")
+        import_data = replace_value_in_nested_dict(import_data, key, val)
+
     file_data = import_data["files"]
 
     # Build the initial metadata to be submitted
@@ -2797,10 +2831,28 @@ def delete_records_from_invenio(record_ids):
     """
     Delete the selected records from the invenioRDM instance.
     """
-    # FIXME: This is a temporary function for testing purposes
-    print("Starting to delete records")
-    for r in record_ids:
-        print(f"deleting {r}")
-        deleted = api_request("DELETE", f"records/{r}")
-        pprint(deleted)
-    print("finished deleting records")
+    deleted_records = {}
+    for record_id in record_ids:
+        admin_email = app.config["RECORD_IMPORTER_ADMIN_EMAIL"]
+        admin_identity = get_identity(
+            current_accounts.datastore.get_user(admin_email)
+        )
+        service = current_rdm_records.records_service
+        record = service.read(id_=record_id, identity=system_identity)._record
+        siblings = RDMRecord.get_records_by_parent(record.parent)
+        # remove the 0th (latest) version to leave the previous version(s):
+        siblings.pop(0)
+        # already deleted previous versions will have nothing for metadata
+        # (sibling.get('id') will return nothing)
+        has_versions = any([sibling.get("id") for sibling in siblings])
+
+        if record.versions.is_latest and has_versions:
+            raise Exception(
+                "Cannot delete the latest version without first deleting "
+                "previous versions"
+            )
+
+        deleted = service.delete(id_=record_id, identity=admin_identity)
+        deleted_records[record_id] = deleted
+
+    return deleted_records
