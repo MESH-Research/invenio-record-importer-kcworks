@@ -42,6 +42,7 @@ from invenio_record_importer.errors import (
     FileUploadError,
     MissingNewUserEmailError,
     MissingParentMetadataError,
+    MultipleActiveCollectionsError,
     PublicationValidationError,
     RestrictedRecordPublicationError,
     SkipRecord,
@@ -446,7 +447,6 @@ def _coerce_types(metadata: dict) -> dict:
 def create_invenio_record(
     metadata: dict,
     no_updates: bool,
-    overrides: dict = {},
 ) -> dict:
     """
     Create a new Invenio record from the provided dictionary of metadata
@@ -613,6 +613,7 @@ def create_invenio_record(
                             "pids",
                         ]
                     }
+                    # TODO: Check whether this is the right way to update
                     if existing_metadata["files"].get("enabled") and (
                         len(existing_metadata["files"]["entries"].keys()) > 0
                     ):
@@ -649,8 +650,10 @@ def create_invenio_record(
                         }
                     # else:
                     except PIDDoesNotExistError:
+                        # TODO: What is status here???
                         app.logger.info(
-                            "    creating new draft of published record..."
+                            "    creating new draft of published record"
+                            " or recovering unsaved draft..."
                         )
                         # app.logger.debug(pprint(existing_metadata))
                         # rec = records_service.read(
@@ -668,12 +671,22 @@ def create_invenio_record(
                             id_=create_draft_result.id,
                             data=update_payload,
                         )
+                        result = records_service.update_draft(
+                            system_identity,
+                            id_=create_draft_result.id,
+                            data=update_payload,
+                        )
                         if result.to_dict().get("errors"):
+                            # NOTE: some validation errors don't prevent
+                            # the update and aren't indicative of actual
+                            # problems
                             errors = [
                                 e
                                 for e in result.to_dict()["errors"]
                                 if e.get("field") != "metadata.rights.0.icon"
                                 and e.get("messages") != ["Unknown field."]
+                                and "Missing uploaded files"
+                                not in e.get("messages")[0]
                             ]
                             if errors:
                                 raise UpdateValidationError(
@@ -917,7 +930,9 @@ def _upload_draft_files(
                 assert file_path.is_file()
             except AssertionError:
                 try:
-                    file_path = unicodedata.normalize("NFD", str(file_path))
+                    file_path = Path(
+                        unicodedata.normalize("NFD", str(file_path))
+                    )
                     assert file_path.is_file()
                 except AssertionError:
                     raise UploadFileNotFoundError(
@@ -1078,7 +1093,7 @@ def _compare_existing_files(
             # app.logger.debug(pformat(files_request))
         except NoResultFound:
             files_request = None
-    existing_files = files_request["entries"] if files_request else []
+    existing_files = files_request.get("entries", []) if files_request else []
     # app.logger.debug(pformat(existing_files))
     if len(existing_files) == 0:
         same_files = False
@@ -1973,7 +1988,16 @@ def add_record_to_group_collections(
                 app.logger.debug(
                     f"coll_record: {pformat(coll_search.to_dict())}"
                 )
-                assert len(coll_records) == 1
+                try:
+                    assert len(coll_records) == 1
+                except AssertionError as e:
+                    if len(coll_records) > 1:
+                        raise MultipleActiveCollectionsError(
+                            f"    multiple active collections found "
+                            f"for {group_id}"
+                        )
+                    else:
+                        raise e
                 coll_record = coll_records[0]
                 app.logger.debug(
                     f"    found group collection {coll_record['id']}"
@@ -2719,6 +2743,7 @@ def load_records_into_invenio(
                     "InvalidKeyError": msg,
                     "MissingNewUserEmailError": msg,
                     "MissingParentMetadataError": msg,
+                    "MultipleActiveCollectionsError": msg,
                     "PublicationValidationError": msg,
                     "RestrictedRecordPublicationError": msg,
                     "StaleDataError": msg,

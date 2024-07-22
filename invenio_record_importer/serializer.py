@@ -2178,6 +2178,11 @@ def add_subjects_keywords(
             "Urban studies",
         ]
         bad_subjects = {
+            "1178850:Transnationalism:topical": "1154884:Transnationalism:topical",
+            "815177:Art, American:topical": "815895:Art, American:topical",
+            "1205213:Cyprus:topical": "1205213:Cyprus:geographic",
+            "1240495:Asia:topical": "1240495:Asia:geographic",
+            "1205757:Civilization, Ancient:topical": "862946:Civilization, Ancient:topical",
             "1239509:Africa:topical": "1239509:Africa:geographic",
             "29097:Dante Alighieri, 1265-1321:topical": "29097:Dante Alighieri, 1265-1321:personal",
             "1020301:Middles Ages:topical": "1020301:Middle Ages:topical",

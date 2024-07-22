@@ -64,6 +64,15 @@ class MissingParentMetadataError(Exception):
         self.message = message
 
 
+class MultipleActiveCollectionsError(Exception):
+    """Multiple active collections error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(MultipleActiveCollectionsError, self).__init__(message)
+        self.message = message
+
+
 class PublicationValidationError(Exception):
     """Publication validation error."""
 
