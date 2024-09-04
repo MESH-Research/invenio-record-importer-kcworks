@@ -2237,11 +2237,11 @@ def import_record_to_invenio(
 
     # Create the basic metadata record
     app.logger.info("    finding or creating draft metadata record...")
-    record_created = create_invenio_record(import_data, no_updates, overrides)
+    record_created = create_invenio_record(import_data, no_updates)
     result["metadata_record_created"] = record_created
     result["status"] = record_created["status"]
     app.logger.info(f"    record status: {record_created['status']}")
-    draft_uuid = record_created["recid"]
+    # draft_uuid = record_created["recid"]
     if record_created["status"] in [
         "updated_published",
         "updated_draft",
