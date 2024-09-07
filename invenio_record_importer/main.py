@@ -27,7 +27,11 @@ from flask.cli import with_appcontext
 from halo import Halo
 
 from invenio_record_importer.serializer import serialize_json
-from invenio_record_importer.services import SerializationService
+from invenio_record_importer.services.serialization import SerializationService
+from invenio_record_importer.services.stats import (
+    StatsFabricator,
+    AggregationFabricator,
+)
 from invenio_record_importer.record_loader import (
     create_invenio_user,
     delete_records_from_invenio,
@@ -88,9 +92,9 @@ def serialize_command_wrapper():
     "--scheme",
     default="hclegacy-pid",
     help=(
-        "The identifier scheme to use for the records when the --use-sourceids "
-        "flag is True. Defaults to 'hclegacy-pid' for the ids used by the old "
-        "Humanities Commons CORE repository."
+        "The identifier scheme to use for the records when the "
+        "--use-sourceids flag is True. Defaults to 'hclegacy-pid' for "
+        "the ids used by the old Humanities Commons CORE repository."
     ),
 )
 @click.option(
@@ -210,7 +214,8 @@ def load_records(
 
         The operations involved require authenitcation as an admin user in the
         knowledge_commons_works instance. This program will look for the
-        admin user's api token in the RECORD_IMPORTER_API_TOKEN environment variable.
+        admin user's api token in the RECORD_IMPORTER_API_TOKEN environment
+        variable.
 
         Where necessary this program will create top-level domain communities,
         assign the records to the correct domain communities, create
@@ -336,7 +341,7 @@ def load_records(
         if not use_sourceids:
             named_params["nonconsecutive"] = [int(arg) for arg in records]
         else:
-            records = [arg.replace("\-", "-") for arg in records]
+            records = [arg.replace("\-", "-") for arg in records]  # noqa
             named_params["nonconsecutive"] = records
 
     load_records_into_invenio(**named_params)
@@ -354,8 +359,8 @@ def load_records(
     "--scheme",
     default="doi",
     help=(
-        "The identifier scheme to use for the records when the --use-sourceids "
-        "flag is True. Defaults to 'doi'."
+        "The identifier scheme to use for the records when the "
+        "--use-sourceids flag is True. Defaults to 'doi'."
     ),
 )
 @click.option(
@@ -395,12 +400,12 @@ def read_records(
             unless the --use-sourceids flag is set.
 
         scheme: str
-            The identifier scheme to use for the records when the --use-sourceids
-            flag is True. Defaults to 'doi'.
+            The identifier scheme to use for the records when the "
+            "--use-sourceids flag is True. Defaults to 'doi'.
 
         raw_input: bool
-            If True, the returned records will be in the raw format read from the
-            source file, rather than the serialized format.
+            If True, the returned records will be in the raw format read "
+            "from the source file, rather than the serialized format.
 
         use_sourceids: bool
             If True, the positional arguments are interpreted as ids in the
@@ -445,8 +450,8 @@ def read_records(
     "--origin",
     default="knowledgeCommons",
     help=(
-        "The commons instance or id provider where the users are being created."
-        "flag is True. Defaults to 'knowledgeCommons'."
+        "The commons instance or id provider where the users are being "
+        "created. Defaults to 'knowledgeCommons'."
     ),
 )
 @click.option(
@@ -607,6 +612,112 @@ def delete_records(records):
     results = delete_records_from_invenio(records)
     pprint(results)
     print(f"All done deleting records: {[k for k in results.keys()]}")
+
+
+@cli.command(name="stats")
+@click.option(
+    "-d",
+    "--from-db",
+    is_flag=True,
+    default=False,
+    help=(
+        "If True, the usage statistics will be created from the database. If "
+        "False, the usage statistics will be created from the events in the "
+        "file specified by the RECORD_IMPORTER_EVENTS_PATH config variable."
+    ),
+)
+@click.option(
+    "--downloads-field",
+    default="hclegacy:total_downloads",
+    help=(
+        "The field in the record to use for the number of downloads if "
+        "the --from-db flag is True. Defaults to 'hclegacy:total_downloads'."
+    ),
+)
+@click.option(
+    "--views-field",
+    default="hclegacy:total_views",
+    help=(
+        "The field in the record to use for the number of views if "
+        "the --from-db flag is True. Defaults to 'hclegacy:total_views'."
+    ),
+)
+@with_appcontext
+def create_stats(from_db: bool, downloads_field: str, views_field: str):
+    """
+    Create events necessary for legacy usage statistics for imported records.
+    """
+    if not from_db:
+        raise NotImplementedError(
+            "Creating stats from file not implemented yet."
+        )
+    StatsFabricator().fabricate_stats_from_db(downloads_field, views_field)
+
+
+@cli.command(name="aggregations")
+@click.option(
+    "--start-date",
+    default=None,
+    help=(
+        "The start date for the record events to aggregate. If not specified, "
+        "the aggregation will begin from the earliest creation date of the "
+        "migrated records. The date should be formatted in ISO format, i.e. "
+        "as 'YYYY-MM-DD'."
+    ),
+)
+@click.option(
+    "--end-date",
+    default=None,
+    help=(
+        "The end date for the record events to aggregate. If not specified, "
+        "the aggregation will end with the current date. The date should be "
+        "formatted in ISO format, i.e. as 'YYYY-MM-DD'."
+    ),
+)
+# @click.option(
+#     "--eager",
+#     is_flag=True,
+#     default=False,
+#     help=(
+#         "If True, the aggregations will be created immediately. If False, "
+#         "the aggregations will be created in a background task."
+#     ),
+# )
+@with_appcontext
+def create_aggregations(start_date, end_date):
+    """
+    Create usage stats aggregations for all records.
+
+    This is a very time-consuming operation, but the operations are run as
+    background tasks so as not to interfere with other operations. It can,
+    however, overwhelm the search index with too many requests. So it is
+    recommended to run the operation in time-demarcated chunks. The
+    `start-date` and `end-date` parameters allow for specification of a
+    range of dates for which to create aggregations.
+
+    This operation is idempotent, so it can be run multiple times without
+    causing errors or creating duplicate aggregations. Each time it will
+    simply collect the events currently in the system for the given date range.
+
+    TODO: Provide automatic chunking of the records so that this manual
+    repetition is not necessary.
+
+    params:
+        start_date: str
+            The start date for the record events to aggregate. If not
+            specified, the aggregation will begin from the earliest
+            recorded usage event. The date should be formatted in ISO format,
+            i.e. as 'YYYY-MM-DD'.
+
+        end_date: str
+            The end date for the record events to aggregate. If not specified,
+            the aggregation will end with the current date. The date should be
+            formatted in ISO format, i.e. as 'YYYY-MM-DD'.
+
+    returns:
+        None
+    """
+    AggregationFabricator().create_stats_aggregations(start_date, end_date)
 
 
 # @cli.command(name="fedora")

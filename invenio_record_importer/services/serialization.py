@@ -1,4 +1,12 @@
-import stat
+# -*- coding: utf-8 -*-
+#
+# This file is part of the invenio_record_importer package.
+# Copyright (C) 2024, MESH Research.
+#
+# invenio_record_importer is free software; you can redistribute it
+# and/or modify it under the terms of the MIT License; see
+# LICENSE file for more details.
+
 from flask import current_app as app
 import json
 import jsonlines
