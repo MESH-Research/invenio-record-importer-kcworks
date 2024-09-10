@@ -28,7 +28,6 @@ from invenio_record_importer.utils import (
 import datetime
 import json
 import re
-import os
 from pprint import pprint
 import pytest
 import pytz
@@ -563,7 +562,7 @@ def test_create_invenio_record(
         "Content-Length": "182",
         "Connection": "keep-alive",
         "Set-Cookie": (
-            "csrftoken=eyJhbGciOiJIUzUxMiIsImlhdCI6MTY4NTQ3MzY1MSwiZXhwIjoxNjg1NTYwMDUxfQ.IkZIODNHR0h2bThxZHdmRVMwaE9JRzgzaE9OaHJhaDFzIg.Te5wJA-7cO-jc29ydK-b2NvEkF17jZNclMIhpGfBou77Ib-I50Qiy4XCBxgttNGGBhkcbeYBRWOm_-2K7YsEBg;"
+            "csrftoken=eyJhbGciOiJIUzUxMiIsImlhdCI6MTY4NTQ3MzY1MSwiZXhwIjoxNjg1NTYwMDUxfQ.IkZIODNHR0h2bThxZHdmRVMwaE9JRzgzaE9OaHJhaDFzIg.Te5wJA-7cO-jc29ydK-b2NvEkF17jZNclMIhpGfBou77Ib-I50Qiy4XCBxgttNGGBhkcbeYBRWOm_-2K7YsEBg;"  # noqa: E501
             " Expires=Tue, 06 Jun 2023 19:07:31 GMT; Max-Age=604800; Secure;"
             " Path=/; SameSite=Lax"
         ),
@@ -605,48 +604,46 @@ def test_create_invenio_record(
     # Create record and sanitize the result to ease comparison
     actual = create_invenio_record(
         json_payload,
-        record_source="knowledgeCommons",
-        token=admin.allowed_token,
+        no_updates=False,
     )
     actual_id = actual["json"]["id"]
     actual_parent = actual["json"]["parent"]["id"]
-    actual["json"]["metadata"]["resource_type"] = {
-        "id": actual["json"]["metadata"]["resource_type"]["id"]
-    }
-    for idx, c in enumerate(actual["json"]["metadata"]["creators"]):
-        if "role" in c.keys() and "de" in c["role"]["title"].keys():
-            del actual["json"]["metadata"]["creators"][idx]["role"]["title"][
-                "de"
-            ]
-    if "contributors" in actual["json"]["metadata"].keys():
-        for idx, c in enumerate(actual["json"]["metadata"]["contributors"]):
-            if "role" in c.keys() and "de" in c["role"]["title"].keys():
-                del actual["json"]["metadata"]["contributors"][idx]["role"][
-                    "title"
-                ]["de"]
-    if "description" in actual["json"]["metadata"].keys():
-        actual["json"]["metadata"]["description"] = _normalize_punctuation(
-            _clean_backslashes_and_spaces(
-                actual["json"]["metadata"]["description"]
-            )
-        )
-    if "additional_descriptions" in actual["json"]["metadata"].keys():
-        for idx, d in enumerate(
-            actual["json"]["metadata"]["additional_descriptions"]
-        ):
-            if "de" in d["type"]["title"].keys():
-                del actual["json"]["metadata"]["additional_descriptions"][idx][
-                    "type"
-                ]["title"]["de"]
-            actual["json"]["metadata"]["additional_descriptions"][idx][
-                "description"
-            ] = _normalize_punctuation(
-                _clean_backslashes_and_spaces(
-                    actual["json"]["metadata"]["additional_descriptions"][idx][
-                        "description"
-                    ]
-                )
-            )
+    # actual["json"]["metadata"]["resource_type"] = {
+    #     "id": actual["json"]["metadata"]["resource_type"]["id"]
+    # }
+    # for idx, c in enumerate(actual["json"]["metadata"]["creators"]):
+    #     if "role" in c.keys() and "de" in c["role"]["title"].keys():
+    #         del actual["json"]["metadata"]["creators"][idx]["role"]["title"][
+    #             "de"
+    #         ]
+    # if "contributors" in actual["json"]["metadata"].keys():
+    #     for idx, c in enumerate(actual["json"]["metadata"]["contributors"]):
+    #         if "role" in c.keys() and "de" in c["role"]["title"].keys():
+    #             del actual["json"]["metadata"]["contributors"][idx]["role"][
+    #                 "title"
+    #             ]["de"]
+    # if "description" in actual["json"]["metadata"].keys():
+    #     actual["json"]["metadata"]["description"] = _normalize_punctuation(
+    #         _clean_backslashes_and_spaces(
+    #             actual["json"]["metadata"]["description"]
+    #         )
+    #     )
+    # if "additional_descriptions" in actual["json"]["metadata"].keys():
+    #     for idx, d in enumerate(
+    #         actual["json"]["metadata"]["additional_descriptions"]
+    #     ):
+    #         if "de" in d["type"]["title"].keys():
+    #             del actual["json"]["metadata"]["additional_descriptions"]
+    #               [idx]["type"]["title"]["de"]
+    #         actual["json"]["metadata"]["additional_descriptions"][idx][
+    #             "description"
+    #         ] = _normalize_punctuation(
+    #             _clean_backslashes_and_spaces(
+    #                 actual["json"]["metadata"]["additional_descriptions"][idx][
+    #                     "description"
+    #                 ]
+    #             )
+    #         )
     # Test response content
     simple_fields = [
         f
@@ -679,7 +676,7 @@ def test_create_invenio_record(
         "index": 1,
         "is_latest": False,
     }
-    assert actual["json"]["is_draft"] == True
+    assert actual["json"]["is_draft"] is True
     assert actual["json"]["access"] == {
         "files": "public",
         "embargo": {"active": False, "reason": None},
@@ -687,8 +684,8 @@ def test_create_invenio_record(
         "status": "metadata-only",
     }
     assert actual["json"]["status"] == "draft"
-    assert type(actual["json"]["revision_id"]) == int
-    assert actual["json"]["is_published"] == False
+    assert isinstance(actual["json"]["revision_id"], int)
+    assert actual["json"]["is_published"] is False
 
     links = {
         "self": f"https://{TESTING_SERVER_DOMAIN}/api/records/###/draft",
@@ -696,14 +693,23 @@ def test_create_invenio_record(
         "self_iiif_manifest": (
             f"https://{TESTING_SERVER_DOMAIN}/api/iiif/draft:###/manifest"
         ),
-        "self_iiif_sequence": f"https://{TESTING_SERVER_DOMAIN}/api/iiif/draft:###/sequence/default",
+        "self_iiif_sequence": (
+            f"https://{TESTING_SERVER_DOMAIN}/api/iiif/draft:###/sequence"
+            "/default"
+        ),
         "files": (
             f"https://{TESTING_SERVER_DOMAIN}/api/records/###/draft/files"
         ),
-        "archive": f"https://{TESTING_SERVER_DOMAIN}/api/records/###/draft/files-archive",
+        "archive": (
+            f"https://{TESTING_SERVER_DOMAIN}/api/records/###/draft/"
+            "files-archive"
+        ),
         "record": f"https://{TESTING_SERVER_DOMAIN}/api/records/###",
         "record_html": f"https://{TESTING_SERVER_DOMAIN}/records/###",
-        "publish": f"https://{TESTING_SERVER_DOMAIN}/api/records/###/draft/actions/publish",
+        "publish": (
+            f"https://{TESTING_SERVER_DOMAIN}/api/records/###/draft/actions"
+            "/publish"
+        ),
         "review": (
             f"https://{TESTING_SERVER_DOMAIN}/api/records/###/draft/review"
         ),
@@ -719,7 +725,10 @@ def test_create_invenio_record(
         "communities": (
             f"https://{TESTING_SERVER_DOMAIN}/api/records/###/communities"
         ),
-        "communities-suggestions": f"https://{TESTING_SERVER_DOMAIN}/api/records/###/communities-suggestions",
+        "communities-suggestions": (
+            f"https://{TESTING_SERVER_DOMAIN}/api/records/###/"
+            "communities-suggestions"
+        ),
         "requests": (
             f"https://{TESTING_SERVER_DOMAIN}/api/records/###/requests"
         ),
@@ -803,7 +812,7 @@ def test_upload_draft_files(app):
         assert valid_date(v["upload_commit"]["json"]["created"])
         assert valid_date(v["upload_commit"]["json"]["updated"])
         assert v["upload_commit"]["json"]["status"] == "completed"
-        assert v["upload_commit"]["json"]["metadata"] == None
+        assert v["upload_commit"]["json"]["metadata"] is None
     assert actual_upload["confirmation"]["status_code"] == 200
 
 
@@ -857,14 +866,10 @@ def test_create_full_invenio_record(json_in):
         ]
         == "metadata-only"
     )
-    assert (
-        actual_full_record["metadata_record_created"]["json"]["is_draft"]
-        == True
-    )
-    assert (
-        actual_full_record["metadata_record_created"]["json"]["is_published"]
-        == False
-    )
+    assert actual_full_record["metadata_record_created"]["json"]["is_draft"]
+    assert not actual_full_record["metadata_record_created"]["json"][
+        "is_published"
+    ]
 
     afu = actual_full_record["uploaded_files"]
     for k, v in json_in["files"]["entries"].items():
@@ -879,7 +884,7 @@ def test_create_full_invenio_record(json_in):
         assert valid_date(actual_trans["upload_commit"]["json"]["updated"])
         assert afu["confirmation"]["status_code"] == 200
 
-    assert type(actual_full_record["created_user"]["new_user"]) == bool
+    assert isinstance(actual_full_record["created_user"]["new_user"], bool)
     assert int(actual_full_record["created_user"]["user_id"]) > 2 < 10000
 
     assert actual_full_record["request_to_community"]["status_code"] == 200
@@ -889,17 +894,9 @@ def test_create_full_invenio_record(json_in):
     assert actual_full_record["request_to_community"]["json"][
         "created_by"
     ] == {"user": "3"}
-    assert (
-        actual_full_record["request_to_community"]["json"]["is_closed"]
-        == False
-    )
-    assert (
-        actual_full_record["request_to_community"]["json"]["is_expired"]
-        == False
-    )
-    assert (
-        actual_full_record["request_to_community"]["json"]["is_open"] == False
-    )
+    assert not actual_full_record["request_to_community"]["json"]["is_closed"]
+    assert not actual_full_record["request_to_community"]["json"]["is_expired"]
+    assert not actual_full_record["request_to_community"]["json"]["is_open"]
     assert (
         actual_full_record["request_to_community"]["json"]["receiver"][
             "community"
@@ -925,8 +922,8 @@ def test_create_full_invenio_record(json_in):
         actual_full_record["review_submitted"]["json"]["created_by"]["user"]
         == "3"
     )
-    assert actual_full_record["review_submitted"]["json"]["is_closed"] == False
-    assert actual_full_record["review_submitted"]["json"]["is_open"] == True
+    assert not actual_full_record["review_submitted"]["json"]["is_closed"]
+    assert actual_full_record["review_submitted"]["json"]["is_open"]
     assert (
         actual_full_record["review_submitted"]["json"]["receiver"]["community"]
         == actual_full_record["community"]["json"]["id"]
@@ -950,8 +947,8 @@ def test_create_full_invenio_record(json_in):
     )
     assert actual_full_record["review_submitted"]["status_code"] == 200
 
-    assert actual_full_record["review_accepted"]["json"]["is_closed"] == True
-    assert actual_full_record["review_accepted"]["json"]["is_open"] == False
+    assert actual_full_record["review_accepted"]["json"]["is_closed"]
+    assert not actual_full_record["review_accepted"]["json"]["is_open"]
     assert (
         actual_full_record["review_accepted"]["json"]["receiver"]["community"]
         == actual_full_record["community"]["json"]["id"]

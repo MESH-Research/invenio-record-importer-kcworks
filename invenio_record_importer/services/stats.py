@@ -13,6 +13,8 @@ from invenio_access.permissions import system_identity
 from invenio_rdm_records.proxies import (
     current_rdm_records_service as records_service,
 )
+import json
+from pathlib import Path
 
 # from invenio_rdm_records.services.tasks import reindex_stats
 
@@ -34,7 +36,7 @@ from invenio_stats.processors import anonymize_user
 from invenio_stats.proxies import current_stats
 from invenio_stats.tasks import process_events
 from pprint import pformat
-from typing import Union
+from typing import Union, Optional, List
 
 
 class StatsFabricator:
@@ -67,18 +69,123 @@ class StatsFabricator:
 
         return datetimes
 
+    def fabricate_events_from_file(
+        self,
+        record_source: str = "knowledgeCommons",
+        downloads_field: str = "hclegacy:total_downloads",
+        views_field: str = "hclegacy:total_views",
+        date_field: str = "metadata.publication_date",
+        verbose: bool = False,
+    ):
+        """
+        Create statistics events for the migrated records already in the db.
+
+        This method reads a JSONL file of records and creates statistics events
+        for each record. The JSONL file should be a list of dictionaries, where
+        each dictionary represents a record and has an "id" key that should
+        match the Invenio record id.
+
+        This file should be located in the directory specified by the
+        `RECORD_IMPORTER_USAGE_STATS_PATH` configuration variable. The file
+        name should be `{record_source}.jsonl`.
+
+        The method creates view and download events for each record and
+        publishes them to the stats indices.
+
+        params:
+            record_source (str): the source of the records
+            downloads_field (str): the dot notation field name for the number
+                of downloads
+            views_field (str): the dot notation field name for the number of
+                views
+            date_field (str): the dot notation field name for the record
+                creation date
+            verbose (bool): whether to print debug information
+
+        returns:
+            None
+        """
+        filename = Path(
+            app.config["RECORD_IMPORTER_USAGE_STATS_PATH"],
+            f"{record_source}.jsonl",
+        )
+        with open(filename, "r") as f:
+            records = [json.loads(line) for line in f]
+
+        for record in records:
+            try:
+                self.create_stats_events(
+                    record["id"],
+                    downloads_field=downloads_field,
+                    views_field=views_field,
+                    date_field=date_field,
+                    eager=True,
+                    verbose=verbose,
+                )
+            except TooManyViewEventsError as e:
+                app.logger.error(
+                    f"Error creating view events for record {record['id']}:"
+                    f"{e}"
+                )
+                print(
+                    f"Error creating view events for record {record['id']}:"
+                    f"{e}"
+                )
+
     def fabricate_events_from_db(
-        self, downloads_field, views_field, terminus_date
+        self,
+        record_ids: Optional[List[int]] = None,
+        record_source: str = "knowledgeCommons",
+        downloads_field: str = "hclegacy:total_downloads",
+        views_field: str = "hclegacy:total_views",
+        date_field: str = "metadata.publication_date",
+        verbose: bool = False,
     ):
         """
         Create statistics events for the migrated records already in the db.
         """
-        pass
+        if record_ids:
+            records = records_service.read_many(
+                system_identity, ids=record_ids
+            )
+        else:
+            records = records_service.scan(identity=system_identity)
+
+        for record in records:
+            try:
+                views = record.get(views_field, 0)
+                downloads = record.get(downloads_field, 0)
+                if verbose:
+                    app.logger.info(
+                        f"found record: {record}, views: {views}, "
+                        f"downloads: {downloads}"
+                    )
+                self.create_stats_events(
+                    record["id"],
+                    downloads_field=downloads_field,
+                    views_field=views_field,
+                    date_field=date_field,
+                    eager=True,
+                    verbose=verbose,
+                )
+            except TooManyViewEventsError as e:
+                app.logger.error(
+                    f"Error creating view events for record {record['id']}:"
+                    f"{e}"
+                )
+                print(
+                    f"Error creating view events for record {record['id']}:"
+                    f"{e}"
+                )
 
     def create_stats_events(
         self,
         record_id: str,  # the UUID of the record
+        downloads_field: str = "custom_fields.hclegacy:total_downloads",
+        views_field: str = "custom_fields.hclegacy:total_views",
+        date_field: str = "metadata.publication_date",
         eager=False,
+        verbose=False,
     ):
         """
         Create artificial statistics events for a migrated record.
@@ -93,8 +200,15 @@ class StatsFabricator:
 
         params:
             record_id (str): the record id
+            downloads_field (str): the dot notation field name for the number
+                of downloads
+            views_field (str): the dot notation field name for the number of
+                views
+            date_field (str): the dot notation field name for the record
+                creation date
             eager (bool): whether to process the events immediately or
-            queue them for processing in a background task
+                queue them for processing in a background task
+            verbose (bool): whether to print debug information
 
         returns:
             Either bool or list, depending on the value of eager. If eager
@@ -102,18 +216,37 @@ class StatsFabricator:
             is False, the function returns True.
 
         """
+        if verbose:
+            app.logger.info(f"Creating stats events for record {record_id}...")
+            print(f"Creating stats events for record {record_id}...")
         rec_search = records_service.read(system_identity, id_=record_id)
         record = rec_search._record
 
+        def get_field_value(record, field):
+            field_parts = field.split(".")
+            if len(field_parts) > 1:
+                return get_field_value(
+                    record["metadata"][field_parts[0]], field_parts[1:]
+                )
+            else:
+                return record[field_parts[0]]
+
         metadata_record = rec_search.to_dict()
-        # FIXME: this all assumes a single file per record on import
-        views = metadata_record["custom_fields"]["hclegacy:total_views"]
-        downloads = metadata_record["custom_fields"][
-            "hclegacy:total_downloads"
-        ]
+
+        # FIXME: this all assumes a single uploaded file per record on import
+        views = get_field_value(metadata_record, views_field)
+        downloads = get_field_value(metadata_record, downloads_field)
         record_creation = arrow.get(
-            metadata_record["metadata"]["publication_date"]
+            get_field_value(metadata_record, date_field)
         )
+
+        if verbose:
+            app.logger.info(f"views: {views}")
+            app.logger.info(f"downloads: {downloads}")
+            app.logger.info(f"record creation date: {record_creation}")
+            print(f"views: {views}")
+            print(f"downloads: {downloads}")
+            print(f"record creation date: {record_creation}")
 
         files_request = records_service.files.list_files(
             system_identity, record_id
@@ -132,10 +265,15 @@ class StatsFabricator:
         # this is a hack
         existing_view_events = view_events_search(record_id)
         existing_download_events = download_events_search(file_id)
-        app.logger.debug(
-            "existing view events: "
-            f"{pformat(existing_view_events['hits']['total']['value'])}"
-        )
+        if verbose:
+            app.logger.info(
+                "existing view events: "
+                f"{pformat(existing_view_events['hits']['total']['value'])}"
+            )
+            print(
+                "existing view events: "
+                f"{pformat(existing_view_events['hits']['total']['value'])}"
+            )
 
         existing_view_count = existing_view_events["hits"]["total"]["value"]
         if existing_view_count == views:
@@ -150,7 +288,17 @@ class StatsFabricator:
                     "    existing imported view events exceed expected count."
                 )
             else:
-                # only create enough new view events to reach the expected
+                if verbose:
+                    app.logger.info(
+                        "    creating view events. "
+                        f"{views - existing_view_count} "
+                        "view events to create."
+                    )
+                    print(
+                        "    creating view events. "
+                        f"{views - existing_view_count} "
+                        "view events to create."
+                    )
                 # count
                 if existing_view_count > 0:
                     views -= existing_view_count

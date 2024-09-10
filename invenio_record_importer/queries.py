@@ -1,6 +1,4 @@
 from invenio_search import current_search_client
-from invenio_search.api import RecordsSearchV2 as RecordsSearch
-from invenio_search.engine import dsl
 
 
 # def view_events_search(recid):

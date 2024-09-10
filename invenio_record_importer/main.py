@@ -616,6 +616,22 @@ def delete_records(records):
 
 @cli.command(name="stats")
 @click.option(
+    "-r",
+    "--record-ids",
+    help=(
+        "A comma-separated list of record ids to create usage statistics for."
+    ),
+)
+@click.option(
+    "-s",
+    "--record-source",
+    default="knowledgeCommons",
+    help=(
+        "The source of the records to create usage statistics for. If not "
+        "specified, this will default to 'knowledgeCommons'."
+    ),
+)
+@click.option(
     "-d",
     "--from-db",
     is_flag=True,
@@ -628,30 +644,136 @@ def delete_records(records):
 )
 @click.option(
     "--downloads-field",
-    default="hclegacy:total_downloads",
+    default="custom_fields.hclegacy:total_downloads",
     help=(
-        "The field in the record to use for the number of downloads if "
-        "the --from-db flag is True. Defaults to 'hclegacy:total_downloads'."
+        "The field (in dot notation) in each record to use for the number "
+        "of downloads. If the --from-db flag is True, the field should be "
+        "found in the database record metadata. If the --from-db flag is "
+        "False, the field should be found in the record data object read "
+        "from the import file."
     ),
 )
 @click.option(
     "--views-field",
-    default="hclegacy:total_views",
+    default="custom_fields.hclegacy:total_views",
     help=(
-        "The field in the record to use for the number of views if "
-        "the --from-db flag is True. Defaults to 'hclegacy:total_views'."
+        "The field (in dot notation) in each record to use for the number "
+        "of record views. If the --from-db flag is True, the field should be "
+        "found in the database record metadata. If the --from-db flag is "
+        "False, the field should be found in the record data object read "
+        "from the import file. Defaults to 'hclegacy:total_views'."
+    ),
+)
+@click.option(
+    "-v",
+    "--verbose",
+    is_flag=True,
+    default=False,
+    help=(
+        "If True, information will be printed to the console as the stats "
+        "events are created. Otherwise, no information will be printed "
+        "until all the stats events are created."
+    ),
+)
+@click.option(
+    "--date-field",
+    default="metadata.publication_date",
+    help=(
+        "The field (in dot notation) in each record to use for the record "
+        "creation date. If the --from-db flag is True, the field should be "
+        "found in the database record metadata. If the --from-db flag is "
+        "False, the field should be found in the record data object read "
+        "from the import file. Defaults to 'metadata.publication_date'."
     ),
 )
 @with_appcontext
-def create_stats(from_db: bool, downloads_field: str, views_field: str):
+def create_stats(
+    from_db: bool,
+    record_ids: list,
+    downloads_field: str,
+    views_field: str,
+    record_source: str,
+    date_field: str,
+    verbose: bool,
+) -> None:
     """
     Create events necessary for legacy usage statistics for imported records.
+
+    This operation is idempotent, so it can be run multiple times without
+    causing errors or creating duplicate events. Each time it will simply
+    collect the events currently in the system for the given date range.
+
+    params:
+        record_ids: list
+            A list of record ids to create usage statistics for. If not
+            specified, all records from the specified source will be used.
+
+        record_source: str
+            The source of the records to create usage statistics for. If not
+            specified, this will default to 'knowledgeCommons'. If records are
+            being read from a file, the source file should be a JSONL file
+            with this string as its name (without the .jsonl extension).
+
+        from_db: bool
+            If True, the usage statistics will be created from the database. If
+            False, the usage statistics will be created from the events in the
+            file specified by the RECORD_IMPORTER_USAGE_STATS_PATH config
+            variable.
+
+        downloads_field: str
+            The field (in dot notation) in each record to use for the number
+            of downloads. If the --from-db flag is True, the field should be
+            found in the database record metadata. If the --from-db flag is
+            False, the field should be found in the record data object read
+            from the import file. Defaults to 'hclegacy:total_downloads'.
+
+        views_field: str
+            The field (in dot notation) in each record to use for the number
+            of record views. If the --from-db flag is True, the field should be
+            found in the database record metadata. If the --from-db flag is
+            False, the field should be found in the record data object read
+            from the import file. Defaults to 'hclegacy:total_views'.
+
+        date_field: str
+            The field (in dot notation) in each record to use for the record
+            creation date. If the --from-db flag is True, the field should be
+            found in the database record metadata. If the --from-db flag is
+            False, the field should be found in the record data object read
+            from the import file. Defaults to 'metadata.publication_date'.
+
+        verbose: bool
+            If True, information will be printed to the console as the stats
+            events are created. Otherwise, no information will be printed
+            until all the stats events are created.
+
+    returns:
+        None
     """
+    print("Creating synthetic stats events from db records...")
+    if record_ids:
+        print(f"    for records {record_ids}...")
+    else:
+        print("    for all records...")
+
+    print("    record source: ", record_source)
+    print("    downloads field: ", downloads_field)
+    print("    views field: ", views_field)
+    print("    date field: ", date_field)
+
+    args = {
+        "record_ids": record_ids,
+        "record_source": record_source,
+        "downloads_field": downloads_field,
+        "views_field": views_field,
+        "date_field": date_field,
+        "verbose": verbose,
+    }
+
     if not from_db:
-        raise NotImplementedError(
-            "Creating stats from file not implemented yet."
-        )
-    StatsFabricator().fabricate_stats_from_db(downloads_field, views_field)
+        StatsFabricator().fabricate_events_from_file(**args)
+    else:
+        StatsFabricator().fabricate_events_from_db(**args)
+    print("All done creating stats events!")
 
 
 @cli.command(name="aggregations")

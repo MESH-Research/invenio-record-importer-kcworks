@@ -1,4 +1,3 @@
-from ast import In
 import arrow
 from halo import Halo
 from flask import current_app as app
@@ -8,18 +7,8 @@ from invenio_access.utils import get_identity
 from invenio_accounts import current_accounts
 from invenio_accounts.errors import AlreadyLinkedError
 from invenio_accounts.models import User
-from invenio_communities.proxies import current_communities
 from invenio_db import db
-from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
 from invenio_files_rest.errors import InvalidKeyError
-from regex import P
-from invenio_group_collections.errors import (
-    CollectionNotFoundError,
-    CommonsGroupNotFoundError,
-)
-from invenio_group_collections.proxies import (
-    current_group_collections_service as collections_service,
-)
 from invenio_oauthclient.models import UserIdentity
 from invenio_pidstore.errors import PIDUnregistered, PIDDoesNotExistError
 from invenio_rdm_records.records.api import RDMRecord
@@ -29,27 +18,18 @@ from invenio_rdm_records.proxies import (
 )
 from invenio_rdm_records.services.errors import (
     ReviewNotFoundError,
-    ReviewStateError,
-    InvalidAccessRestrictions,
 )
 from invenio_records.systemfields.relations.errors import InvalidRelationValue
 from invenio_record_importer.errors import (
-    CommonsGroupServiceError,
     DraftDeletionFailedError,
     ExistingRecordNotUpdatedError,
-    FailedCreatingUsageEventsError,
     FileUploadError,
-    MissingNewUserEmailError,
-    MissingParentMetadataError,
-    MultipleActiveCollectionsError,
     PublicationValidationError,
-    RestrictedRecordPublicationError,
     SkipRecord,
-    TooManyDownloadEventsError,
-    TooManyViewEventsError,
     UpdateValidationError,
     UploadFileNotFoundError,
 )
+from invenio_record_importer.services.communities import CommunitiesHelper
 from invenio_record_importer.services.stats import (
     StatsFabricator,
     AggregationFabricator,
@@ -57,21 +37,8 @@ from invenio_record_importer.services.stats import (
 from invenio_records_resources.services.errors import (
     FileKeyNotFoundError,
 )
-from invenio_records_resources.services.uow import (
-    unit_of_work,
-    RecordIndexOp,
-)
-from invenio_requests.proxies import current_requests_service
-from invenio_requests.errors import CannotExecuteActionError
-from invenio_remote_user_data.service import RemoteUserDataService
-from invenio_search import current_search_client
-from invenio_search.proxies import current_search
-from invenio_users_resources.proxies import (
-    current_users_service as users_service,
-)
 import itertools
 import json
-from opensearchpy.exceptions import NotFoundError
 from simplejson.errors import JSONDecodeError as SimpleJSONDecodeError
 import jsonlines
 from marshmallow.exceptions import ValidationError
@@ -79,9 +46,9 @@ from pathlib import Path
 import requests
 from requests.exceptions import JSONDecodeError as RequestsJSONDecodeError
 from sqlalchemy.orm.exc import NoResultFound, StaleDataError
-from traceback import format_exception, print_exc
+from traceback import print_exc
 from typing import Optional, Union
-from pprint import pformat, pprint
+from pprint import pformat
 import unicodedata
 from urllib.parse import unquote
 
@@ -89,13 +56,11 @@ from invenio_record_importer.utils.utils import (
     CommunityRecordHelper,
     UsersHelper,
     normalize_string,
-    update_nested_dict,
     replace_value_in_nested_dict,
     valid_date,
     compare_metadata,
     FilesHelper,
 )
-from werkzeug.exceptions import UnprocessableEntity
 
 
 def _coerce_types(metadata: dict) -> dict:
@@ -238,7 +203,8 @@ def create_invenio_record(
                 been added to other collections as well.
             'status': The kind of record operation that produced the new/
                 current metadata record. Possible values: 'new_record',
-                'updated_draft', 'updated_published', 'unchanged_existing_draft'
+                'updated_draft', 'updated_published',
+                'unchanged_existing_draft',
                 'unchanged_existing_published'
             'metadata_record_created': The metadata record created or updated
                 by the operation. This dictionary has three keys:
@@ -456,13 +422,16 @@ def create_invenio_record(
                             ]
                             if errors:
                                 raise UpdateValidationError(
-                                    f"Validation error when trying to update existing record: {pformat(errors)}"
+                                    f"Validation error when trying to update "
+                                    f"existing record: {pformat(errors)}"
                                 )
                         app.logger.info(
-                            f"updated new draft of published: {pformat(result.to_dict())}"
+                            f"updated new draft of published: "
+                            f"{pformat(result.to_dict())}"
                         )
                         app.logger.debug(
-                            f"****title: {result.to_dict()['metadata'].get('title')}"
+                            f"****title: "
+                            f"{result.to_dict()['metadata'].get('title')}"
                         )
                         return {
                             "status": "updated_published",
@@ -779,7 +748,8 @@ def _upload_draft_files(
             app.logger.debug(f"size: {v['size']}  {files_dict[k]['size']}")
             if str(v["size"]) != str(files_dict[k]["size"]):
                 raise FileUploadError(
-                    f"Uploaded file size ({v['size']}) does not match expected size ({files_dict[k]['size']})"
+                    f"Uploaded file size ({v['size']}) does not match "
+                    f"expected size ({files_dict[k]['size']})"
                 )
             # TODO: Confirm correct checksum?
             # app.logger.debug(f"checksum: {v['checksum']}")
@@ -794,12 +764,13 @@ def _upload_draft_files(
             #     upload_commit["json"]["links"]["content"]
             #     == f["links"]["content"]
             # )
-            # assert upload_commit["json"]["links"]["self"] == f["links"]["self"]
+            # assert upload_commit["json"]["links"]["self"] ==
+            #     f["links"]["self"]
             # assert (
             #     upload_commit["json"]["links"]["commit"]
             #     == f["links"]["commit"]
             # )
-    except AssertionError as e:
+    except AssertionError:
         app.logger.error(
             "    failed to properly upload file content for"
             f" draft {draft_id}..."
@@ -896,13 +867,15 @@ def _compare_existing_files(
             if wrong_file:
                 error_message = (
                     "Existing record with same DOI has different"
-                    f" files.\n{pformat(old_files)}\n !=\n {pformat(new_entries)}\n"
-                    f"Could not delete existing file {existing_file[0]['key']}."
+                    f" files.\n{pformat(old_files)}\n !=\n "
+                    f"{pformat(new_entries)}\n"
+                    f"Could not delete existing file "
+                    f"{existing_file[0]['key']}."
                 )
                 try:
-                    deleted_file = files_service.delete_file(
-                        system_identity, draft_id, existing_file[0]["key"]
-                    )
+                    # deleted_file = files_service.delete_file(
+                    #     system_identity, draft_id, existing_file[0]["key"]
+                    # )
                     # app.logger.debug(pformat(deleted_file))
                     app.logger.info(
                         "    existing record had wrong or partial upload, now"
@@ -1202,633 +1175,6 @@ def change_record_ownership(
     return result.parent.access.owned_by
 
 
-def prepare_invenio_community(community_string: str) -> dict:
-    """Ensure that the community exists in Invenio."""
-    # FIXME: idiosyncratic implementation detail
-    community_label = community_string.split(".")
-    if community_label[1] == "msu":
-        community_label = community_label[1]
-    else:
-        community_label = community_label[0]
-
-    # FIXME: remnant of name change
-    if community_label == "hcommons":
-        community_label = "kcommons"
-
-    app.logger.debug(f"checking for community {community_label}")
-    community_check = current_communities.service.search(
-        system_identity, q=f"slug:{community_label}"
-    ).to_dict()
-
-    if community_check["hits"]["total"] == 0:
-        app.logger.debug(
-            "Community", community_label, "does not exist. Creating..."
-        )
-        # FIXME: use group-collections to create the community
-        # so that we import community metadata
-        community_check = _create_invenio_community(community_label)
-    else:
-        community_check = community_check["hits"]["hits"][0]
-
-    return community_check
-
-
-def _create_invenio_community(community_label: str) -> dict:
-    """Create a new community in Invenio.
-
-    Return the community data as a dict. (The result
-    of the CommunityItem.to_dict() method.)
-    """
-    # FIXME: Get this from config
-    community_data = {
-        "hcommons": {
-            "slug": "hcommons",
-            "metadata": {
-                "title": "Humanities Commons",
-                "description": (
-                    "A collection representing Humanities Commons"
-                ),
-                "website": "https://hcommons.org",
-                "organizations": [{"name": "Humanities Commons"}],
-            },
-        },
-        "msu": {
-            "slug": "msu",
-            "metadata": {
-                "title": "MSU Commons",
-                "description": ("A collection representing MSU Commons"),
-                "website": "https://commons.msu.edu",
-                "organizations": [{"name": "MSU Commons"}],
-            },
-        },
-        "ajs": {
-            "slug": "ajs",
-            "metadata": {
-                "title": "AJS Commons",
-                "description": (
-                    "AJS is no longer a member of Knowledge Commons"
-                ),
-                "website": "https://ajs.hcommons.org",
-                "organizations": [{"name": "AJS Commons"}],
-            },
-        },
-        "arlisna": {
-            "slug": "arlisna",
-            "metadata": {
-                "title": "ARLIS/NA Commons",
-                "description": ("A collection representing ARLIS/NA Commons"),
-                "website": "https://arlisna.hcommons.org",
-                "organizations": [{"name": "ARLISNA Commons"}],
-            },
-        },
-        "aseees": {
-            "slug": "aseees",
-            "metadata": {
-                "title": "ASEEES Commons",
-                "description": ("A collection representing ASEEES Commons"),
-                "website": "https://aseees.hcommons.org",
-                "organizations": [{"name": "ASEEES Commons"}],
-            },
-        },
-        "hastac": {
-            "slug": "hastac",
-            "metadata": {
-                "title": "HASTAC Commons",
-                "description": "A collection representing HASTAC Commons",
-                "website": "https://hastac.hcommons.org",
-                "organizations": [{"name": "HASTAC Commons"}],
-            },
-        },
-        "caa": {
-            "slug": "caa",
-            "metadata": {
-                "title": "CAA Commons",
-                "description": (
-                    "CAA is no longer a member of Humanities Commons"
-                ),
-                "website": "https://caa.hcommons.org",
-                "organizations": [{"name": "CAA Commons"}],
-            },
-        },
-        "mla": {
-            "slug": "mla",
-            "metadata": {
-                "title": "MLA Commons",
-                "description": ("A collection representing the MLA Commons"),
-                "website": "https://mla.hcommons.org",
-                "organizations": [{"name": "MLA Commons"}],
-            },
-        },
-        "sah": {
-            "slug": "sah",
-            "metadata": {
-                "title": "SAH Commons",
-                "description": (
-                    "A community representing the SAH Commons domain"
-                ),
-                "website": "https://sah.hcommons.org",
-                "organizations": [{"name": "SAH Commons"}],
-            },
-        },
-        "up": {
-            "access": {
-                "visibility": "restricted",
-                "member_policy": "closed",
-                "record_policy": "closed",
-                # "owned_by": [{"user": ""}]
-            },
-            "slug": "up",
-            "metadata": {
-                "title": "UP Commons",
-                "description": (
-                    "A collection representing the UP Commons domain"
-                ),
-                "website": "https://up.hcommons.org",
-                "organizations": [{"name": "UP Commons"}],
-            },
-        },
-    }
-    my_community_data = community_data[community_label]
-    my_community_data["metadata"]["type"] = {"id": "commons"}
-    my_community_data["access"] = {
-        "visibility": "public",
-        "member_policy": "closed",
-        "record_policy": "closed",
-        "review_policy": "closed",
-        # "owned_by": [{"user": ""}]
-    }
-    result = current_communities.service.create(
-        system_identity, data=my_community_data
-    )
-    if result.data.get("errors"):
-        raise RuntimeError(result)
-    return result.to_dict()
-
-
-@unit_of_work()
-def publish_record_to_community(
-    draft_id: str,
-    community_id: str,
-    uow=None,
-) -> dict:
-    """Publish a draft record to a community.
-
-    If the record is already published to the community, the record is
-    skipped. If an existing review request for the record to the community
-    is found, it is continued and accepted. Otherwise a new review request
-    is created and accepted.
-
-    params:
-        draft_id (str): the id of the draft record
-        community_id (str): the id of the community to publish the record to
-            (must be a UUID, not the community's slug)
-
-    returns:
-        dict: the result of the review acceptance action
-    """
-    # Attachment to community unnecessary if the record is already published
-    # or included in it, even if a new draft version
-    try:
-        existing_record = records_service.read(
-            system_identity, id_=draft_id
-        ).to_dict()
-        assert existing_record
-    except (AssertionError, PIDUnregistered):
-        try:
-            existing_record = (
-                records_service.search_drafts(
-                    system_identity, q=f"id:{draft_id}"
-                )
-                .to_dict()
-                .get("hits", {})
-                .get("hits", [])[0]
-            )
-        except IndexError:
-            existing_record = None
-    except NoResultFound:
-        existing_record = None
-
-    if (
-        existing_record
-        and (existing_record["status"] not in ["draft", "draft_with_review"])
-        and (
-            existing_record["parent"]["communities"]
-            and community_id in existing_record["parent"]["communities"]["ids"]
-        )
-    ):
-        app.logger.info(
-            "    skipping attaching the record to the community (already"
-            " published to it)..."
-        )
-        # Publish new draft (otherwise would be published at community
-        # review acceptance)
-        if existing_record["is_draft"] == True:
-            app.logger.info("    publishing new draft record version...")
-            app.logger.debug(
-                pformat(
-                    records_service.search_drafts(
-                        system_identity, q=f"id:{draft_id}"
-                    ).to_dict()
-                )
-            )
-            # Edit is sometimes necessary if the draft status has become
-            # confused
-            edit = records_service.edit(system_identity, id_=draft_id)
-            publish = records_service.publish(system_identity, id_=edit.id)
-            assert publish.data["status"] == "published"
-    # for records that haven't been attached to the community yet
-    # submit and accept a review request
-    else:
-        # DOIs cannot be registered at publication if the record
-        # is restricted (see datacite provider `validate_restriction_level`
-        # method called in pid component's `publish` method)
-        if (
-            existing_record
-            and existing_record["access"]["record"] == "restricted"
-        ):
-            app.logger.error(pformat(existing_record))
-            raise RestrictedRecordPublicationError(
-                "Record is restricted and cannot be published to the community"
-                " because its DOI cannot be registered"
-            )
-
-        request_id = None
-        # Try to cancel any existing review request for the record
-        # with another community, since it will conflict
-        try:
-            existing_review = records_service.review.read(
-                system_identity, id_=draft_id
-            )
-            app.logger.info(
-                "    cancelling existing review request for the record to the"
-                f" community...: {existing_review.id}"
-            )
-            app.logger.debug(
-                f"existing_review: {pformat(existing_review.to_dict())}"
-            )
-            # if (
-            #     existing_review.to_dict()["receiver"].get("community")
-            #     == community_id
-            # ):
-            #     app.logger.info(
-            #         "    skipping cancelling the existing review request"
-            #         " (already for the community)..."
-            #     )
-            if not existing_review.data["is_open"]:
-                app.logger.debug(
-                    "   existing review request is not open, deleting"
-                )
-                try:
-                    records_service.review.delete(
-                        system_identity, id_=draft_id
-                    )
-                    app.logger.debug("   existing review request deleted")
-                except (
-                    NotFoundError,
-                    CannotExecuteActionError,
-                ):  # already deleted
-                    # Sometimes the review request is already deleted but
-                    # hasn't been removed from the record's metadata
-                    draft_record = records_service.read_draft(
-                        system_identity, id_=draft_id
-                    )._record
-                    draft_record.parent.review = None
-                    uow.register(ParentRecordCommitOp(draft_record.parent))
-                    uow.register(RecordIndexOp(draft_record))
-                    app.logger.debug(
-                        "   existing review request was already deleted, manually removed from record metadata"
-                    )
-            else:
-                request_id = existing_review.id
-                cancel_existing_request = (
-                    current_requests_service.execute_action(
-                        system_identity,
-                        request_id,
-                        "cancel",
-                    )
-                )
-                app.logger.debug(
-                    f"cancel_existing_request: "
-                    f"{pformat(cancel_existing_request)}"
-                )
-        # If no existing review request, just continue
-        except (ReviewNotFoundError, NoResultFound):
-            app.logger.info(
-                "    no existing review request found for the record to the"
-                " community..."
-            )
-
-        # Create/retrieve and accept a review request
-        app.logger.info("    attaching the record to the community...")
-
-        # Try creating/retrieving and accepting a 'community-submission'
-        # request for an unpublished record (record will be published at
-        # acceptance).
-        try:
-            review_body = {
-                "receiver": {"community": f"{community_id}"},
-                "type": "community-submission",
-            }
-            new_request = records_service.review.update(  # noqa: F841
-                system_identity, draft_id, review_body
-            )
-            app.logger.debug(f"new_request: {pformat(new_request.to_dict())}")
-
-            submitted_body = {
-                "payload": {
-                    "content": "Thank you in advance for the review.",
-                    "format": "html",
-                }
-            }
-            submitted_request = records_service.review.submit(
-                system_identity,
-                draft_id,
-                data=submitted_body,
-                require_review=True,
-            )
-            if submitted_request.data["status"] not in [
-                "submitted",
-                "accepted",
-            ]:
-                app.logger.error(
-                    f"    initially failed to submit review request: {submitted_request.to_dict()}"
-                )
-                submitted_request = current_requests_service.execute_action(
-                    system_identity,
-                    submitted_request.id,
-                    "submit",
-                )
-            # app.logger.debug(
-            #     f"submitted_request: {pformat(new_request.to_dict())}"
-            # )
-
-            app.logger.debug("submitted to community")
-
-            if submitted_request.data["status"] != "accepted":
-                try:
-                    review_accepted = current_requests_service.execute_action(
-                        system_identity,
-                        submitted_request.id,
-                        "accept",
-                    )
-                except StaleDataError as e:
-                    if (
-                        "UPDATE statement on table 'rdm_parents_metadata'"
-                        in e.message
-                    ):
-                        raise MissingParentMetadataError(
-                            "Missing parent metadata for record during "
-                            "community submission acceptance. Original "
-                            f"error message: {e.message}"
-                        )
-            else:
-                review_accepted = submitted_request
-
-            app.logger.debug("review_accepted")
-            assert review_accepted.data["status"] == "accepted"
-
-            return review_accepted
-
-        # Catch validation errors when publishing the record
-        except ValidationError as e:
-            app.logger.error(
-                f"    failed to validate record for publication: {e.messages}"
-            )
-            raise PublicationValidationError(e.messages)
-
-        # If the record is already published, we need to create/retrieve
-        # and accept a 'community-inclusion' request instead
-        except (NoResultFound, ReviewStateError):
-            app.logger.debug("   record is already published")
-            record_communities = current_rdm_records.record_communities_service
-
-            # Try to create and submit a 'community-inclusion' request
-            requests, errors = record_communities.add(
-                system_identity,
-                draft_id,
-                {"communities": [{"id": community_id}]},
-            )
-            submitted_request = requests[0] if requests else None
-            app.logger.debug(pformat(submitted_request))
-
-            # If that failed because the record is already included in the
-            # community, skip accepting the request (unnecessary)
-            # FIXME: How can we tell if an inclusion request is already
-            # open and/or accepted? Without relying on this error message?
-            if errors and "already included" in errors[0]["message"]:
-                return {submitted_request}
-            # If that failed look for any existing open
-            # 'community-inclusion' request and continue with it
-            if errors:
-                app.logger.debug(
-                    f"    inclusion request already open for {draft_id}"
-                )
-                app.logger.debug(pformat(errors))
-                record = record_communities.record_cls.pid.resolve(draft_id)
-                request_id = record_communities._exists(community_id, record)
-                app.logger.debug(
-                    f"submitted inclusion request: {pformat(request_id)}"
-                )
-            # If it succeeded, continue with the new request
-            else:
-                request_id = (
-                    submitted_request["id"]
-                    if submitted_request.get("id")
-                    else submitted_request["request"]["id"]
-                )
-            request_obj = current_requests_service.read(
-                system_identity, request_id
-            )._record
-            community = current_communities.service.record_cls.pid.resolve(
-                community_id
-            )
-            # app.logger.debug(f"request_obj: {pformat(request_obj)}  ")
-
-            # Accept the 'community-inclusion' request if it's not already
-            # accepted
-            if request_obj["status"] != "accepted":
-                community_inclusion = (
-                    current_rdm_records.community_inclusion_service
-                )
-                try:
-                    review_accepted = community_inclusion.include(
-                        system_identity, community, request_obj, uow
-                    )
-                except InvalidAccessRestrictions:
-                    # can't add public record to restricted community
-                    # so set community to public before acceptance
-                    # TODO: can we change this policy?
-                    app.logger.warning(
-                        f"    setting community {community_id} to public"
-                    )
-                    CommunityRecordHelper.set_community_visibility(
-                        community_id, "public"
-                    )
-                    review_accepted = community_inclusion.include(
-                        system_identity, community, request_obj, uow
-                    )
-            else:
-                review_accepted = request_obj
-            return review_accepted
-
-
-def add_record_to_group_collections(
-    metadata_record: dict, record_source: str
-) -> list:
-    """Add a published record to the appropriate group collections.
-
-    These communities/collections are controlled by groups on a
-    remote service. The record's metadata includes the group
-    identifiers and names for the collections to which it should
-    be added.
-
-    If a group collection does not exist, it is created and linked
-    to the group on the remote service. Members of the remote group will
-    receive role-based membership in the group collection.
-
-    params:
-        metadata_record (dict): the metadata record to add to group
-            collections (this is assumed to be a published record)
-        record_source (str): the string representation of the record's
-            source service, for use by invenio-group-collections in
-            linking the record to the appropriate group collections
-
-    returns:
-        list: the list of group collections the record was added to
-    """
-    bad_groups = [
-        "1003749",
-        "1000743",
-        "1004285",
-        "1000737",
-        "1000754",
-        "1003111",
-        "1001232",
-        "1004181",
-        "344",
-        "1002956",
-        "1002947",
-        "1003017",
-        "1003436",
-        "1003608",
-        "1003410",
-        "1004047",
-    ]
-    # FIXME: See whether this can be generalized
-    if record_source == "knowledgeCommons":
-        added_to_collections = []
-        group_list = [
-            g
-            for g in metadata_record["custom_fields"].get(
-                "hclegacy:groups_for_deposit", []
-            )
-            if g.get("group_identifier")
-            and g.get("group_name")
-            and g.get("group_identifier") not in bad_groups
-        ]
-        for group in group_list:
-            group_id = group["group_identifier"]
-            app.logger.debug(f"    linking to group_id: {group_id}")
-            app.logger.debug(
-                f"    linking to group_name: {group['group_name']}"
-            )
-            group_name = group["group_name"]
-            coll_record = None
-            try:
-                coll_search = collections_service.search(
-                    system_identity,
-                    record_source,
-                    commons_group_id=group_id,
-                )
-                coll_records = coll_search.to_dict()["hits"]["hits"]
-                # NOTE: Don't check for identical group name because
-                # sometimes the group name has changed since the record
-                # was created
-                #
-                # coll_records = [
-                #     c
-                #     for c in coll_records
-                #     if c["custom_fields"].get("kcr:commons_group_name")
-                #     == group_name
-                # ]
-                app.logger.debug(
-                    f"coll_record: {pformat(coll_search.to_dict())}"
-                )
-                try:
-                    assert len(coll_records) == 1
-                except AssertionError as e:
-                    if len(coll_records) > 1:
-                        raise MultipleActiveCollectionsError(
-                            f"    multiple active collections found "
-                            f"for {group_id}"
-                        )
-                    else:
-                        raise e
-                coll_record = coll_records[0]
-                app.logger.debug(
-                    f"    found group collection {coll_record['id']}"
-                )
-            except CollectionNotFoundError:
-                try:
-                    app.logger.debug("    creating group collection...")
-                    coll_record = collections_service.create(
-                        system_identity,
-                        group_id,
-                        record_source,
-                    )
-                    app.logger.debug("   created group collection...")
-                except UnprocessableEntity as e:
-                    if (
-                        "Something went wrong requesting group"
-                        in e.description
-                    ):
-                        app.logger.warning(
-                            f"Failed requesting group collection from API "
-                            f"{e.description}"
-                        )
-                        raise CommonsGroupServiceError(
-                            f"Failed requesting group collection from API "
-                            f"{e.description}"
-                        )
-                except CommonsGroupNotFoundError:
-                    message = (
-                        f"    group {group_id} ({group_name})"
-                        f"not found on Knowledge Commons. Could not "
-                        f"create a group collection..."
-                    )
-                    app.logger.warning(message)
-                    raise CommonsGroupNotFoundError(message)
-            if coll_record:
-                app.logger.debug(
-                    f"    adding record to group collection "
-                    f"{coll_record['id']}..."
-                )
-                add_result = publish_record_to_community(
-                    metadata_record["id"],
-                    coll_record["id"],
-                )
-                added_to_collections.append(add_result)
-                app.logger.debug(
-                    f"    added to group collection {coll_record['id']}"
-                )
-                # app.logger.debug(f"    add_result: {pformat(add_result)}")
-        if added_to_collections:
-            app.logger.info(
-                f"    record {metadata_record['id']} successfully added "
-                f"to group collections {added_to_collections}..."
-            )
-            return added_to_collections
-        else:
-            app.logger.info(
-                f"    record {metadata_record['id']} not added to any "
-                "group collections..."
-            )
-            return []
-    else:
-        app.logger.info("    no group collections to add to...")
-        return []
-
-
 def assign_record_ownership(
     draft_id: str,
     core_data: dict,
@@ -1874,9 +1220,7 @@ def assign_record_ownership(
             existing_user.user_profile[f"identifier_{idp_slug}_username"] = (
                 new_owner_username,
             )
-            existing_user.user_profile[f"identifier_email"] = (
-                new_owner_email,
-            )
+            existing_user.user_profile["identifier_email"] = (new_owner_email,)
             current_accounts.datastore.commit()
         except (NoResultFound, AssertionError):
             pass
@@ -1996,8 +1340,8 @@ def import_record_to_invenio(
     ):
         # FIXME: allow for drawing community labels from other fields
         # for other data sources
-        result["community"] = prepare_invenio_community(
-            import_data["custom_fields"]["kcr:commons_domain"]
+        result["community"] = CommunitiesHelper().prepare_invenio_community(
+            record_source, import_data["custom_fields"]["kcr:commons_domain"]
         )
         community_id = result["community"]["id"]
 
@@ -2033,7 +1377,9 @@ def import_record_to_invenio(
         assert metadata_record["files"]["enabled"] is False
 
     # Attach the record to the communities
-    result["community_review_accepted"] = publish_record_to_community(
+    result[
+        "community_review_accepted"
+    ] = CommunitiesHelper().publish_record_to_community(
         draft_id,
         community_id,
     )
@@ -2045,14 +1391,20 @@ def import_record_to_invenio(
     )
 
     # Add the record to the appropriate group collections
-    result["added_to_collections"] = add_record_to_group_collections(
+    result[
+        "added_to_collections"
+    ] = CommunitiesHelper().add_record_to_group_collections(
         metadata_record, record_source
     )
 
     # Create fictural usage events to generate correct usage stats
     events = StatsFabricator().create_stats_events(
         draft_id,
+        downloads_field="custom_fields.hclegacy:total_downloads",
+        views_field="custom_fields.hclegacy:total_views",
+        date_field="metadata.publication_date",
         eager=True,
+        verbose=True,
     )
     for e in events:
         app.logger.debug(f"    created {e[1][0]} usage events ({e[0]})...")
@@ -2584,7 +1936,7 @@ def load_records_into_invenio(
             bookmark_override=arrow.get(start_date).naive,
             eager=True,
         )
-        app.logger.debug(f"    created usage aggregations...")
+        app.logger.debug("    created usage aggregations...")
         app.logger.debug(pformat(aggregations))
     else:
         app.logger.warning(
