@@ -145,23 +145,22 @@ class StatsFabricator:
         Create statistics events for the migrated records already in the db.
         """
         if record_ids:
-            records = records_service.read_many(
+            record_ids = records_service.read_many(
                 system_identity, ids=record_ids
             )
         else:
-            records = records_service.scan(identity=system_identity)
+            # NOTE: if we iterate over the generator directly, OpenSearch
+            # tries to use a context pointer that expires before the request
+            # can complete. It produces a "no search context found for id XXX"
+            # error.
+            record_ids = [
+                r["id"] for r in records_service.scan(identity=system_identity)
+            ]
 
-        for record in records:
+        for record_id in record_ids:
             try:
-                views = record.get(views_field, 0)
-                downloads = record.get(downloads_field, 0)
-                if verbose:
-                    app.logger.info(
-                        f"found record: {record}, views: {views}, "
-                        f"downloads: {downloads}"
-                    )
                 self.create_stats_events(
-                    record["id"],
+                    record_id,
                     downloads_field=downloads_field,
                     views_field=views_field,
                     date_field=date_field,
@@ -170,11 +169,11 @@ class StatsFabricator:
                 )
             except TooManyViewEventsError as e:
                 app.logger.error(
-                    f"Error creating view events for record {record['id']}:"
+                    f"Error creating view events for record {record_id}:"
                     f"{e}"
                 )
                 print(
-                    f"Error creating view events for record {record['id']}:"
+                    f"Error creating view events for record {record_id['id']}:"
                     f"{e}"
                 )
 
@@ -186,7 +185,7 @@ class StatsFabricator:
         date_field: str = "metadata.publication_date",
         eager=False,
         verbose=False,
-    ):
+    ) -> Union[bool, list]:
         """
         Create artificial statistics events for a migrated record.
 
@@ -213,7 +212,10 @@ class StatsFabricator:
         returns:
             Either bool or list, depending on the value of eager. If eager
             is True, the function returns a list of the events. If eager
-            is False, the function returns True.
+            is False, the function returns True. In either case, if the
+            required fields are not present from which to derive the number
+            of views and downloads, the function will print an error message
+            and return False.
 
         """
         if verbose:
@@ -222,11 +224,11 @@ class StatsFabricator:
         rec_search = records_service.read(system_identity, id_=record_id)
         record = rec_search._record
 
-        def get_field_value(record, field):
+        def get_field_value(record: dict, field: str) -> int:
             field_parts = field.split(".")
             if len(field_parts) > 1:
                 return get_field_value(
-                    record["metadata"][field_parts[0]], field_parts[1:]
+                    record[field_parts[0]], ".".join(field_parts[1:])
                 )
             else:
                 return record[field_parts[0]]
@@ -234,11 +236,16 @@ class StatsFabricator:
         metadata_record = rec_search.to_dict()
 
         # FIXME: this all assumes a single uploaded file per record on import
-        views = get_field_value(metadata_record, views_field)
-        downloads = get_field_value(metadata_record, downloads_field)
-        record_creation = arrow.get(
-            get_field_value(metadata_record, date_field)
-        )
+        try:
+            views = get_field_value(metadata_record, views_field)
+            downloads = get_field_value(metadata_record, downloads_field)
+            record_creation = arrow.get(
+                get_field_value(metadata_record, date_field)
+            )
+        except KeyError as e:
+            app.logger.info(f"Required fields not found for {record_id}: {e}")
+            print(f"Required fields not found for {record_id}: {e}")
+            return False
 
         if verbose:
             app.logger.info(f"views: {views}")
