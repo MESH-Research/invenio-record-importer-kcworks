@@ -888,18 +888,28 @@ def create_aggregations(start_date, end_date, verbose):
             print("    dividing the range into 1 year chunks")
         # Divide the range into 1 year chunks
         start_date = arrow.get(start_date)
-        end_date = start_date.shift(years=1)
-        while end_date < arrow.get(end_date):
+        inner_end_date = start_date.shift(years=1)
+        print("    start date: ", start_date)
+        print("    inner_end_date: ", inner_end_date)
+        print(
+            "    inner_end_date < arrow.get(end_date): ",
+            inner_end_date < arrow.get(end_date),
+        )
+        while inner_end_date < arrow.get(end_date):
             if verbose:
-                print("    creating aggregations for ", start_date, end_date)
+                print(
+                    "    creating aggregations for ",
+                    start_date,
+                    inner_end_date,
+                )
             AggregationFabricator().create_stats_aggregations(
-                start_date,
-                end_date,
-                bookmark_override=arrow.get(start_date).naive,
+                start_date.naive.isoformat(),
+                inner_end_date.naive.isoformat(),
+                bookmark_override=arrow.get(start_date).naive.isoformat(),
                 verbose=verbose,
             )
-            start_date = end_date
-            end_date = start_date.shift(years=1)
+            start_date = inner_end_date
+            inner_end_date = start_date.shift(years=1)
     else:
         if verbose:
             print("    creating aggregations for ", start_date, end_date)
