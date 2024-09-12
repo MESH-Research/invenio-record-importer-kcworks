@@ -426,6 +426,7 @@ class AggregationFabricator:
         end_date: str = None,
         bookmark_override=None,
         eager=False,
+        verbose=False,
     ) -> Union[bool, list]:
         """
         Create statistics aggregations for the migrated records.
