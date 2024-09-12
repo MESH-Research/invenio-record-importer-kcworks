@@ -4,7 +4,7 @@ from dateutil.parser import parse as dateutil_parse
 from invenio_stats.proxies import current_stats
 
 
-@shared_task
+@shared_task(ignore_result=False)
 def aggregate_events(
     aggregations: list,
     start_date: str = None,

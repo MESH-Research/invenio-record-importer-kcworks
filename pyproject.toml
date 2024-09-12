@@ -45,6 +45,9 @@ importer = "invenio_record_importer.ext:InvenioRecordImporter"
 [project.entry-points."flask.commands"]
 importer = "invenio_record_importer.main:cli"
 
+[project.entry-points."invenio_celery.tasks"]
+importer = "invenio_record_importer.tasks"
+
 [tool.setuptools]
 # If there are data files included in your packages that need to be
 # installed, specify them here.

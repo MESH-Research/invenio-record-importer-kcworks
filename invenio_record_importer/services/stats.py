@@ -454,6 +454,7 @@ class AggregationFabricator:
         """
 
         aggregation_types = list(current_stats.aggregations)
+        print("aggregation_types: ", aggregation_types)
         agg_task = aggregate_events.si(
             aggregation_types,
             start_date=(
