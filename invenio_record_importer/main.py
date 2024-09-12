@@ -803,6 +803,17 @@ def create_stats(
         "formatted in ISO format, i.e. as 'YYYY-MM-DD'."
     ),
 )
+@click.option(
+    "-v",
+    "--verbose",
+    is_flag=True,
+    default=False,
+    help=(
+        "If True, information will be printed to the console as the stats "
+        "aggregations are created. Otherwise, no information will be printed "
+        "until all the stats aggregations are created."
+    ),
+)
 # @click.option(
 #     "--eager",
 #     is_flag=True,
@@ -813,7 +824,7 @@ def create_stats(
 #     ),
 # )
 @with_appcontext
-def create_aggregations(start_date, end_date):
+def create_aggregations(start_date, end_date, verbose):
     """
     Create usage stats aggregations for all records.
 
@@ -833,9 +844,6 @@ def create_aggregations(start_date, end_date):
     causing errors or creating duplicate aggregations. Each time it will
     simply collect the events currently in the system for the given date range.
 
-    TODO: Provide automatic chunking of the records so that this manual
-    repetition is not necessary.
-
     params:
         start_date: str
             The start date for the record events to aggregate. If not
@@ -848,9 +856,15 @@ def create_aggregations(start_date, end_date):
             the aggregation will end with the current date. The date should be
             formatted in ISO format, i.e. as 'YYYY-MM-DD'.
 
+        verbose: bool
+            If True, information will be printed to the console as the stats
+            aggregations are created. Otherwise, no information will be printed
+            until all the stats aggregations are created.
+
     returns:
         None
     """
+    print("Creating usage stats aggregations...")
     if not end_date:
         end_date = arrow.utcnow().naive.isoformat()
     if not start_date:
@@ -862,20 +876,41 @@ def create_aggregations(start_date, end_date):
     # If start_date is after end_date, swap them
     # If start_date is more than 1 year before end_date, divide the range
     # into 1 year chunks
+
     if arrow.get(start_date) > arrow.get(end_date):
         start_date, end_date = end_date, start_date
+    print("    start date: ", start_date)
+    print("    end date: ", end_date)
+
     if arrow.get(start_date) < (arrow.get(end_date).shift(years=-1)):
+        if verbose:
+            print("    start date is more than 1 year before end date")
+            print("    dividing the range into 1 year chunks")
         # Divide the range into 1 year chunks
         start_date = arrow.get(start_date)
         end_date = start_date.shift(years=1)
         while end_date < arrow.get(end_date):
+            if verbose:
+                print("    creating aggregations for ", start_date, end_date)
             AggregationFabricator().create_stats_aggregations(
-                start_date, end_date
+                start_date,
+                end_date,
+                bookmark_override=arrow.get(start_date).naive,
+                verbose=verbose,
             )
             start_date = end_date
             end_date = start_date.shift(years=1)
     else:
-        AggregationFabricator().create_stats_aggregations(start_date, end_date)
+        if verbose:
+            print("    creating aggregations for ", start_date, end_date)
+        AggregationFabricator().create_stats_aggregations(
+            start_date,
+            end_date,
+            bookmark_override=arrow.get(start_date).naive,
+            verbose=verbose,
+        )
+
+    print("All done creating usage stats aggregations!")
 
 
 if __name__ == "__main__":
