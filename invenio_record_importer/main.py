@@ -16,11 +16,18 @@ Relies on the following environment variables:
 RECORD_IMPORTER_DATA_DIR   The full path to the local directory where
                             the source json files (exported from legacy
                             CORE) can be found.
+RECORD_IMPORTER_SERIALIZED_PATH   The full path to the local directory where
+                            the source json files (exported from legacy
+                            CORE) can be found.
+RECORD_IMPORTER_EVENTS_PATH   The full path to the local directory where
+                            the events json files (exported from legacy
+                            CORE) can be found.
 
 Normally these variables can be set in the .env file in your base
 knowledge_commons_works directory.
 """
 
+import arrow
 import click
 from flask import current_app as app
 from flask.cli import with_appcontext
@@ -812,10 +819,15 @@ def create_aggregations(start_date, end_date):
 
     This is a very time-consuming operation, but the operations are run as
     background tasks so as not to interfere with other operations. It can,
-    however, overwhelm the search index with too many requests. So it is
-    recommended to run the operation in time-demarcated chunks. The
-    `start-date` and `end-date` parameters allow for specification of a
-    range of dates for which to create aggregations.
+    however, overwhelm the search index with too many requests. So the
+    operation is divided into 1 year chunks.
+
+    The `start-date` and `end-date` parameters allow for specification of a
+    range of dates for which to create aggregations. A start date is required.
+    If it is not provided in the cli call, the start date will be taken from
+    the RECORD_IMPORTER_START_DATE config variable. If that is not set, an
+    error will be raised.  An end date is optional. If not end date is
+    specified, the current date is used.
 
     This operation is idempotent, so it can be run multiple times without
     causing errors or creating duplicate aggregations. Each time it will
@@ -839,46 +851,31 @@ def create_aggregations(start_date, end_date):
     returns:
         None
     """
-    AggregationFabricator().create_stats_aggregations(start_date, end_date)
-
-
-# @cli.command(name="fedora")
-# @click.option(
-#     "--count", default=20, help="Maximum number of records to return"
-# )
-# @click.option(
-#     "--query", default=None, help="A query string to limit the records"
-# )
-# @click.option(
-#     "--protocol",
-#     default="fedora-xml",
-#     help="The api protocol to use for the request",
-# )
-# @click.option(
-#     "--pid",
-#     default=None,
-#     help="A pid or regular expression to select records by pid",
-# )
-# @click.option(
-#     "--terms",
-#     default=None,
-#     help="One or more subject terms to filter the records",
-# )
-# @click.option(
-#     "--fields",
-#     default=None,
-#     help="A comma separated string list of fields to return for each record",
-# )
-# def fetch_fedora(
-#     query: Optional[str],
-#     protocol: str,
-#     pid: Optional[str],
-#     terms: Optional[str],
-#     fields: Optional[str],
-#     count: int,
-# ) -> list[dict]:
-#     """Deprecated: Fetch records from the Fedora repository."""
-#     fetch_fedora_records(query, protocol, pid, terms, fields, count)
+    if not end_date:
+        end_date = arrow.utcnow().naive.isoformat()
+    if not start_date:
+        start_date = arrow.get(
+            app.config.get("RECORD_IMPORTER_START_DATE")
+        ).naive.isoformat()
+        if not start_date:
+            raise ValueError("No start date specified")
+    # If start_date is after end_date, swap them
+    # If start_date is more than 1 year before end_date, divide the range
+    # into 1 year chunks
+    if arrow.get(start_date) > arrow.get(end_date):
+        start_date, end_date = end_date, start_date
+    if arrow.get(start_date) < (arrow.get(end_date).shift(years=-1)):
+        # Divide the range into 1 year chunks
+        start_date = arrow.get(start_date)
+        end_date = start_date.shift(years=1)
+        while end_date < arrow.get(end_date):
+            AggregationFabricator().create_stats_aggregations(
+                start_date, end_date
+            )
+            start_date = end_date
+            end_date = start_date.shift(years=1)
+    else:
+        AggregationFabricator().create_stats_aggregations(start_date, end_date)
 
 
 if __name__ == "__main__":

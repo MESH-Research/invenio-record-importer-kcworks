@@ -8,6 +8,7 @@ where applicable. Flask configuration variables take precedence over
 environment variables.
 """
 
+import arrow
 from pathlib import Path
 
 
@@ -95,6 +96,12 @@ class ImporterConfig:
                 ),
             )
         )
+
+        self.RECORD_IMPORTER_START_DATE = app.config.get(
+            "RECORD_IMPORTER_START_DATE",
+            arrow.get("2015-01-01").isoformat(),
+        )
+
         self.RECORD_IMPORTER_COMMUNITIES_DATA = {
             "knowledgeCommons": {
                 "hcommons": {
