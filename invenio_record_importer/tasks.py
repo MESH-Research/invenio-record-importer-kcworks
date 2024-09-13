@@ -1,6 +1,4 @@
 from celery import shared_task
-import datetime
-from dateutil.parser import parse as dateutil_parse
 from invenio_stats.proxies import current_stats
 
 
@@ -10,7 +8,7 @@ def aggregate_events(
     start_date: str = None,
     end_date: str = None,
     update_bookmark: bool = True,
-    bookmark_override: datetime.datetime = None,
+    bookmark_override: str = None,
 ) -> list:
     """Aggregate indexed events.
 
@@ -22,8 +20,6 @@ def aggregate_events(
     that can use the `previous_bookmark` parameter to override the
     `previous_bookmark` value derived from the search index.
     """
-    start_date = dateutil_parse(start_date) if start_date else None
-    end_date = dateutil_parse(end_date) if end_date else None
     results = []
     for aggr_name in aggregations:
         aggr_cfg = current_stats.aggregations[aggr_name]

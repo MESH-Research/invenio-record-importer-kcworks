@@ -1931,8 +1931,8 @@ def load_records_into_invenio(
     )
     if aggregate:
         aggregations = AggregationFabricator().create_stats_aggregations(
-            start_date=arrow.get(start_date).naive.isoformat(),
-            end_date=arrow.get(end_date).naive.isoformat(),
+            start_date=arrow.get(start_date).naive,
+            end_date=arrow.get(end_date).naive,
             bookmark_override=arrow.get(start_date).naive,
             eager=True,
         )

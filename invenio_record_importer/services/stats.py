@@ -8,6 +8,7 @@
 # LICENSE file for more details.
 
 import arrow
+import datetime
 from flask import current_app as app
 from invenio_access.permissions import system_identity
 from invenio_rdm_records.proxies import (
@@ -376,10 +377,6 @@ class StatsFabricator:
 
         try:
             if eager:
-                # process_task.apply(throw=True)
-                # events = process_events.delay(
-                #     ["record-view", "file-download"]
-                # ).get()
                 events = process_events(["record-view", "file-download"])
                 app.logger.info(
                     f"Events processed successfully. {pformat(events)}"
@@ -414,7 +411,8 @@ class AggregationFabricator:
 
     This class creates the necessary aggregations by bypassing the
     bookmark mechanism and aggregating all events in the chosen time period.
-    This class should be run after the StatsFabricator class has been run.
+    This class should be run after the StatsFabricator class has created
+    the individual events.
     """
 
     def __init__(self):
@@ -422,11 +420,11 @@ class AggregationFabricator:
 
     def create_stats_aggregations(
         self,
-        start_date: str = None,
-        end_date: str = None,
-        bookmark_override=None,
-        eager=False,
-        verbose=False,
+        start_date: Union[arrow.Arrow, datetime.datetime] = None,
+        end_date: Union[arrow.Arrow, datetime.datetime] = None,
+        bookmark_override: Union[arrow.Arrow, datetime.datetime] = None,
+        eager: bool = False,
+        verbose: bool = False,
     ) -> Union[bool, list]:
         """
         Create statistics aggregations for the migrated records.
@@ -441,10 +439,15 @@ class AggregationFabricator:
         each record, including any that were created by the StatsFabricator.
 
         params:
-            start_date (str): the start date for the aggregations
-            end_date (str): the end date for the aggregations
+            start_date (Union[arrow.Arrow, datetime.datetime]): the start date
+                for the aggregations
+            end_date (Union[arrow.Arrow, datetime.datetime]): the end date for
+                the aggregations
+            bookmark_override (Union[arrow.Arrow, datetime.datetime]): the
+                bookmark to use for the start of the aggregations
             eager (bool): whether to process the aggregations immediately
                 or queue them for processing in a background task
+            verbose (bool): whether to print debug information
 
         returns:
             Either bool or list, depending on the value of eager. If eager
@@ -454,17 +457,18 @@ class AggregationFabricator:
         """
 
         aggregation_types = list(current_stats.aggregations)
-        print("aggregation_types: ", aggregation_types)
         agg_task = aggregate_events.si(
             aggregation_types,
             start_date=(
-                arrow.get(start_date).naive.isoformat() if start_date else None
+                arrow.get(start_date).isoformat() if start_date else None
             ),
-            end_date=(
-                arrow.get(end_date).naive.isoformat() if end_date else None
-            ),
+            end_date=(arrow.get(end_date).isoformat() if end_date else None),
             update_bookmark=True,  # is this right?
-            bookmark_override=bookmark_override,
+            bookmark_override=(
+                arrow.get(bookmark_override).isoformat()
+                if bookmark_override
+                else None
+            ),
         )
         if eager:
             aggs = agg_task.apply(throw=True)

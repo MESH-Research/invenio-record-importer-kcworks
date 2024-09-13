@@ -876,47 +876,46 @@ def create_aggregations(start_date, end_date, verbose):
     # If start_date is after end_date, swap them
     # If start_date is more than 1 year before end_date, divide the range
     # into 1 year chunks
+    start_dt = arrow.get(start_date)
+    end_dt = arrow.get(end_date)
 
-    if arrow.get(start_date) > arrow.get(end_date):
-        start_date, end_date = end_date, start_date
-    print("    start date: ", start_date)
-    print("    end date: ", end_date)
+    print("    start date: ", start_dt)
+    print("    end date: ", end_dt)
 
-    if arrow.get(start_date) < (arrow.get(end_date).shift(years=-1)):
+    if start_dt < end_dt.shift(years=-1):
         if verbose:
             print("    start date is more than 1 year before end date")
             print("    dividing the range into 1 year chunks")
         # Divide the range into 1 year chunks
-        start_date = arrow.get(start_date)
-        inner_end_date = start_date.shift(years=1)
-        print("    start date: ", start_date)
+        inner_end_date = start_dt.shift(years=1)
+        print("    start date: ", start_dt)
         print("    inner_end_date: ", inner_end_date)
         print(
             "    inner_end_date < arrow.get(end_date): ",
-            inner_end_date < arrow.get(end_date),
+            inner_end_date < end_dt,
         )
-        while inner_end_date < arrow.get(end_date):
+        while inner_end_date < end_dt:
             if verbose:
                 print(
                     "    creating aggregations for ",
-                    start_date,
+                    start_dt,
                     inner_end_date,
                 )
             AggregationFabricator().create_stats_aggregations(
-                start_date.naive.isoformat(),
-                inner_end_date.naive.isoformat(),
-                bookmark_override=arrow.get(start_date).naive.isoformat(),
+                start_dt.naive,
+                inner_end_date.naive,
+                bookmark_override=start_dt.naive,
                 verbose=verbose,
             )
-            start_date = inner_end_date
-            inner_end_date = start_date.shift(years=1)
+            start_dt = inner_end_date
+            inner_end_date = start_dt.shift(years=1)
     else:
         if verbose:
-            print("    creating aggregations for ", start_date, end_date)
+            print("    creating aggregations for ", start_dt, end_dt)
         AggregationFabricator().create_stats_aggregations(
-            start_date,
-            end_date,
-            bookmark_override=arrow.get(start_date).naive,
+            start_dt.naive,
+            end_dt.naive,
+            bookmark_override=start_dt.naive,
             verbose=verbose,
         )
 
