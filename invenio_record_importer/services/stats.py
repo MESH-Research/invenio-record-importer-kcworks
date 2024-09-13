@@ -457,6 +457,14 @@ class AggregationFabricator:
         """
 
         aggregation_types = list(current_stats.aggregations)
+
+        # first delete existing aggregations
+        for a in aggregation_types:
+            aggr_cfg = current_stats.aggregations[a]
+            aggregator = aggr_cfg.cls(name=aggr_cfg.name, **aggr_cfg.params)
+            aggregator.delete(start_date, end_date)
+
+        # now create new aggregations
         agg_task = aggregate_events.si(
             aggregation_types,
             start_date=(
