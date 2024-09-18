@@ -7,7 +7,7 @@
 # modify it under the terms of the MIT License; see LICENSE file for more
 # details.
 
-from ..libs.fedoraapi import FedoraApi
+from invenio_record_importer.libs.fedoraapi import FedoraApi
 import requests
 from typing import Optional
 import os

@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-invenio-app-rdm = {version = "~=12.0.0b3.dev3", extras = ["opensearch2"]}
+invenio-app-rdm = {version = "==12.0.3", extras = ["opensearch2"]}
 timefhuman = "*"
 halo = "*"
 jsonlines = "*"
@@ -19,8 +19,13 @@ pytz = "*"
 python-dateutil = "*"
 invenio-saml = "*"
 invenio-record-importer = {file = ".", editable = true}
+invenio-rdm-records = {file = "../invenio-rdm-records", editable = true}
+invenio-records-resources = {file = "../invenio-records-resources", editable = true}
+invenio-communities = {file = "../invenio-communities", editable = true}
 invenio-remote-user-data = {file = "../invenio-remote-user-data", editable = true}
 invenio-group-collections = {file = "../invenio-group-collections", editable = true}
+unidecode = "*"
+kcworks = {file = "../knowledge-commons-works/site", editable = true}
 
 [dev-packages]
 docker-services-cli = "*"

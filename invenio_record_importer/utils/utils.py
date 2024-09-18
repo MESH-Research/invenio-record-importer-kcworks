@@ -14,7 +14,6 @@ Utility functions for core-migrate
 from datetime import datetime
 from flask import current_app as app
 from flask_security.utils import hash_password
-import fnmatch
 from invenio_access.permissions import system_identity
 from invenio_accounts.proxies import current_accounts
 from invenio_communities.proxies import current_communities
@@ -22,31 +21,12 @@ from invenio_communities.members.records.api import Member
 from invenio_search.proxies import current_search_client
 from isbnlib import is_isbn10, is_isbn13, clean
 import os
-from pprint import pformat
 import random
 import re
 import requests
 import string
 from typing import Any, Union
 import unicodedata
-
-
-class FilesHelper:
-    def __init__(self) -> None:
-        pass
-
-    @staticmethod
-    def sanitize_filenames(directory) -> list:
-        changed = []
-        for path, dirs, files in os.walk(directory):
-            for filename in fnmatch.filter(files, "*[“”‘’]*"):
-                file_path = os.path.join(path, filename)
-                newname = re.sub(r"[“”‘’]", "", filename)
-                new_file_path = os.path.join(path, newname)
-                if file_path != new_file_path:
-                    os.rename(file_path, new_file_path)
-                    changed.append(new_file_path)
-        return changed
 
 
 class IndexHelper:
@@ -1000,7 +980,7 @@ def replace_value_in_nested_dict(d: dict, path: str, new_value: Any) -> dict:
 
     >>> f = {"a": {"b": [{"c": 1}, {"d": 2}]}}
     >>> replace_value_in_nested_dict(f, "a|b", {"e": 3})
-    {'a': {'b': {'e': 3}}
+    {'a': {'b': {'e': 3}}}
 
     :param d: The dictionary or list to update.
     :param path: The dot-separated path string to the value.

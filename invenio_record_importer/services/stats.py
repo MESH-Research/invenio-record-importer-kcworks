@@ -16,6 +16,9 @@ from invenio_rdm_records.proxies import (
 )
 import json
 from pathlib import Path
+from opensearchpy.exceptions import NotFoundError
+import time
+import uuid
 
 # from invenio_rdm_records.services.tasks import reindex_stats
 
@@ -271,19 +274,29 @@ class StatsFabricator:
         # Check for existing view and download events
         # imported events are flagged with country: "imported"
         # this is a hack
-        existing_view_events = view_events_search(record_id)
-        existing_download_events = download_events_search(file_id)
+        try:
+            existing_view_events = view_events_search(record_id)
+        except NotFoundError as e:
+            app.logger.warning(f"Error searching for view events: {e}")
+            print(f"Error searching for view events: {e}")
+            existing_view_events = []
+        try:
+            existing_download_events = download_events_search(file_id)
+        except NotFoundError as e:
+            app.logger.warning(f"Error searching for download events: {e}")
+            print(f"Error searching for download events: {e}")
+            existing_download_events = []
         if verbose:
             app.logger.info(
                 "existing view events: "
-                f"{pformat(existing_view_events['hits']['total']['value'])}"
+                f"{pformat(len(existing_view_events))}"
             )
             print(
                 "existing view events: "
-                f"{pformat(existing_view_events['hits']['total']['value'])}"
+                f"{pformat(len(existing_view_events))}"
             )
 
-        existing_view_count = existing_view_events["hits"]["total"]["value"]
+        existing_view_count = len(existing_view_events)
         if existing_view_count == views:
             app.logger.info(
                 "    skipping view events creation. "
@@ -311,29 +324,45 @@ class StatsFabricator:
                 if existing_view_count > 0:
                     views -= existing_view_count
                 view_events = []
-                for dt in self.generate_datetimes(record_creation, views):
+                unique_session_ids = []
+                for idx, dt in enumerate(
+                    self.generate_datetimes(record_creation, views)
+                ):
+                    uid = str(uuid.uuid4())
                     doc = {
                         "timestamp": dt.naive.isoformat(),
                         "recid": record_id,
                         "parent_recid": metadata_record["parent"]["id"],
                         "unique_id": f"ui_{pid.pid_value}",
                         "is_robot": False,
-                        "user_id": "1",
+                        "user_id": uid,
+                        "session_id": uid,
                         "country": "imported",
+                        # FIXME: "imported" is hack to mark synthetic data
                         "via_api": False,
-                        # FIXME: above is hack to mark synthetic data
                     }
-                    doc = anonymize_user(doc)
-                    # we can safely pass the doc through
-                    # processor.anonymize_user with null/dummy values for
+                    # doc = anonymize_user(doc)
+                    # NOTE: no longer using anonymize_user to generate
+                    # unique_session_id and visitor_id from
                     # user_id, session_id, user_agent, ip_address
-                    # it adds visitor_id and unique_session_id
+                    # instead, we're using a UUID that should be unique
+                    # to ensure events are aggregated as unique
+                    doc["unique_session_id"] = uid
+                    doc["visitor_id"] = uid
                     view_events.append(doc)
+
+                assert len(unique_session_ids) == len(set(unique_session_ids))
+                app.logger.warning(
+                    f"VIEW EVENTS unique_session_ids for {record_id}: "
+                    f"{len(set([d['unique_session_id'] for d in view_events]))}"
+                )
+                app.logger.warning(
+                    f"VIEW EVENTS being published for {record_id}: "
+                    f"{pformat(len(view_events))}"
+                )
                 current_stats.publish("record-view", view_events)
 
-        existing_download_count = existing_download_events["hits"]["total"][
-            "value"
-        ]
+        existing_download_count = len(existing_download_events)
         if existing_download_count == downloads:
             app.logger.info(
                 "    skipping download events creation. "
@@ -352,7 +381,10 @@ class StatsFabricator:
                 if existing_download_count > 0:
                     downloads -= existing_download_count
                 download_events = []
-                for dt in self.generate_datetimes(record_creation, downloads):
+                for idx, dt in enumerate(
+                    self.generate_datetimes(record_creation, downloads)
+                ):
+                    uid = str(uuid.uuid4())
                     doc = {
                         "timestamp": dt.naive.isoformat(),
                         "bucket_id": str(bucket_id),  # UUID
@@ -362,22 +394,34 @@ class StatsFabricator:
                         "recid": record_id,
                         "parent_recid": metadata_record["parent"]["id"],
                         "is_robot": False,
-                        "user_id": "1",
+                        "user_id": uid,
+                        "session_id": uid,
                         "country": "imported",
                         "unique_id": f"{str(bucket_id)}_{str(file_id)}",
                         "via_api": False,
                     }
-                    doc = anonymize_user(doc)
-                    # we can safely pass the doc through
-                    # processor.anonymize_user with null/dummy values for
+                    # doc = anonymize_user(doc)
+                    # NOTE: no longer using anonymize_user to generate
+                    # unique_session_id and visitor_id from
                     # user_id, session_id, user_agent, ip_address
-                    # it adds visitor_id and unique_session_id
+                    # instead, we're using a UUID that should be unique
+                    # to ensure events are aggregated as unique
+                    doc["unique_session_id"] = uid
+                    doc["visitor_id"] = uid
                     download_events.append(build_file_unique_id(doc))
+                print(
+                    "DOWNLOAD EVENTS being published:",
+                    pformat(len(download_events)),
+                )
                 current_stats.publish("file-download", download_events)
 
         try:
+            app.logger.warning("Trying to process events...")
+            app.logger.warning(f"EAGER: { eager }")
             if eager:
+                app.logger.warning("Processing events...")
                 events = process_events(["record-view", "file-download"])
+                print(f"Events processed successfully. {pformat(events)}")
                 app.logger.info(
                     f"Events processed successfully. {pformat(events)}"
                 )
@@ -462,7 +506,22 @@ class AggregationFabricator:
         for a in aggregation_types:
             aggr_cfg = current_stats.aggregations[a]
             aggregator = aggr_cfg.cls(name=aggr_cfg.name, **aggr_cfg.params)
-            aggregator.delete(start_date, end_date)
+            try:
+                app.logger.warning(
+                    f"Deleting existing {a} aggregations for {start_date} "
+                    f"to {end_date}..."
+                )
+                aggregator.delete(start_date, end_date)
+            except NotFoundError as e:
+                app.logger.warning(
+                    f"Aggregations indices not found for initial "
+                    f"deletion of prior records: {e}"
+                )
+                print(
+                    f"Aggregations indices not found for initial "
+                    f"deletion of prior records: {e}"
+                )
+        # time.sleep(10)
 
         # now create new aggregations
         agg_task = aggregate_events.si(

@@ -8,7 +8,6 @@ from invenio_accounts import current_accounts
 from invenio_accounts.errors import AlreadyLinkedError
 from invenio_accounts.models import User
 from invenio_db import db
-from invenio_files_rest.errors import InvalidKeyError
 from invenio_oauthclient.models import UserIdentity
 from invenio_pidstore.errors import PIDUnregistered, PIDDoesNotExistError
 from invenio_rdm_records.records.api import RDMRecord
@@ -23,19 +22,15 @@ from invenio_records.systemfields.relations.errors import InvalidRelationValue
 from invenio_record_importer.errors import (
     DraftDeletionFailedError,
     ExistingRecordNotUpdatedError,
-    FileUploadError,
     PublicationValidationError,
     SkipRecord,
     UpdateValidationError,
-    UploadFileNotFoundError,
 )
 from invenio_record_importer.services.communities import CommunitiesHelper
+from invenio_record_importer.services.files import FilesHelper
 from invenio_record_importer.services.stats import (
     StatsFabricator,
     AggregationFabricator,
-)
-from invenio_records_resources.services.errors import (
-    FileKeyNotFoundError,
 )
 import itertools
 import json
@@ -49,17 +44,13 @@ from sqlalchemy.orm.exc import NoResultFound, StaleDataError
 from traceback import print_exc
 from typing import Optional, Union
 from pprint import pformat
-import unicodedata
-from urllib.parse import unquote
 
+from invenio_record_importer.utils.file_utils import sanitize_filenames
 from invenio_record_importer.utils.utils import (
     CommunityRecordHelper,
     UsersHelper,
-    normalize_string,
     replace_value_in_nested_dict,
-    valid_date,
     compare_metadata,
-    FilesHelper,
 )
 
 
@@ -197,34 +188,20 @@ def create_invenio_record(
         dict: a dictionary containing the status of the record creation
             and the record data. The keys are
 
-            'community': The Invenio community to which the record belongs
-                if any. This is the primary community to which it was
-                initially published, although the record may then have
-                been added to other collections as well.
             'status': The kind of record operation that produced the new/
                 current metadata record. Possible values: 'new_record',
                 'updated_draft', 'updated_published',
                 'unchanged_existing_draft',
                 'unchanged_existing_published'
-            'metadata_record_created': The metadata record created or updated
-                by the operation. This dictionary has three keys:
-                'record_data', 'status', and 'recid' (with the Invenio
-                internal UUID for the record object).
-            'existing_record': The existing record with the same DOI if
-                one was found.
-            'uploaded_files': The files uploaded for the record, if any.
-            'community_review_accepted': The response object from the
-                community review acceptance at publication, if any.
-            'assigned_ownership': The response object from the assignment
-                of ownership to the record's uploader, if any.
-            'added_to_collections': The response object from the addition
-                of the record to collections in addition to the publication
-                collection, if any.
+            'record_data': The metadata record created or updated
+                by the operation.
+            'recid': The record internal UUID for the created record
     """
     app.logger.debug("~~~~~~~~")
     metadata = _coerce_types(metadata)
     app.logger.debug("metadata for new record:")
     app.logger.debug(pformat(metadata))
+    print(f"metadata for new record: {pformat(metadata['custom_fields'])}")
 
     # Check for existing record with same DOI
     if "pids" in metadata.keys() and "doi" in metadata["pids"].keys():
@@ -475,6 +452,7 @@ def create_invenio_record(
     result_recid = result._record.id
     app.logger.debug(f"    new draft record recid: {result_recid}")
     app.logger.debug(f"    new draft record: {pformat(result.to_dict())}")
+    print(f"    new draft record: {pformat(result.to_dict())}")
 
     return {
         "status": "new_record",
@@ -483,440 +461,7 @@ def create_invenio_record(
     }
 
 
-def handle_record_files(
-    metadata: dict,
-    file_data: dict,
-    existing_record: Optional[dict] = None,
-):
-    assert metadata["files"]["enabled"] is True
-    uploaded_files = {}
-    same_files = False
-
-    if existing_record:
-        # app.logger.debug(
-        #     f"    existing metadata record {pformat(existing_record)}"
-        # )
-        same_files = _compare_existing_files(
-            metadata["id"],
-            existing_record["is_draft"] is True
-            and existing_record["is_published"] is False,
-            existing_record["files"]["entries"],
-            file_data["entries"],
-        )
-
-    if same_files:
-        app.logger.info(
-            "    skipping uploading files (same already uploaded)..."
-        )
-    else:
-        app.logger.info("    uploading new files...")
-
-        # FIXME: Change upload filename field for other
-        # import sources, and make it dict to match ["files"]["entries"]
-        uploaded_files = _upload_draft_files(
-            metadata["id"],
-            file_data["entries"],
-            {
-                next(iter(file_data["entries"])): metadata["custom_fields"][
-                    "hclegacy:file_location"
-                ]
-            },
-        )
-        # app.logger.debug("@@@@ uploaded_files")
-        # app.logger.debug(pformat(uploaded_files))
-    return uploaded_files
-
-
-def _retry_file_initialization(
-    draft_id: str, k: str, files_service: object
-) -> bool:
-    """Try to recover a failed file upload initialization.
-
-    Handles situation when file key already exists on record but is not
-    found in draft metadata retrieved by record service.
-
-    params:
-        draft_id (str): the id of the draft record
-        k (str): the file key
-        files_service (object): the draft files service
-
-    raises:
-        InvalidKeyError: if the file key already exists on record but is not
-            found in draft metadata retrieved by record service
-
-    returns:
-        bool: True if the file key already exists on record but is not found
-            in draft metadata retrieved by record service
-    """
-    existing_record = files_service._get_record(
-        draft_id, system_identity, "create_files"
-    )
-    # FIXME: Why does this occasionally happen?
-
-    if existing_record.files.entries[k] == {"metadata": {}}:
-        removed_file = existing_record.files.delete(
-            k, softdelete_obj=False, remove_rf=True
-        )
-        db.session.commit()
-        app.logger.debug(
-            "...file key existed on record but was empty and was "
-            "removed. This probably indicates a prior failed upload."
-        )
-        app.logger.debug(pformat(removed_file))
-
-        initialization = files_service.init_files(
-            system_identity, draft_id, data=[{"key": k}]
-        ).to_dict()
-        assert (
-            len([e["key"] for e in initialization["entries"] if e["key"] == k])
-            == 1
-        )
-        return True
-    else:
-        app.logger.error(existing_record.files.entries[k].to_dict())
-        app.logger.error(
-            "    file key already exists on record but is not found in "
-            "draft metadata retrieved by record service"
-        )
-        raise InvalidKeyError(
-            f"File key {k} already exists on record but is not found in "
-            "draft metadata retrieved by record service"
-        )
-
-
-def _upload_draft_files(
-    draft_id: str,
-    files_dict: dict[str, dict],
-    source_filenames: dict[str, str],
-) -> dict:
-    """
-    Upload the files for one draft record using the REST api.
-
-    This process involves three api calls: one to initialize the
-    upload, another to actually send the file content, and a third
-    to commit the uploaded data.
-
-    :param str draft_id:    The id number for the Invenio draft record
-                            for which the files are to be uploaded.
-    :param dict files_dict:     A dictionary whose keys are the filenames to
-                                be used for the uploaded files. It is
-                                structured like the ["files"]["entries"]
-                                dictionary in an Invenio metadata record.
-    :param dict source_filenames:  A dictionary whose keys are the filenames
-                                to be used for the uploaded files. The values
-                                are the corresponding full filenames in the
-                                upload source directory.
-    """
-    files_service = records_service.draft_files
-    output = {}
-
-    # FIXME: Collect and upload files as a batch rather than one at a time
-    for k, v in files_dict.items():
-        source_filename = source_filenames[k]
-        # FIXME: implementation detail. Humcore specific
-        long_filename = source_filename.replace(
-            "/srv/www/commons/current/web/app/uploads/humcore/", ""
-        )
-        long_filename = long_filename.replace(
-            "/srv/www/commons/shared/uploads/humcore/", ""
-        )
-        # handle @ characters and apostrophes in filenames
-        # FIXME: assumes the filename contains the key
-        app.logger.debug(k)
-        app.logger.debug(source_filename)
-        app.logger.debug(normalize_string(k))
-        app.logger.debug(normalize_string(unquote(source_filename)))
-        try:
-            assert normalize_string(k) in normalize_string(
-                unquote(source_filename)
-            )
-        except AssertionError:
-            app.logger.error(
-                f"    file key {k} does not match source filename"
-                f" {source_filename}..."
-            )
-            raise UploadFileNotFoundError(
-                f"File key from metadata {k} not found in source file path"
-                f" {source_filename}"
-            )
-        file_path = (
-            Path(app.config["RECORD_IMPORTER_FILES_LOCATION"]) / long_filename
-        )
-        app.logger.debug(f"    uploading file: {file_path}")
-        try:
-            assert file_path.is_file()
-        except AssertionError:
-            # FIXME: Weird production error where hclegacy:file_location gets
-            # accents converted to precombined glyphs (not on dev!)
-            try:
-                full_length = len(long_filename.split("."))
-                try_index = -2
-                while abs(try_index) + 2 <= full_length:
-                    file_path = Path(
-                        app.config["RECORD_IMPORTER_FILES_LOCATION"],
-                        ".".join(long_filename.split(".")[:try_index])
-                        + "."
-                        + k,
-                    )
-                    if file_path.is_file():
-                        break
-                    else:
-                        try_index -= 1
-                assert file_path.is_file()
-            except AssertionError:
-                try:
-                    file_path = Path(
-                        unicodedata.normalize("NFD", str(file_path))
-                    )
-                    assert file_path.is_file()
-                except AssertionError:
-                    raise UploadFileNotFoundError(
-                        f"    file not found for upload {file_path}..."
-                    )
-
-        # FIXME: Change the identity throughout the process to the user
-        # and permission protect the top-level functions
-        try:
-            initialization = files_service.init_files(
-                system_identity, draft_id, data=[{"key": k}]
-            ).to_dict()
-            # app.logger.debug(initialization)
-            # app.logger.debug(k)
-            assert (
-                len(
-                    [
-                        e["key"]
-                        for e in initialization["entries"]
-                        if e["key"] == k
-                    ]
-                )
-                == 1
-            )
-        except InvalidKeyError:
-            _retry_file_initialization(draft_id, k, files_service)
-        except Exception as e:
-            app.logger.error(
-                f"    failed to initialize file upload for {draft_id}..."
-            )
-            raise e
-
-        try:
-            with open(
-                file_path,
-                "rb",
-            ) as binary_file_data:
-                # app.logger.debug(
-                #     f"filesize is {len(binary_file_data.read())} bytes"
-                # )
-                binary_file_data.seek(0)
-                files_service.set_file_content(
-                    system_identity, draft_id, k, binary_file_data
-                )
-
-        except Exception as e:
-            app.logger.error(
-                f"    failed to upload file content for {draft_id}..."
-            )
-            raise e
-
-        try:
-            files_service.commit_file(system_identity, draft_id, k)
-        except Exception as e:
-            app.logger.error(
-                f"    failed to commit file upload for {draft_id}..."
-            )
-            raise e
-
-        output[k] = "uploaded"
-
-    result_record = files_service.list_files(
-        system_identity, draft_id
-    ).to_dict()
-    try:
-
-        #   upload_commit["json"]["key"] == unquote(filename)
-        assert all(
-            r["key"]
-            for r in result_record["entries"]
-            if r["key"] in files_dict.keys()
-        )
-        for v in result_record["entries"]:
-            # app.logger.debug("key: " + v["key"] + " " + k)
-            assert v["key"] == k
-            # app.logger.debug("status: " + v["status"])
-            assert v["status"] == "completed"
-            app.logger.debug(f"size: {v['size']}  {files_dict[k]['size']}")
-            if str(v["size"]) != str(files_dict[k]["size"]):
-                raise FileUploadError(
-                    f"Uploaded file size ({v['size']}) does not match "
-                    f"expected size ({files_dict[k]['size']})"
-                )
-            # TODO: Confirm correct checksum?
-            # app.logger.debug(f"checksum: {v['checksum']}")
-            # app.logger.debug(f"created: {v['created']}")
-            assert valid_date(v["created"])
-            # app.logger.debug(f"updated: {v['updated']}")
-            assert valid_date(v["updated"])
-            # app.logger.debug(f"metadata: {v['metadata']}")
-            assert not v["metadata"]
-            # TODO: Confirm that links are correct
-            # assert (
-            #     upload_commit["json"]["links"]["content"]
-            #     == f["links"]["content"]
-            # )
-            # assert upload_commit["json"]["links"]["self"] ==
-            #     f["links"]["self"]
-            # assert (
-            #     upload_commit["json"]["links"]["commit"]
-            #     == f["links"]["commit"]
-            # )
-    except AssertionError:
-        app.logger.error(
-            "    failed to properly upload file content for"
-            f" draft {draft_id}..."
-        )
-        app.logger.error(f"result is {pformat(result_record['entries'])}")
-
-    return output
-
-
-def _compare_existing_files(
-    draft_id: str,
-    is_draft: bool,
-    old_files: dict[str, dict],
-    new_entries: dict[str, dict],
-) -> bool:
-    """Compare record's existing files with import record's files.
-
-    Compares the files based on filename and size. If the existing record has
-    different files than the import record, the existing files are deleted to
-    prepare for uploading the correct files.
-
-    This function also handles prior interrupted uploads, deleting them to
-    clear the way for a new upload.
-
-    params:
-        draft_id (str): the id of the draft record
-        is_draft (bool): whether the record is a draft or published record
-        old_files (dict): dictionary of files attached to the existing record
-        new_entries (dict): dictionary of files to be attached to the import
-                            record
-
-    raises:
-        RuntimeError: if existing record has different files than import record
-        and the existing files are not deleted.
-
-    returns:
-        bool: True if the existing record already has the same files as the
-        import record, False if the existing record has different files than
-        the import record.
-    """
-
-    files_service = (
-        records_service.files if not is_draft else records_service.draft_files
-    )
-    # draft_files_service = records_service.draft_files
-    same_files = True
-
-    try:
-        files_request = files_service.list_files(
-            system_identity, draft_id
-        ).to_dict()
-    except NoResultFound:
-        try:
-            files_request = records_service.draft_files.list_files(
-                system_identity, draft_id
-            ).to_dict()
-            # app.logger.debug(pformat(files_request))
-        except NoResultFound:
-            files_request = None
-    existing_files = files_request.get("entries", []) if files_request else []
-    # app.logger.debug(pformat(existing_files))
-    if len(existing_files) == 0:
-        same_files = False
-        app.logger.info("    no files attached to existing record")
-    else:
-        for k, v in new_entries.items():
-            wrong_file = False
-            existing_file = [
-                f
-                for f in existing_files
-                if unicodedata.normalize("NFC", f["key"])
-                == unicodedata.normalize("NFC", k)
-            ]
-            # app.logger.debug(
-            #     [
-            #         "normalized existing file: "
-            #         f"{unicodedata.normalize('NFC', f['key'])}"
-            #         for f in existing_files
-            #     ]
-            # )
-
-            if len(existing_file) == 0:
-                same_files = False
-
-            # handle prior interrupted uploads
-            # handle uploads with same name but different size
-            elif (existing_file[0]["status"] == "pending") or (
-                str(v["size"]) != str(existing_file[0]["size"])
-            ):
-                same_files = False
-                wrong_file = True
-
-            # delete interrupted or different prior uploads
-            if wrong_file:
-                error_message = (
-                    "Existing record with same DOI has different"
-                    f" files.\n{pformat(old_files)}\n !=\n "
-                    f"{pformat(new_entries)}\n"
-                    f"Could not delete existing file "
-                    f"{existing_file[0]['key']}."
-                )
-                try:
-                    # deleted_file = files_service.delete_file(
-                    #     system_identity, draft_id, existing_file[0]["key"]
-                    # )
-                    # app.logger.debug(pformat(deleted_file))
-                    app.logger.info(
-                        "    existing record had wrong or partial upload, now"
-                        " deleted"
-                    )
-                except NoResultFound:
-                    # interrupted uploads will be in draft files service
-                    records_service.draft_files.delete_file(
-                        system_identity, draft_id, existing_file[0]["key"]
-                    )
-                except FileKeyNotFoundError as e:
-                    # FIXME: Do we need to create a new draft here?
-                    # because the file is not in the draft?
-                    # files_delete = files_service.delete_file(
-                    #     system_identity, draft_id, existing_file[0]["key"]
-                    # )
-                    app.logger.info(
-                        "    existing record had wrong or partial upload, but"
-                        " it could not be found for deletion"
-                    )
-                    raise e
-                except Exception as e:
-                    raise e
-
-                # check that the file was actually deleted
-                # call produces an error if not found
-                try:
-                    files_service.list_files(
-                        system_identity, draft_id
-                    ).to_dict()["entries"]
-                except NoResultFound:
-                    app.logger.info(
-                        "    deleted file is no longer attached to record"
-                    )
-                else:
-                    app.logger.error(error_message)
-                    raise RuntimeError(error_message)
-        return same_files
-
-
-def delete_invenio_draft_record(record_id: str) -> Optional[dict]:
+def delete_invenio_draft_record(record_id: str) -> bool:
     """
     Delete a draft Invenio record with the provided Id
 
@@ -927,6 +472,8 @@ def delete_invenio_draft_record(record_id: str) -> Optional[dict]:
     Note: This function only works for draft (unpublished) records.
 
     :param str record_id:   The id string for the Invenio draft record
+
+    :returns: True if the record was deleted, False otherwise
     """
     result = None
     app.logger.info(f"    deleting draft record {record_id}...")
@@ -1303,8 +850,13 @@ def import_record_to_invenio(
         keys:
         - community: the community data dictionary for the record's
             primary community
-        - metadata_record_created: the metadata record creation result
-        - status: the status of the metadata record
+        - metadata_record_created: the metadata record creation result.
+            This is not just the metadata record, but the dictionary
+            returned by the create_invenio_record function. It contains
+            the following keys:
+            - record_data: the metadata record
+            - record_uuid: the UUID of the metadata record
+            - status: the status of the metadata record
         - uploaded_files: the file upload results
         - community_review_accepted: the community review acceptance result
         - assigned_ownership: the record ownership assignment result
@@ -1365,10 +917,14 @@ def import_record_to_invenio(
     draft_id = metadata_record["id"]
     app.logger.info(f"    metadata record id: {draft_id}")
 
+    print(
+        f"import_record_to_invenio metadata_record: {pformat(metadata_record)}"
+    )
+
     # Upload the files
     if len(import_data["files"]["entries"]) > 0:
         app.logger.info("    uploading files for draft...")
-        result["uploaded_files"] = handle_record_files(
+        result["uploaded_files"] = FilesHelper().handle_record_files(
             metadata_record,
             file_data,
             existing_record=existing_record,
@@ -1625,9 +1181,7 @@ def load_records_into_invenio(
     # issues with special characters
     if clean_filenames:
         app.logger.info("Sanitizing file names...")
-        FilesHelper.sanitize_filenames(
-            app.config["RECORD_IMPORTER_FILES_LOCATION"]
-        )
+        sanitize_filenames(app.config["RECORD_IMPORTER_FILES_LOCATION"])
 
     # Load list of previously created records
     created_records = []

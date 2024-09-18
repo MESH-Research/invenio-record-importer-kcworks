@@ -45,10 +45,14 @@ class InvenioRecordImporter(object):
             if k.startswith("RECORD_IMPORTER_"):
                 app.config.setdefault(k, getattr(self.config, k))
 
-        app.logger.handlers[0].setFormatter(
-            logging.Formatter(
-                "[%(asctime)s] %(levelname)s - %(message)s "
-                "{%(filename)s:%(lineno)d}",
-                "%m-%d %H:%M:%S",
-            )
-        )
+        # print("init_config")
+        # print(app.logger)
+        # print(app.logger.handlers)
+        # print(app.logger.handlers[0])
+        # app.logger.handlers[0].setFormatter(
+        #     logging.Formatter(
+        #         "[%(asctime)s] %(levelname)s - %(message)s "
+        #         "{%(filename)s:%(lineno)d}",
+        #         "%m-%d %H:%M:%S",
+        #     )
+        # )

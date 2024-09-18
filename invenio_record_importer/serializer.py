@@ -18,10 +18,7 @@ one json object per line, separated by newlines.
 import arrow
 from copy import deepcopy
 from datetime import datetime
-import dateparser
 from flask import current_app as app
-from pprint import pprint
-from timefhuman import timefhuman
 from idutils import (
     is_doi,
     is_url,
@@ -38,7 +35,6 @@ from pathlib import Path
 from stdnum import issn
 from titlecase import titlecase
 import re
-import validators
 
 from invenio_record_importer.libs.date_parser import DateParser
 from invenio_record_importer.utils.utils import (
@@ -47,8 +43,6 @@ from invenio_record_importer.utils.utils import (
     normalize_string_lowercase,
     normalize_string,
 )
-from invenio_record_importer.utils.monthwords import monthwords
-from invenio_record_importer.utils.seasonwords import seasonwords
 
 book_types = [
     "textDocument-bookChapter",
@@ -1976,9 +1970,9 @@ def add_institution(
         if newrec["metadata"]["resource_type"]["id"] in [
             "textDocument-thesis",
         ]:
-            newrec["custom_fields"].setdefault("thesis:thesis", {})[
-                "university"
-            ] = normalize_string(row["institution"])
+            newrec["custom_fields"]["thesis:university"] = normalize_string(
+                row["institution"]
+            )
         else:
             newrec["custom_fields"]["kcr:sponsoring_institution"] = (
                 normalize_string(row["institution"])
@@ -2178,31 +2172,47 @@ def add_subjects_keywords(
             "Urban studies",
         ]
         bad_subjects = {
-            "1178850:Transnationalism:topical": "1154884:Transnationalism:topical",
+            "1178850:Transnationalism:topical": (
+                "1154884:Transnationalism:topical"
+            ),
             "815177:Art, American:topical": "815895:Art, American:topical",
             "1205213:Cyprus:topical": "1205213:Cyprus:geographic",
             "1240495:Asia:topical": "1240495:Asia:geographic",
-            "1205757:Civilization, Ancient:topical": "862946:Civilization, Ancient:topical",
+            "1205757:Civilization, Ancient:topical": (
+                "862946:Civilization, Ancient:topical"
+            ),
             "1239509:Africa:topical": "1239509:Africa:geographic",
-            "29097:Dante Alighieri, 1265-1321:topical": "29097:Dante Alighieri, 1265-1321:personal",
+            "29097:Dante Alighieri, 1265-1321:topical": (
+                "29097:Dante Alighieri, 1265-1321:personal"
+            ),
             "1020301:Middles Ages:topical": "1020301:Middle Ages:topical",
             "1204082:Japan:topical": "1204082:Japan:geographic",
             "1204543:Australia:topical": "1204543:Australia:geographic",
             "1208380:Greece:topical": "1208380:Greece:geographic",
             "1242804:Scandinavia:topical": "1242804:Scandinavia:geographic",
-            "1411635:Criticism, interpretation, etc.:topical": "1411635:Criticism, interpretation, etc.:form",
-            "21st-century American literature": "807113:American literature:topical",
-            "863509:Classsical literature:topical": "863509:Classical literature:topical",
+            "1411635:Criticism, interpretation, etc.:topical": (
+                "1411635:Criticism, interpretation, etc.:form"
+            ),
+            "21st-century American literature": (
+                "807113:American literature:topical"
+            ),
+            "863509:Classsical literature:topical": (
+                "863509:Classical literature:topical"
+            ),
             "Academic librarianship": "794993:Academic librarians:topical",
             "Ancient law": "993683:Law--Antiquities:topical",
             "Apostle Paul": "288253:St. Paul:personal",
             "Art history": "815264:Art--History:topical",
-            "Australasian/Pacific literature": "821406:Australasian literature:topical",
+            "Australasian/Pacific literature": (
+                "821406:Australasian literature:topical"
+            ),
             "Aesthetic theory": "798702:Aesthetics:topical",
             "Book history": "836420:Books--History:topical",
             "Central Europe": "1244544:Central Europe:geographic",
             "Comics": "1921613:Comics (Graphic works):form",
-            "Contemporary history": "1865054:History of contemporary events:topical",
+            "Contemporary history": (
+                "1865054:History of contemporary events:topical"
+            ),
             "Cultural history": "885069:Culture--History:topical",
             "Cultural studies": "885059:Culture:topical",
             "Digital communication": "893634:Digital communications:topical",
@@ -2219,9 +2229,13 @@ def add_subjects_keywords(
             "History of religions": "1093783:Religion--History:topical",
             "History of the arts": "817758:Arts--History:topical",
             "Holocaust studies": "958866:Jewish Holocaust (1939-1945):topical",
-            "Illuminated manuscripts": "967235:Illumination of books and manuscripts:topical",
+            "Illuminated manuscripts": (
+                "967235:Illumination of books and manuscripts:topical"
+            ),
             "India": "1210276:India:geographic",
-            "Interdisciplinary studies": "976131:Interdisciplinary research:topical",
+            "Interdisciplinary studies": (
+                "976131:Interdisciplinary research:topical"
+            ),
             "Internet sociology": "1766793:Internet--Social aspects:topical",
             "Jack Kerouac": "52352:Kerouac, Jack, 1922-1969:personal",
             "James Joyce": "370728:Joyce, James:personal",
@@ -2230,24 +2244,36 @@ def add_subjects_keywords(
             "Latin American studies": "1245945:Latin America:geographic",
             "Library and information science": "997916:Library science:topical",
             "Literary theory": "1353577:Literature--Theory:topical",
-            "Literature and psychology": "1081551:Psychology and literature:topical",
+            "Literature and psychology": (
+                "1081551:Psychology and literature:topical"
+            ),
             "Manuscript studies": "1008230:Manuscripts:topical",
             "Medieval literature": "1000151:Literature, Medieval:topical",
             "Music history": "1030330:Music--History:topical",
             "Music performance": "1030398:Music--Performance:topical",
             "Poetics and poetry": "1067682:Poetics:topical",
-            "Political philosophy": "1060799:Philosophy--Political aspects:topical",
-            "Portuguese culture": "1072404:Portuguese--Ethnic identity:topical",
+            "Political philosophy": (
+                "1060799:Philosophy--Political aspects:topical"
+            ),
+            "Portuguese culture": (
+                "1072404:Portuguese--Ethnic identity:topical"
+            ),
             "Religious studies": "1093763:Religion:topical",
             "Shakespeare": "314312:Shakespeare, William, 1849-1931:personal",
-            "Social anthropology": "810233:Anthropology--Social aspects:topical",
+            "Social anthropology": (
+                "810233:Anthropology--Social aspects:topical"
+            ),
             "Sociology of aging": "800348:Aging--Social aspects:topical",
-            "Sociology of agriculture": "801646:Agriculture--Social aspects:topical",
+            "Sociology of agriculture": (
+                "801646:Agriculture--Social aspects:topical"
+            ),
             "Sociology of culture": "885083:Culture--Social aspects:topical",
-            "Sociology of finance": "842573:Business enterprises--Finance--Social aspects:topical",
+            "Sociology of finance": (
+                "842573:Business enterprises--Finance--Social aspects:topical"
+            ),
             "Stanley Cavell": "28565:Cavell, Stanley, 1926-2018:personal",
             "Translation": "1154795:Translating and interpreting:topical",
-            "Translation of poetry": "1067745:Poetry--Translating:topical",
+            "Translation of poetry": ("1067745:Poetry--Translating:topical"),
             "Venezuela": "1204166:Venezuela:geographic",
         }
         covered_subjects = []

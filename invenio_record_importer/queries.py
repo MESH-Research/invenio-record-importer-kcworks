@@ -1,4 +1,6 @@
-from invenio_search import current_search_client
+from flask import current_app as app
+from invenio_search.proxies import current_search_client
+from opensearchpy.helpers.search import Search
 
 
 # def view_events_search(recid):
@@ -8,62 +10,96 @@ from invenio_search import current_search_client
 #     return my_search.execute()
 
 
-def view_events_search(recid):
+def view_events_search(recid, dt=None):
 
-    views_query = {
-        "query": {
-            "bool": {
-                "filter": [
-                    {"term": {"country": "imported"}},
-                    {"term": {"recid": recid}},
-                ]
-            }
-        }
-    }
+    # views_query = {
+    #     "query": {
+    #         "bool": {
+    #             "filter": [
+    #                 {"term": {"country": "imported"}},
+    #                 {"term": {"recid": recid}},
+    #             ]
+    #         }
+    #     }
+    # }
 
-    response = current_search_client.search(
-        index="kcworks-events-stats-record-view", body=views_query
+    prefix = app.config.get("SEARCH_INDEX_PREFIX", "")
+    search = (
+        Search(
+            using=current_search_client,
+            index=f"{prefix}events-stats-record-view",
+        )
+        .filter({"term": {"country": "imported"}})
+        .filter({"term": {"recid": recid}})
     )
 
-    # my_search = (
-    #     RecordsSearch(index="events-stats-record-view")
-    #     .filter("term", record_id=recid)
-    #     .query("match", country="imported")
-    # )
-    # return my_search.execute()
+    if dt:
+        search = (
+            Search(
+                using=current_search_client,
+                index=f"{prefix}events-stats-record-view",
+            )
+            .filter({"term": {"country": "imported"}})
+            .filter({"term": {"recid": recid}})
+        )
+        search.filter({"term": {"timestamp": dt}})
+        terms = search.aggs.bucket("terms", "terms", field="unique_id")
+        terms.metric(
+            "top_hit", "top_hits", size=10, sort={"timestamp": "desc"}
+        )
+        terms.metric(
+            "unique_count",
+            "cardinality",
+            field="unique_session_id",
+            precision_threshold=20000,
+        )
+
+    response = list(search.scan())
 
     return response
-
-
-# def download_events_search(file_id):
-#     my_search = RecordsSearch(index="events-stats-file-download").query(
-#         dsl.QueryString(q=f"file_id:{file_id}")
-#     )
-#     return my_search.execute()
 
 
 def download_events_search(file_id):
 
-    downloads_query = {
-        "query": {
-            "bool": {
-                "filter": [
-                    {"term": {"country": "imported"}},
-                    {"term": {"file_id": file_id}},
-                ]
-            }
-        }
-    }
+    # downloads_query = {
+    #     "query": {
+    #         "bool": {
+    #             "filter": [
+    #                 {"term": {"country": "imported"}},
+    #                 {"term": {"file_id": file_id}},
+    #             ]
+    #         }
+    #     }
+    # }
 
-    # my_search = (
-    #     RecordsSearch(index="events-stats-file-download")
-    #     .filter("term", file_id=file_id)
-    #     .query("match", country="imported")
-    # )
-    # return my_search.execute()
-
-    response = current_search_client.search(
-        index="kcworks-events-stats-file-download", body=downloads_query
+    prefix = app.config.get("SEARCH_INDEX_PREFIX", "")
+    search = (
+        Search(
+            using=current_search_client,
+            index=f"{prefix}events-stats-file-download",
+        )
+        .filter({"term": {"country": "imported"}})
+        .filter({"term": {"file_id": file_id}})
     )
+    response = list(search.scan())
 
     return response
+
+
+def aggregations_search(record_id):
+    prefix = app.config.get("SEARCH_INDEX_PREFIX", "")
+    views_search = Search(
+        using=current_search_client,
+        index=f"{prefix}stats-record-view",
+    )
+    views_search = views_search.filter({"term": {"recid": record_id}})
+    views_response = list(views_search.scan())
+
+    downloads_search = Search(
+        using=current_search_client,
+        index=f"{prefix}stats-file-download",
+    )
+    downloads_search = downloads_search.filter({"term": {"recid": record_id}})
+    downloads_response = list(downloads_search.scan())
+
+    return views_response, downloads_response

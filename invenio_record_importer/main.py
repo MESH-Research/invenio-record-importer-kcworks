@@ -840,6 +840,11 @@ def create_aggregations(start_date, end_date, verbose):
     error will be raised.  An end date is optional. If not end date is
     specified, the current date is used.
 
+    NOTE: Currently this operation is intensive on memory and search index
+    resources and can fail as a result. If you are aggregating a large
+    number of stats events this can be mitigated by running the operation
+    for smaller time ranges sequentially.
+
     This operation is idempotent, so it can be run multiple times without
     causing errors or creating duplicate aggregations. Each time it will
     simply collect the events currently in the system for the given date range.

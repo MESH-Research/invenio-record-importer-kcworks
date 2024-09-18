@@ -4,34 +4,28 @@ version = "0.0.1"
 description = "Bulk import records into an InvenioRDM instance"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "MIT"}
-authors = [
-  {name = "Mesh Research", email = "scottia4@msu.edu" }
-]
+license = { text = "MIT" }
+authors = [{ name = "Mesh Research", email = "scottia4@msu.edu" }]
 
 dependencies = [
-    'click',
-    'isbnlib',
-    'jsonlines',
-    'python-iso639',
-    'langdetect ',
-    'requests',
-    'python-stdnum',
-    'titlecase',
-    'validators',
-    'invenio_utilities_tuw',
-    'pytest',
-    'pytz',
-    'python-dateutil'
+  'click',
+  'isbnlib',
+  'jsonlines',
+  'python-iso639',
+  'langdetect ',
+  'requests',
+  'python-stdnum',
+  'titlecase',
+  'validators',
+  'invenio_utilities_tuw',
+  'pytest',
+  'pytz',
+  'python-dateutil',
 ]
 
 # [project.optional-dependencies]
 # dev = ["check-manifest"]
 # test = ["coverage"]
-
-[tool.pytest.ini_options]
-addopts = "--doctest-glob='*.rst' --doctest-modules --ignore=tests/helpers"
-testpaths = [ "tests", "invenio_remote_api_provisioner" ]
 
 [project.scripts]
 importer = "invenio_record_importer.main:cli"
@@ -47,6 +41,47 @@ importer = "invenio_record_importer.main:cli"
 
 [project.entry-points."invenio_celery.tasks"]
 importer = "invenio_record_importer.tasks"
+
+[tool.pytest.ini_options]
+addopts = "--doctest-glob='*.rst' --doctest-modules --ignore=tests/helpers"
+testpaths = ["tests", "invenio_record_importer"]
+plugins = [
+  "tests.fixtures.communities",
+  "tests.fixtures.custom_fields",
+  "tests.fixtures.identifiers",
+  "tests.fixtures.records",
+  "tests.fixtures.saml",
+  "tests.fixtures.stats",
+  "tests.fixtures.users",
+  "tests.fixtures.vocabularies.affiliations",
+  "tests.fixtures.vocabularies.community_types",
+  "tests.fixtures.vocabularies.date_types",
+  "tests.fixtures.vocabularies.descriptions",
+  "tests.fixtures.vocabularies.languages",
+  "tests.fixtures.vocabularies.licenses",
+  "tests.fixtures.vocabularies.resource_types",
+  "tests.fixtures.vocabularies.roles",
+  "tests.fixtures.vocabularies.subjects",
+]
+
+[tool.check-manifest]
+ignore = [
+  "PKG-INFO",
+  ".egg-info",
+  ".egg-info/*",
+  "setup.cfg",
+  ".DS_Store",
+  ".hgtags",
+  ".hgsigs",
+  ".hgignore",
+  ".gitignore",
+  ".bzrignore",
+  ".gitattributes",
+  ".github/*",
+  ".travis.yml",
+  "Jenkinsfile",
+  "* .mo",
+]
 
 [tool.setuptools]
 # If there are data files included in your packages that need to be
