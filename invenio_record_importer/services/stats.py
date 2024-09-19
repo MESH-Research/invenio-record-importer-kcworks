@@ -157,6 +157,18 @@ class StatsFabricator:
             # tries to use a context pointer that expires before the request
             # can complete. It produces a "no search context found for id XXX"
             # error.
+            print("Collecting all records to scan for usage stats...")
+            print(
+                "(This may take a long time since we have to scan the "
+                "whole db...)"
+            )
+            app.logger.info(
+                "Collecting all records to scan for usage stats..."
+            )
+            app.logger.info(
+                "(This may take a long time since we have to scan the "
+                "whole db...)"
+            )
             record_ids = [
                 r["id"] for r in records_service.scan(identity=system_identity)
             ]
@@ -521,7 +533,6 @@ class AggregationFabricator:
                     f"Aggregations indices not found for initial "
                     f"deletion of prior records: {e}"
                 )
-        # time.sleep(10)
 
         # now create new aggregations
         agg_task = aggregate_events.si(
