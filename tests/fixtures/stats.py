@@ -10,7 +10,9 @@ from invenio_search.proxies import current_search, current_search_client
 from invenio_stats.contrib.event_builders import build_file_unique_id
 from invenio_stats.processors import EventsIndexer, anonymize_user, flag_robots
 from invenio_stats.queries import TermsQuery
-from kcworks.stats.aggregations import StatAggregatorOverridable
+from invenio_record_importer.services.stats.aggregations import (
+    StatAggregatorOverridable,
+)
 
 # from invenio_stats.queries import TermsQuery
 
@@ -35,7 +37,7 @@ test_config_stats["STATS_REGISTER_INDEX_TEMPLATES"] = True
 test_config_stats["STATS_EVENTS"] = {
     "file-download": {
         "templates": (
-            "kcworks.services.search.index_templates.stats.file_download"
+            "invenio_record_importer.services.search.index_templates.stats.file_download"
         ),
         # "templates": "invenio_rdm_records.records.stats.templates."
         # "events.file_download",
@@ -54,7 +56,7 @@ test_config_stats["STATS_EVENTS"] = {
     },
     "record-view": {
         "templates": (
-            "kcworks.services.search.index_templates.stats.record_view"
+            "invenio_record_importer.services.search.index_templates.stats.record_view"
         ),
         # "templates": "invenio_rdm_records.records.stats.templates."
         # "events.record_view",
@@ -77,7 +79,7 @@ test_config_stats["STATS_EVENTS"] = {
 test_config_stats["STATS_AGGREGATIONS"] = {
     "file-download-agg": {
         "templates": (
-            "kcworks.services.search.index_templates.stats.aggr_file_download"
+            "invenio_record_importer.services.search.index_templates.stats.aggr_file_download"
         ),
         # "templates": "invenio_rdm_records.records.stats.templates."
         # "aggregations.aggr_file_download",
@@ -106,7 +108,7 @@ test_config_stats["STATS_AGGREGATIONS"] = {
     },
     "record-view-agg": {
         "templates": (
-            "kcworks.services.search.index_templates.stats.aggr_record_view"
+            "invenio_record_importer.services.search.index_templates.stats.aggr_record_view"
         ),
         # "templates": "invenio_rdm_records.records.stats.templates."
         # "aggregations.aggr_record_view",

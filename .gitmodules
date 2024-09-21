@@ -1,0 +1,20 @@
+[submodule "dependencies/invenio-rdm-records"]
+	path = dependencies/invenio-rdm-records
+	url = https://github.com/MESH-Research/invenio-rdm-records.git
+	branch = local-working
+[submodule "dependencies/invenio-records-resources"]
+	path = dependencies/invenio-records-resources
+	url = https://github.com/MESH-Research/invenio-records-resources.git
+	branch = local-working
+[submodule "dependencies/invenio-communities"]
+	path = dependencies/invenio-communities
+	url = https://github.com/MESH-Research/invenio-communities
+	branch = local-working
+[submodule "dependencies/invenio-remote-user-data"]
+	path = dependencies/invenio-remote-user-data
+	url = https://github.com/MESH-Research/invenio-remote-user-data.git
+	branch = main
+[submodule "dependencies/invenio-group-collections"]
+	path = dependencies/invenio-group-collections
+	url = https://github.com/MESH-Research/invenio-group-collections.git
+	branch = main
