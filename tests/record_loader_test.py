@@ -17,7 +17,7 @@ from invenio_rdm_records.proxies import (
 )
 from invenio_rdm_records.records.stats.api import Statistics
 from invenio_record_importer.main import cli
-from invenio_record_importer.services.stats import (
+from invenio_record_importer.services.stats.stats import (
     StatsFabricator,
     AggregationFabricator,
 )

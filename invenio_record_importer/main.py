@@ -35,7 +35,7 @@ from halo import Halo
 
 from invenio_record_importer.serializer import serialize_json
 from invenio_record_importer.services.serialization import SerializationService
-from invenio_record_importer.services.stats import (
+from invenio_record_importer.services.stats.stats import (
     StatsFabricator,
     AggregationFabricator,
 )

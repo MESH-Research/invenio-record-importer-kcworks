@@ -28,7 +28,7 @@ from invenio_record_importer.errors import (
 )
 from invenio_record_importer.services.communities import CommunitiesHelper
 from invenio_record_importer.services.files import FilesHelper
-from invenio_record_importer.services.stats import (
+from invenio_record_importer.services.stats.stats import (
     StatsFabricator,
     AggregationFabricator,
 )
