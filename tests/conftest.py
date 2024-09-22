@@ -2,17 +2,10 @@
 #
 # Copyright (C) 2024 MESH Research
 #
-# invenio-record-importer is free software; you can redistribute it
+# invenio-record-importer-kcworks is free software; you can redistribute it
 # and/or
 # modify it under the terms of the MIT License; see LICENSE file for more
 # details.
-
-"""Pytest configuration for invenio-remote-api-provisioner.
-
-See https://pytest-invenio.readthedocs.io/ for documentation on which test
-fixtures are available.
-"""
-
 
 # from traceback import format_exc
 import pytest
@@ -20,7 +13,7 @@ from invenio_app.factory import create_api
 from invenio_communities.proxies import current_communities
 from invenio_queues.proxies import current_queues
 from invenio_rdm_records.proxies import current_rdm_records
-from invenio_record_importer.serializer import serialize_json
+from invenio_record_importer_kcworks.serializer import serialize_json
 from invenio_records_resources.proxies import current_service_registry
 
 import os
@@ -29,6 +22,13 @@ from .fixtures.identifiers import test_config_identifiers
 from .fixtures.custom_fields import test_config_fields
 from .fixtures.stats import test_config_stats
 from .fixtures.saml import test_config_saml
+
+"""Pytest configuration for invenio-remote-api-provisioner.
+
+See https://pytest-invenio.readthedocs.io/ for documentation on which test
+fixtures are available.
+"""
+
 
 pytest_plugins = [
     "celery.contrib.pytest",
@@ -112,7 +112,7 @@ test_config["RECORD_IMPORTER_SERIALIZED_PATH"] = str(
 )
 
 log_file_path = (
-    parent_path / "invenio_record_importer" / "logs" / "invenio.log"
+    parent_path / "invenio_record_importer_kcworks" / "logs" / "invenio.log"
 )
 if not log_file_path.exists():
     log_file_path.parent.mkdir(parents=True, exist_ok=True)

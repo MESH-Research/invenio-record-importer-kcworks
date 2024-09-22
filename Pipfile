@@ -18,17 +18,18 @@ invenio-utilities-tuw = "*"
 pytz = "*"
 python-dateutil = "*"
 invenio-saml = "*"
-invenio-record-importer = {file = ".", editable = true}
 invenio-rdm-records = {file = "./dependencies/invenio-rdm-records", editable = true}
 invenio-records-resources = {file = "./dependencies/invenio-records-resources", editable = true}
 invenio-communities = {file = "./dependencies/invenio-communities", editable = true}
 invenio-remote-user-data = {file = "./dependencies/invenio-remote-user-data", editable = true}
 invenio-group-collections = {file = "./dependencies/invenio-group-collections", editable = true}
 unidecode = "*"
-kcworks = {file = "./dependencies/knowledge-commons-works/site", editable = true}
+invenio-record-importer-kcworks = {file = ".", editable = true}
 
 [dev-packages]
+bumpver = "*"
 docker-services-cli = "*"
+pip-tools = "*"
 pytest-invenio = "*"
 selenium = "*"
 ipykernel = "*"

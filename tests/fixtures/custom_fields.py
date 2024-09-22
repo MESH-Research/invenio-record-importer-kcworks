@@ -35,33 +35,33 @@ from invenio_search import current_search_client
 from invenio_search.engine import dsl
 from invenio_search.engine import search as search_engine
 from invenio_search.utils import build_alias_name
-from kcworks.metadata_fields.kcr_metadata_fields import (
+.metadata_fields.kcr_metadata_fields import (
     KCR_CUSTOM_FIELDS,
     KCR_NAMESPACE,
 )
-from kcworks.metadata_fields.kcr_volumes_fields import (
+.metadata_fields.kcr_volumes_fields import (
     KCR_VOLUMES_FIELDS,
 )
-from kcworks.metadata_fields.kcr_media_field import (
+.metadata_fields.kcr_media_field import (
     KCR_MEDIA_FIELD,
 )
-from kcworks.metadata_fields.kcr_notes_fields import (
+.metadata_fields.kcr_notes_fields import (
     KCR_NOTES_FIELDS,
 )
-from kcworks.metadata_fields.kcr_user_tags_fields import (
+.metadata_fields.kcr_user_tags_fields import (
     KCR_USER_TAGS_FIELDS,
 )
-from kcworks.metadata_fields.hclegacy_metadata_fields import (  # noqa: E501
+.metadata_fields.hclegacy_metadata_fields import (  # noqa: E501
     HCLEGACY_NAMESPACE,
     HCLEGACY_CUSTOM_FIELDS,
 )
-from kcworks.metadata_fields.hclegacy_groups_for_deposit import (  # noqa: E501
+.metadata_fields.hclegacy_groups_for_deposit import (  # noqa: E501
     HCLEGACY_GROUPS_FOR_DEPOSIT_FIELD,
 )
-from kcworks.metadata_fields.kcr_ai_field import (
+.metadata_fields.kcr_ai_field import (
     KCR_AI_USAGE_FIELDS,
 )
-from kcworks.metadata_fields.kcr_series_field import (
+.metadata_fields.kcr_series_field import (
     KCR_SERIES_FIELDS,
 )
 from marshmallow_utils.fields import SanitizedUnicode

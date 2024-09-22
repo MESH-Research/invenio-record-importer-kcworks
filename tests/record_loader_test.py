@@ -16,29 +16,32 @@ from invenio_rdm_records.proxies import (
     current_rdm_records_service as records_service,
 )
 from invenio_rdm_records.records.stats.api import Statistics
-from invenio_record_importer.main import cli
-from invenio_record_importer.services.stats.stats import (
+from invenio_record_importer_kcworks.main import cli
+from invenio_record_importer_kcworks.services.stats.stats import (
     StatsFabricator,
     AggregationFabricator,
 )
-from invenio_record_importer.utils import valid_date, generate_random_string
-from invenio_record_importer.serializer import add_date_info
-from invenio_record_importer.queries import (
+from invenio_record_importer_kcworks.utils import (
+    valid_date,
+    generate_random_string,
+)
+from invenio_record_importer_kcworks.serializer import add_date_info
+from invenio_record_importer_kcworks.queries import (
     view_events_search,
     download_events_search,
     aggregations_search,
 )
-from invenio_record_importer.record_loader import (
+from invenio_record_importer_kcworks.record_loader import (
     api_request,
     create_invenio_record,
     create_invenio_user,
     delete_invenio_draft_record,
     import_record_to_invenio,
 )
-from invenio_record_importer.services.communities import (
+from invenio_record_importer_kcworks.services.communities import (
     CommunitiesHelper,
 )
-from invenio_record_importer.services.files import FilesHelper
+from invenio_record_importer_kcworks.services.files import FilesHelper
 from invenio_search import current_search_client
 import datetime
 import json
