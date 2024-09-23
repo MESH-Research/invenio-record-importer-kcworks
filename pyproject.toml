@@ -5,6 +5,17 @@ description = "Bulk import records into a InvenioRDM instance configured for Kno
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Mesh Research", email = "scottia4@msu.edu" }]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
 keywords = [
   "invenio",
   "invenio-rdm",
@@ -22,7 +33,7 @@ dependencies = [
   'invenio-group-collections',
   'invenio-rdm-records',
   'invenio-records-resources',
-  'invenio-remote-user-data',
+  'invenio-remote-user-data-kcworks',
   'invenio-saml',
   'invenio-utilities-tuw',
   'isbnlib',
@@ -118,10 +129,6 @@ ignore = [
 # installed, specify them here.
 # package-data = {"sample" = ["*.dat"]}
 
-[build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [tool.bumpver]
 current_version = "0.2.20-alpha7"
 version_pattern = "MAJOR.MINOR.PATCH[-TAGNUM]"
@@ -146,4 +153,8 @@ push = true
 "VERSION" = [
     "{version}",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
 

@@ -48,8 +48,8 @@ Prior to running the importer, the required configuration variables listed below
 In addition to the normal InvenioRDM packages and KCWorks, this module relies in particular
 on the following packages, which are also installed in the standard KCWorks environment:
 
-- invenio-remote-user-data
-- invenio-group-collections
+- invenio-remote-user-data-kcworks
+- invenio-group-collections-kcworks
 
 Fetching of user data and creation of group collections relies on these packages being properly configured.
 

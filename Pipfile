@@ -18,11 +18,11 @@ invenio-utilities-tuw = "*"
 pytz = "*"
 python-dateutil = "*"
 invenio-saml = "*"
-invenio-rdm-records = {file = "./dependencies/invenio-rdm-records", editable = true}
-invenio-records-resources = {file = "./dependencies/invenio-records-resources", editable = true}
-invenio-communities = {file = "./dependencies/invenio-communities", editable = true}
-invenio-remote-user-data = {file = "./dependencies/invenio-remote-user-data", editable = true}
-invenio-group-collections = {file = "./dependencies/invenio-group-collections", editable = true}
+invenio-rdm-records = {file = "./invenio_record_importer_kcworks/dependencies/invenio-rdm-records", editable = true}
+invenio-records-resources = {file = "./invenio_record_importer_kcworks/dependencies/invenio-records-resources", editable = true}
+invenio-communities = {file = "./invenio_record_importer_kcworks/dependencies/invenio-communities", editable = true}
+invenio-remote-user-data-kcworks = {file = "./invenio_record_importer_kcworks/dependencies/invenio-remote-user-data-kcworks", editable = true}
+invenio-group-collections = {file = "./invenio_record_importer_kcworks/dependencies/invenio-group-collections", editable = true}
 unidecode = "*"
 invenio-record-importer-kcworks = {file = ".", editable = true}
 

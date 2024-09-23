@@ -497,8 +497,8 @@ def create_user(
     This function does not just create a new user in the Invenio database,
     but also links the user's account to an external service as a SAML
     identity provider and a source of user data. (Depends on a service
-    being configured for the invenio-saml and invenio-remote-user-data
-    extensions.)
+    being configured for the invenio-saml and
+    invenio-remote-user-data-kcworks extensions.)
 
     This operation assumes that usernames on the source system are unique
     and that the email address is the same as the one used in the source
