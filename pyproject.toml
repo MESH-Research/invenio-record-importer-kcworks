@@ -122,6 +122,9 @@ ignore = [
   ".travis.yml",
   "Jenkinsfile",
   "* .mo",
+  "dist/*",
+  "build/*",
+  "invenio_record_importer_kcworks/dependencies/*",
 ]
 
 # [tool.setuptools]

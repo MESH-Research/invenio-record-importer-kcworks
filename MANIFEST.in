@@ -32,10 +32,11 @@ recursive-include invenio_record_importer_kcworks *.yaml
 recursive-include invenio_record_importer_kcworks *.yml
 
 recursive-include invenio_record_importer_kcworks/dependencies LICENSE
+recursive-include invenio_record_importer_kcworks/dependencies *.gitmodules
 
-inclusive-exclude invenio_record_importer_kcworks/dependencies *.git-blame-ignore-revs
-inclusive-exclude invenio_record_importer_kcworks/dependencies *.tx/config
-inclusive-exclude invenio_record_importer_kcworks/dependencies *Pipfile
+inclusive-exclude invenio_record_importer_kcworks/dependencies .git-blame-ignore-revs
+inclusive-exclude invenio_record_importer_kcworks/dependencies .tx/config
+inclusive-exclude invenio_record_importer_kcworks/dependencies Pipfile
 recursive-include invenio_record_importer_kcworks/dependencies *.bat
 recursive-include invenio_record_importer_kcworks/dependencies *.editorconfig
 recursive-include invenio_record_importer_kcworks/dependencies *.in
