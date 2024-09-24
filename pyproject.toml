@@ -31,7 +31,7 @@ dependencies = [
   'halo',
   'invenio-app-rdm[opensearch2]<13.0.0',
   'invenio-communities',
-  'invenio-group-collections',
+  'invenio-group-collections-kcworks',
   'invenio-rdm-records',
   'invenio-records-resources',
   'invenio-remote-user-data-kcworks',
@@ -148,6 +148,7 @@ push = true
 [tool.bumpver.file_patterns]
 "pyproject.toml" = [
     'version = "{version}"',
+    'current_version = "{version}"',
 ]
 "README.md" = [
     "Version {version}",

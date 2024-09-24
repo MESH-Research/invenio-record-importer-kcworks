@@ -481,8 +481,8 @@ class CommunitiesHelper:
             metadata_record (dict): the metadata record to add to group
                 collections (this is assumed to be a published record)
             record_source (str): the string representation of the record's
-                source service, for use by invenio-group-collections in
-                linking the record to the appropriate group collections
+                source service, for use by invenio-group-collections-kcworks
+                in linking the record to the appropriate group collections
 
         returns:
             list: the list of group collections the record was added to

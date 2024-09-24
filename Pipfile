@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-invenio-app-rdm = {version = "==12.0.3", extras = ["opensearch2"]}
+invenio-app-rdm = {version = ">=12.0.0,<13.0.0", extras = ["opensearch2"]}
 timefhuman = "*"
 halo = "*"
 jsonlines = "*"
@@ -22,7 +22,7 @@ invenio-rdm-records = {file = "./invenio_record_importer_kcworks/dependencies/in
 invenio-records-resources = {file = "./invenio_record_importer_kcworks/dependencies/invenio-records-resources", editable = true}
 invenio-communities = {file = "./invenio_record_importer_kcworks/dependencies/invenio-communities", editable = true}
 invenio-remote-user-data-kcworks = {file = "./invenio_record_importer_kcworks/dependencies/invenio-remote-user-data-kcworks", editable = true}
-invenio-group-collections = {file = "./invenio_record_importer_kcworks/dependencies/invenio-group-collections", editable = true}
+invenio-group-collections-kcworks = {file = "./invenio_record_importer_kcworks/dependencies/invenio-group-collections-kcworks", editable = true}
 unidecode = "*"
 invenio-record-importer-kcworks = {file = ".", editable = true}
 
