@@ -13,11 +13,11 @@ from flask import current_app as app
 from invenio_access.permissions import system_identity
 from invenio_communities.proxies import current_communities
 from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
-from invenio_group_collections.errors import (
+from invenio_group_collections_kcworks.errors import (
     CollectionNotFoundError,
     CommonsGroupNotFoundError,
 )
-from invenio_group_collections.proxies import (
+from invenio_group_collections_kcworks.proxies import (
     current_group_collections_service as collections_service,
 )
 from invenio_pidstore.errors import PIDUnregistered
