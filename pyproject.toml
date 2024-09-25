@@ -69,7 +69,7 @@ dev = [
 test = ["coverage"]
 
 [project.scripts]
-importer = "invenio_record_importer_kcworks.main:cli"
+importer = "invenio_record_importer_kcworks.cli:cli"
 
 [project.entry-points."invenio_base.apps"]
 importer = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
@@ -78,7 +78,7 @@ importer = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
 importer = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
 
 [project.entry-points."flask.commands"]
-importer = "invenio_record_importer_kcworks.main:cli"
+importer = "invenio_record_importer_kcworks.cli:cli"
 
 [project.entry-points."invenio_celery.tasks"]
 importer = "invenio_record_importer_kcworks.tasks"

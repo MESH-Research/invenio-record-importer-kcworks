@@ -33,7 +33,7 @@ from flask import current_app as app
 from flask.cli import with_appcontext
 from halo import Halo
 
-from invenio_record_importer_kcworks_kcworks.serializer import serialize_json
+from invenio_record_importer_kcworks.serializer import serialize_json
 from invenio_record_importer_kcworks.services.serialization import (
     SerializationService,
 )
