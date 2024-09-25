@@ -16,7 +16,7 @@ from invenio_rdm_records.proxies import (
     current_rdm_records_service as records_service,
 )
 from invenio_rdm_records.records.stats.api import Statistics
-from invenio_record_importer_kcworks.main import cli
+from invenio_record_importer_kcworks.cli import cli
 from invenio_record_importer_kcworks.services.stats.stats import (
     StatsFabricator,
     AggregationFabricator,
