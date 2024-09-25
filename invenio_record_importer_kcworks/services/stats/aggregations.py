@@ -29,12 +29,12 @@ class StatAggregatorOverridable(StatAggregator):
         if not dsl.Index(self.event_index, using=self.client).exists():
             return
 
-        start_date = arrow.get(start_date).naive if start_date else None
-        end_date = arrow.get(end_date).naive if end_date else None
+        start_date = arrow.get(start_date) if start_date else None
+        end_date = arrow.get(end_date) if end_date else None
         previous_bookmark = (
             self.bookmark_api.get_bookmark()
             if not previous_bookmark
-            else arrow.get(previous_bookmark).naive
+            else arrow.get(previous_bookmark)
         )
         current_app.logger.warning("previous bookmark: %s", previous_bookmark)
         print("previous bookmark: ", previous_bookmark)
