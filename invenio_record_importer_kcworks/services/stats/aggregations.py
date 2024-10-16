@@ -1,5 +1,6 @@
 import arrow
 from datetime import datetime
+from flask import current_app
 from invenio_search.engine import dsl, search
 from invenio_search.proxies import current_search_client
 from invenio_stats.aggregations import StatAggregator
@@ -24,13 +25,26 @@ class StatAggregatorOverridable(StatAggregator):
     ):
         """Calculate statistics aggregations."""
         # If no events have been indexed there is nothing to aggregate
-        from flask import current_app
-
         if not dsl.Index(self.event_index, using=self.client).exists():
             return
 
-        start_date = arrow.get(start_date) if start_date else None
-        end_date = arrow.get(end_date) if end_date else None
+        # Handle either string or datetime inputs -- invenio_stats
+        # StatAggregator expects strings
+        # Convert to naive datetime because the invenio_stats builders
+        # provide iso datetime strings without offset information
+        start_date = (
+            arrow.get(start_date).naive.isoformat() if start_date else None
+        )
+        end_date = arrow.get(end_date).naive.isoformat() if end_date else None
+
+        # bookmark_api.get_bookmark() returns a datetime object or string
+        current_app.logger.warning(
+            "previous bookmark: %s", self.bookmark_api.get_bookmark()
+        )
+        print(
+            "type of previous bookmark: ",
+            type(self.bookmark_api.get_bookmark()),
+        )
         previous_bookmark = (
             self.bookmark_api.get_bookmark()
             if not previous_bookmark
