@@ -512,7 +512,7 @@ class AggregationFabricator:
 
         """
 
-        aggregation_types = list(current_stats.aggregations)
+        aggregation_types = list(current_stats.aggregations.keys())
 
         # first delete existing aggregations
         for a in aggregation_types:

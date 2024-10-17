@@ -28,51 +28,49 @@ class StatAggregatorOverridable(StatAggregator):
         if not dsl.Index(self.event_index, using=self.client).exists():
             return
 
+        current_app.logger.warning(
+            "Gathering aggregated stats for %s", self.event_index
+        )
         # Handle either string or datetime inputs -- invenio_stats
-        # StatAggregator expects strings
+        # aggregate_events calls with datetime objects.
         # Convert to naive datetime because the invenio_stats builders
         # provide iso datetime strings without offset information
-        start_date = (
-            arrow.get(start_date).naive.isoformat() if start_date else None
-        )
-        end_date = arrow.get(end_date).naive.isoformat() if end_date else None
+        start_date = arrow.get(start_date).naive if start_date else None
+        end_date = arrow.get(end_date).naive if end_date else None
 
         # bookmark_api.get_bookmark() returns a datetime object or string
-        current_app.logger.warning(
-            "previous bookmark: %s", self.bookmark_api.get_bookmark()
-        )
-        print(
-            "type of previous bookmark: ",
-            type(self.bookmark_api.get_bookmark()),
-        )
         previous_bookmark = (
             self.bookmark_api.get_bookmark()
             if not previous_bookmark
-            else arrow.get(previous_bookmark)
+            else previous_bookmark
         )
-        current_app.logger.warning("previous bookmark: %s", previous_bookmark)
-        print("previous bookmark: ", previous_bookmark)
+        if previous_bookmark:
+            previous_bookmark = arrow.get(previous_bookmark).naive
+        # return from _get_oldest_event_timestamp() is datetime object
         lower_limit = (
             start_date
             or previous_bookmark
             or self._get_oldest_event_timestamp()
         )
-        current_app.logger.warning("lower limit: %s", lower_limit)
-        print("lower limit: ", lower_limit)
+        # FIXME: this is to handle accidentally recording bookmark
+        # with timezone awareness
+        lower_limit = arrow.get(lower_limit).naive if lower_limit else None
         # Stop here if no bookmark could be estimated.
         if lower_limit is None:
             return
 
         upper_limit = self._upper_limit(end_date)
-        current_app.logger.warning("upper limit: %s", upper_limit)
-        print("upper limit: ", upper_limit)
         dates = self._split_date_range(lower_limit, upper_limit)
         # Let's get the timestamp before we start the aggregation.
         # This will be used for the next iteration. Some events might
         # be processed twice
         if not end_date:
-            end_date = arrow.utcnow().isoformat()
+            end_date = arrow.utcnow().naive
 
+        current_app.logger.warning("upper_limit: %s", upper_limit)
+        current_app.logger.warning("lower_limit: %s", lower_limit)
+        current_app.logger.warning("end_date: %s", end_date)
+        current_app.logger.warning("previous_bookmark: %s", previous_bookmark)
         results = []
         for dt_key, dt in sorted(dates.items()):
             results.append(
@@ -85,7 +83,6 @@ class StatAggregatorOverridable(StatAggregator):
             )
         if update_bookmark:
             self.bookmark_api.set_bookmark(end_date)
-        # current_app.logger.debug("end_date: %s", end_date)
         return results
 
     # NOTE: debugging statements in delete() may be useful again
