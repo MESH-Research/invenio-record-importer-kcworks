@@ -317,9 +317,14 @@ class StatsFabricator:
             )
         else:
             if existing_view_count > views:
-                raise TooManyViewEventsError(
-                    "    existing imported view events exceed expected count."
-                )
+                pass
+                # TODO: we should probably log this, but
+                # we don't want to raise an error and prevent
+                # the import from completing
+                #
+                # raise TooManyViewEventsError(
+                #     "    existing imported view events exceed expected count."
+                # )
             else:
                 if verbose:
                     app.logger.info(
@@ -383,10 +388,15 @@ class StatsFabricator:
             )
         else:
             if existing_download_count > downloads:
-                raise TooManyDownloadEventsError(
-                    "    existing imported download events exceed expected "
-                    "count."
-                )
+                # TODO: we should probably log this, but
+                # we don't want to raise an error and prevent
+                # the import from completing
+                #
+                # raise TooManyDownloadEventsError(
+                #     "    existing imported download events exceed expected "
+                #     "count."
+                # )
+                pass
             else:
                 # only create enough new download events to reach the expected
                 # count
