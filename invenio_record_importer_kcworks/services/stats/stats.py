@@ -239,6 +239,7 @@ class StatsFabricator:
             print(f"Creating stats events for record {record_id}...")
         rec_search = records_service.read(system_identity, id_=record_id)
         record = rec_search._record
+        print("record custom fields:", record["custom_fields"])
 
         def get_field_value(record: dict, field: str) -> int:
             field_parts = field.split(".")
