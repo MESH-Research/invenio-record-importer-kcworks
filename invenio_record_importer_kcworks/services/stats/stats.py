@@ -199,6 +199,9 @@ class StatsFabricator:
         downloads_field: str = "custom_fields.hclegacy:total_downloads",
         views_field: str = "custom_fields.hclegacy:total_views",
         date_field: str = "metadata.publication_date",
+        views_count: Optional[int] = None,
+        downloads_count: Optional[int] = None,
+        publication_date: Optional[str] = None,
         eager=False,
         verbose=False,
     ) -> Union[bool, list]:
@@ -221,6 +224,12 @@ class StatsFabricator:
                 views
             date_field (str): the dot notation field name for the record
                 creation date
+            views_count (int): the number of views to create (if not reading
+                from the database record, as during migration)
+            downloads_count (int): the number of downloads to create (if not
+                reading from the database record, as during migration)
+            publication_date (str): the publication date of the record
+                (if not reading from the database record, as during migration)
             eager (bool): whether to process the events immediately or
                 queue them for processing in a background task
             verbose (bool): whether to print debug information
@@ -253,16 +262,24 @@ class StatsFabricator:
         metadata_record = rec_search.to_dict()
 
         # FIXME: this all assumes a single uploaded file per record on import
-        try:
-            views = get_field_value(metadata_record, views_field)
-            downloads = get_field_value(metadata_record, downloads_field)
-            record_creation = arrow.get(
-                get_field_value(metadata_record, date_field)
-            )
-        except KeyError as e:
-            app.logger.info(f"Required fields not found for {record_id}: {e}")
-            print(f"Required fields not found for {record_id}: {e}")
-            return False
+
+        if views_count and downloads_count and publication_date:
+            views = views_count
+            downloads = downloads_count
+            record_creation = arrow.get(publication_date)
+        else:
+            try:
+                views = get_field_value(metadata_record, views_field)
+                downloads = get_field_value(metadata_record, downloads_field)
+                record_creation = arrow.get(
+                    get_field_value(metadata_record, date_field)
+                )
+            except KeyError as e:
+                app.logger.info(
+                    f"Required fields not found for {record_id}: {e}"
+                )
+                print(f"Required fields not found for {record_id}: {e}")
+                return False
 
         if verbose:
             app.logger.info(f"views: {views}")

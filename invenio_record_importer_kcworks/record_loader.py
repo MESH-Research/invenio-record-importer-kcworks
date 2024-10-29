@@ -970,6 +970,11 @@ def import_record_to_invenio(
         downloads_field="custom_fields.hclegacy:total_downloads",
         views_field="custom_fields.hclegacy:total_views",
         date_field="metadata.publication_date",
+        views_count=import_data["custom_fields"].get("hclegacy:total_views"),
+        downloads_count=import_data["custom_fields"].get(
+            "hclegacy:total_downloads"
+        ),
+        publication_date=import_data["metadata"].get("publication_date"),
         eager=True,
         verbose=True,
     )
