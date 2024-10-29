@@ -762,6 +762,14 @@ def assign_record_ownership(
             existing_user = current_accounts.datastore.find_user(
                 username=f"{record_source.lower()}-{new_owner_username}",
             )
+            app.logger.warning(
+                f"    finding existing user {new_owner_username} "
+                f"({new_owner_email})...{existing_user.id}"
+            )
+            print(
+                f"    finding existing user {new_owner_username} "
+                f"({new_owner_email})...{existing_user.id}"
+            )
             assert existing_user
             idp_slug = (
                 "kc" if record_source == "knowledgeCommons" else record_source
