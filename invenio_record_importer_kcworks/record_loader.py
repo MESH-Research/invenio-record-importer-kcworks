@@ -211,6 +211,11 @@ def create_invenio_record(
         doi_for_query = my_doi.split("/")
         # TODO: Can we include deleted records here somehow?
         try:
+            print(f"searching for existing record with DOI: {my_doi}")
+            print(
+                f"query: q=f'pids.doi.identifier:{doi_for_query[0]}/"
+                f"{doi_for_query[1]}'"
+            )
             same_doi = records_service.search_drafts(
                 system_identity,
                 q=f"pids.doi.identifier:{doi_for_query[0]}/"
