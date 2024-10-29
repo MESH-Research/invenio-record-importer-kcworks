@@ -770,14 +770,15 @@ def assign_record_ownership(
                 f"    finding existing user {new_owner_username} "
                 f"({new_owner_email})...{existing_user.id}"
             )
+            print(existing_user.user_profile)
             assert existing_user
             idp_slug = (
                 "kc" if record_source == "knowledgeCommons" else record_source
             )
             existing_user.user_profile[f"identifier_{idp_slug}_username"] = (
-                new_owner_username,
+                new_owner_username
             )
-            existing_user.user_profile["identifier_email"] = (new_owner_email,)
+            existing_user.user_profile["identifier_email"] = new_owner_email
             current_accounts.datastore.commit()
         except (NoResultFound, AssertionError):
             pass
