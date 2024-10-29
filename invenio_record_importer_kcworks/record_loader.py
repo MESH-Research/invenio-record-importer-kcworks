@@ -242,7 +242,8 @@ def create_invenio_record(
             # delete extra records with the same doi
             if same_doi["hits"]["total"]["value"] > 1:
                 rec_list = [
-                    (j["id"], j["status"]) for j in same_doi["hits"]["hits"]
+                    (j["_source"]["id"], j["_source"]["status"])
+                    for j in same_doi["hits"]["hits"]
                 ]
                 app.logger.info(
                     "    found more than one existing record with same DOI:"
@@ -250,9 +251,9 @@ def create_invenio_record(
                 )
                 app.logger.info("   deleting extra records...")
                 for i in [
-                    h["id"]
-                    for h in list(same_doi["hits"]["hits"])[1:]
-                    if "draft" in h["status"]
+                    h["_source"]["id"]
+                    for h in same_doi["hits"]["hits"][1:]
+                    if "draft" in h["_source"]["status"]
                 ]:
                     try:
                         delete_invenio_draft_record(i)
@@ -273,7 +274,8 @@ def create_invenio_record(
                             f"Draft deletion failed for record {i} with "
                             f"same DOI: {str(e)}"
                         )
-            existing_metadata = same_doi["hits"]["hits"][0]
+            existing_metadata = same_doi["hits"]["hits"][0]["_source"]
+            del existing_metadata["$schema"]
             # app.logger.debug(
             #     f"existing_metadata: {pformat(existing_metadata)}"
             # )
