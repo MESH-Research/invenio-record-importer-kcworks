@@ -234,14 +234,16 @@ def create_invenio_record(
                 "    error checking for existing record with same DOI:"
             )
             raise e
-        if same_doi.total > 0:
+        if same_doi["hits"]["total"] > 0:
             app.logger.info(
-                f"    found {same_doi.total} existing"
+                f"    found {same_doi['hits']['total']} existing"
                 " records with same DOI..."
             )
             # delete extra records with the same doi
-            if same_doi.total > 1:
-                rec_list = [(j["id"], j["status"]) for j in same_doi.hits]
+            if same_doi["hits"]["total"] > 1:
+                rec_list = [
+                    (j["id"], j["status"]) for j in same_doi["hits"]["hits"]
+                ]
                 app.logger.info(
                     "    found more than one existing record with same DOI:"
                     f" {rec_list}"
@@ -249,7 +251,7 @@ def create_invenio_record(
                 app.logger.info("   deleting extra records...")
                 for i in [
                     h["id"]
-                    for h in list(same_doi.hits)[1:]
+                    for h in list(same_doi["hits"]["hits"])[1:]
                     if "draft" in h["status"]
                 ]:
                     try:
@@ -271,7 +273,7 @@ def create_invenio_record(
                             f"Draft deletion failed for record {i} with "
                             f"same DOI: {str(e)}"
                         )
-            existing_metadata = next(same_doi.hits)
+            existing_metadata = same_doi["hits"]["hits"][0]
             # app.logger.debug(
             #     f"existing_metadata: {pformat(existing_metadata)}"
             # )
