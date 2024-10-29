@@ -283,6 +283,7 @@ class FilesHelper:
         existing_files = (
             files_request.get("entries", []) if files_request else []
         )
+        print("existing files:", existing_files)
         if len(existing_files) == 0:
             same_files = False
             app.logger.info("    no files attached to existing record")
@@ -298,12 +299,14 @@ class FilesHelper:
 
                 if len(existing_file) == 0:
                     same_files = False
+                    print("no existing file found")
 
                 elif (existing_file[0]["status"] == "pending") or (
                     str(v["size"]) != str(existing_file[0]["size"])
                 ):
                     same_files = False
                     wrong_file = True
+                    print("pending or size mismatch")
 
                 if wrong_file:
                     error_message = (
@@ -318,6 +321,9 @@ class FilesHelper:
                             "    existing record had wrong or partial upload,"
                             " now deleted"
                         )
+                        print(
+                            "existing record had wrong or partial upload, now deleted"
+                        )
                     except NoResultFound:
                         records_service.draft_files.delete_file(
                             system_identity, draft_id, existing_file[0]["key"]
@@ -326,6 +332,9 @@ class FilesHelper:
                         app.logger.info(
                             "    existing record had wrong or partial upload,"
                             " but it could not be found for deletion"
+                        )
+                        print(
+                            "existing record had wrong or partial upload, now deleted"
                         )
                         raise e
                     except Exception as e:
@@ -342,4 +351,5 @@ class FilesHelper:
                     else:
                         app.logger.error(error_message)
                         raise RuntimeError(error_message)
+            print("same files:", same_files)
             return same_files
