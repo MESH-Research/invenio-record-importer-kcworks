@@ -123,6 +123,9 @@ class FilesHelper:
             long_filename = long_filename.replace(
                 "/srv/www/commons/shared/uploads/humcore/", ""
             )
+            long_filename = long_filename.replace(
+                "/app/site/web/app/uploads/humcore/", ""
+            )
             app.logger.debug(k)
             app.logger.debug(source_filename)
             app.logger.debug(normalize_string(k))
