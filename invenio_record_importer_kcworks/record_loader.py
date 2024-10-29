@@ -234,13 +234,13 @@ def create_invenio_record(
                 "    error checking for existing record with same DOI:"
             )
             raise e
-        if same_doi["hits"]["total"] > 0:
+        if same_doi["hits"]["total"]["value"] > 0:
             app.logger.info(
-                f"    found {same_doi['hits']['total']} existing"
+                f"    found {same_doi['hits']['total']['value']} existing"
                 " records with same DOI..."
             )
             # delete extra records with the same doi
-            if same_doi["hits"]["total"] > 1:
+            if same_doi["hits"]["total"]["value"] > 1:
                 rec_list = [
                     (j["id"], j["status"]) for j in same_doi["hits"]["hits"]
                 ]
