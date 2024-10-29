@@ -222,7 +222,6 @@ def create_invenio_record(
             app.logger.error(
                 "    error checking for existing record with same DOI:"
             )
-            app.logger.error(same_doi)
             raise e
         if same_doi.total > 0:
             app.logger.info(
