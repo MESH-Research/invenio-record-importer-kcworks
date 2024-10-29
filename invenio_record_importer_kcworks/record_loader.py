@@ -220,8 +220,8 @@ def create_invenio_record(
 
             same_doi = current_search_client.search(
                 index="kcworks-rdmrecords",
-                q=f"pids.doi.identifier:{doi_for_query[0]}/"
-                f"{doi_for_query[1]}",
+                q=f'pids.doi.identifier:"{doi_for_query[0]}/'
+                f'{doi_for_query[1]}"',
             )
             # same_doi = records_service.search_drafts(
             #     system_identity,
