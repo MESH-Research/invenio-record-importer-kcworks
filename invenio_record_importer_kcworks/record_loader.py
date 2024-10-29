@@ -219,7 +219,7 @@ def create_invenio_record(
             from invenio_search.proxies import current_search_client
 
             same_doi = current_search_client.search(
-                index="kcworks-rdmrecords-records-record",
+                index="kcworks-rdmrecords",
                 q=f"pids.doi.identifier:{doi_for_query[0]}/"
                 f"{doi_for_query[1]}",
             )
