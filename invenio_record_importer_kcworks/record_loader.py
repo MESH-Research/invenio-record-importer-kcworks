@@ -216,13 +216,19 @@ def create_invenio_record(
                 f"query: q=f'pids.doi.identifier:{doi_for_query[0]}/"
                 f"{doi_for_query[1]}'"
             )
-            same_doi = records_service.search_drafts(
-                system_identity,
+            from invenio_search.proxies import current_search_client
+
+            same_doi = current_search_client.search(
+                index="kcworks-rdmrecords-records-record",
                 q=f"pids.doi.identifier:{doi_for_query[0]}/"
                 f"{doi_for_query[1]}",
             )
-            # app.logger.debug(f"same_doi: {my_doi}")
-            # app.logger.debug(f"same_doi: {pformat(same_doi)}")
+            # same_doi = records_service.search_drafts(
+            #     system_identity,
+            #     q=f"pids.doi.identifier:{doi_for_query[0]}/"
+            #     f"{doi_for_query[1]}",
+            # )
+            app.logger.debug(f"same_doi: {pformat(same_doi)}")
         except Exception as e:
             app.logger.error(
                 "    error checking for existing record with same DOI:"
