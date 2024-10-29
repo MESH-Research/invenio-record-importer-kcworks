@@ -213,8 +213,8 @@ def create_invenio_record(
         try:
             same_doi = records_service.search_drafts(
                 system_identity,
-                q=f'pids.doi.identifier:"{doi_for_query[0]}/'
-                f'{doi_for_query[1]}"',
+                q=f"pids.doi.identifier:{doi_for_query[0]}/"
+                f"{doi_for_query[1]}",
             )
             # app.logger.debug(f"same_doi: {my_doi}")
             # app.logger.debug(f"same_doi: {pformat(same_doi)}")
