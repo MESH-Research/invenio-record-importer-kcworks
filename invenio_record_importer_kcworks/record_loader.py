@@ -235,26 +235,26 @@ def create_invenio_record(
             )
             raise e
         if same_doi["hits"]["total"]["value"] > 0:
+            recs = [
+                records_service.read(
+                    system_identity, id_=r["_source"]["id"]
+                ).to_dict()
+                for r in same_doi["hits"]["hits"]
+            ]
             app.logger.info(
                 f"    found {same_doi['hits']['total']['value']} existing"
                 " records with same DOI..."
             )
+            assert len(recs) == same_doi["hits"]["total"]["value"]
             # delete extra records with the same doi
-            if same_doi["hits"]["total"]["value"] > 1:
-                rec_list = [
-                    (j["_source"]["id"], j["_source"]["status"])
-                    for j in same_doi["hits"]["hits"]
-                ]
+            if len(recs) > 1:
+                rec_list = [(r["id"], r["status"]) for r in recs]
                 app.logger.info(
                     "    found more than one existing record with same DOI:"
                     f" {rec_list}"
                 )
                 app.logger.info("   deleting extra records...")
-                for i in [
-                    h["_source"]["id"]
-                    for h in same_doi["hits"]["hits"][1:]
-                    if "draft" in h["_source"]["status"]
-                ]:
+                for i in [r["id"] for r in recs[1:] if "draft" in r["status"]]:
                     try:
                         delete_invenio_draft_record(i)
                     except PIDUnregistered as e:
@@ -274,8 +274,7 @@ def create_invenio_record(
                             f"Draft deletion failed for record {i} with "
                             f"same DOI: {str(e)}"
                         )
-            existing_metadata = same_doi["hits"]["hits"][0]["_source"]
-            del existing_metadata["$schema"]
+            existing_metadata = recs[0]
             # app.logger.debug(
             #     f"existing_metadata: {pformat(existing_metadata)}"
             # )
