@@ -1,7 +1,7 @@
 from flask import current_app as app
 from invenio_access.permissions import system_identity
 from invenio_db import db
-from invenio_files_rest.errors import InvalidKeyError
+from invenio_files_rest.errors import InvalidKeyError, BucketLockedError
 from invenio_rdm_records.proxies import (
     current_rdm_records_service as records_service,
 )
@@ -27,6 +27,41 @@ from urllib.parse import unquote
 class FilesHelper:
     def __init__(self):
         self.files_service = records_service.draft_files
+
+    def _delete_file(self, draft_id: str, key: str) -> bool:
+
+        def inner_delete_file(key: str):
+            try:
+                self.files_service.delete_file(system_identity, draft_id, key)
+            except NoResultFound:
+                try:
+                    records_service.files.delete_file(
+                        system_identity, draft_id, key
+                    )
+                except FileKeyNotFoundError as e:
+                    app.logger.info("file not found for deletion")
+                    print("file not found for deletion")
+                    raise e
+
+        try:
+            inner_delete_file(key)
+        except BucketLockedError:
+            try:
+                record = records_service.read(
+                    system_identity, draft_id
+                )._record
+                record.files.unlock()
+                inner_delete_file(key)
+            except Exception as e:
+                app.logger.error(
+                    f"    failed to unlock files for record {draft_id}..."
+                )
+                raise e
+
+        record = records_service.read(system_identity, draft_id)._record
+        assert key not in record.files.entries.keys()
+
+        return True
 
     def handle_record_files(
         self,
@@ -299,17 +334,7 @@ class FilesHelper:
             ]
             for o in old_wrong_files:
                 print("old wrong file:", o)
-                try:
-                    files_service.delete_file(
-                        system_identity, draft_id, o["key"]
-                    )
-                except NoResultFound:
-                    try:
-                        records_service.draft_files.delete_file(
-                            system_identity, draft_id, o["key"]
-                        )
-                    except FileKeyNotFoundError as e:
-                        raise e
+                self._delete_file(draft_id, o["key"])
 
             for k, v in new_entries.items():
                 wrong_file = False
@@ -332,58 +357,7 @@ class FilesHelper:
                     print("pending or size mismatch")
 
                 if wrong_file:
-                    error_message = (
-                        "Existing record with same DOI has different"
-                        f" files.\n{pformat(old_files)}\n !=\n "
-                        f"{pformat(new_entries)}\n"
-                        f"Could not delete existing file "
-                        f"{existing_file[0]['key']}."
-                    )
-                    try:
-                        files_service.delete_file(
-                            system_identity, draft_id, existing_file[0]["key"]
-                        )
-                        app.logger.info(
-                            "    existing record had wrong or partial upload,"
-                            " now deleted"
-                        )
-                        print(
-                            "existing record had wrong or partial upload, "
-                            "now deleted"
-                        )
-                    except NoResultFound:
-                        try:
-                            records_service.draft_files.delete_file(
-                                system_identity,
-                                draft_id,
-                                existing_file[0]["key"],
-                            )
-                        except FileKeyNotFoundError as e:
-                            app.logger.info(
-                                "    existing record had wrong or partial upload,"
-                                " but it could not be found for deletion"
-                            )
-                            print(
-                                "existing record had wrong or partial upload, now deleted"
-                            )
-                            raise e
-                    except Exception as e:
-                        raise e
+                    self._delete_file(draft_id, existing_file[0]["key"])
 
-                    try:
-                        files_result = files_service.list_files(
-                            system_identity, draft_id
-                        )
-                        assert (
-                            len(files_result.to_dict()["entries"])
-                            == len(existing_files) - 1
-                        )
-                    except NoResultFound:
-                        app.logger.info(
-                            "    deleted file is no longer attached to record"
-                        )
-                    else:
-                        app.logger.error(error_message)
-                        raise RuntimeError(error_message)
             print("same files:", same_files)
             return same_files
