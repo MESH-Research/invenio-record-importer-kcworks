@@ -288,6 +288,29 @@ class FilesHelper:
             same_files = False
             app.logger.info("    no files attached to existing record")
         else:
+            normalized_new_keys = [
+                unicodedata.normalize("NFC", k) for k in new_entries.keys()
+            ]
+            old_wrong_files = [
+                f
+                for f in existing_files
+                if unicodedata.normalize("NFC", f["key"])
+                not in normalized_new_keys
+            ]
+            for o in old_wrong_files:
+                print("old wrong file:", o)
+                try:
+                    files_service.delete_file(
+                        system_identity, draft_id, o["key"]
+                    )
+                except NoResultFound:
+                    try:
+                        records_service.draft_files.delete_file(
+                            system_identity, draft_id, o["key"]
+                        )
+                    except FileKeyNotFoundError as e:
+                        raise e
+
             for k, v in new_entries.items():
                 wrong_file = False
                 existing_file = [
@@ -317,33 +340,44 @@ class FilesHelper:
                         f"{existing_file[0]['key']}."
                     )
                     try:
+                        files_service.delete_file(
+                            system_identity, draft_id, existing_file[0]["key"]
+                        )
                         app.logger.info(
                             "    existing record had wrong or partial upload,"
                             " now deleted"
                         )
                         print(
-                            "existing record had wrong or partial upload, now deleted"
+                            "existing record had wrong or partial upload, "
+                            "now deleted"
                         )
                     except NoResultFound:
-                        records_service.draft_files.delete_file(
-                            system_identity, draft_id, existing_file[0]["key"]
-                        )
-                    except FileKeyNotFoundError as e:
-                        app.logger.info(
-                            "    existing record had wrong or partial upload,"
-                            " but it could not be found for deletion"
-                        )
-                        print(
-                            "existing record had wrong or partial upload, now deleted"
-                        )
-                        raise e
+                        try:
+                            records_service.draft_files.delete_file(
+                                system_identity,
+                                draft_id,
+                                existing_file[0]["key"],
+                            )
+                        except FileKeyNotFoundError as e:
+                            app.logger.info(
+                                "    existing record had wrong or partial upload,"
+                                " but it could not be found for deletion"
+                            )
+                            print(
+                                "existing record had wrong or partial upload, now deleted"
+                            )
+                            raise e
                     except Exception as e:
                         raise e
 
                     try:
-                        files_service.list_files(
+                        files_result = files_service.list_files(
                             system_identity, draft_id
-                        ).to_dict()["entries"]
+                        )
+                        assert (
+                            len(files_result.to_dict()["entries"])
+                            == len(existing_files) - 1
+                        )
                     except NoResultFound:
                         app.logger.info(
                             "    deleted file is no longer attached to record"
