@@ -548,6 +548,7 @@ class CommunitiesHelper:
                     try:
                         assert len(coll_records) == 1
                     except AssertionError as e:
+                        app.logger.debug(pformat(metadata_record))
                         if (
                             len(coll_records) > 1
                             and not metadata_record["is_published"]
