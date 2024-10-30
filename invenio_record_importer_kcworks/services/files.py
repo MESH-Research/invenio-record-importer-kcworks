@@ -285,6 +285,7 @@ class FilesHelper:
                 )
                 app.logger.debug(f"initialization: {pformat(initialization)}")
             except InvalidKeyError as e:  # file with same key already exists
+                raise e
                 app.logger.error(f"handling InvalidKeyError: {e}")
                 self._retry_file_initialization(draft_id, k)
 
