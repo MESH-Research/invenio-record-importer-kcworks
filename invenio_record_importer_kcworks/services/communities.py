@@ -46,6 +46,7 @@ from invenio_records_resources.services.uow import (
 )
 from invenio_requests.proxies import current_requests_service
 from invenio_requests.errors import CannotExecuteActionError
+from invenio_search.proxies import current_search_client
 from marshmallow.exceptions import ValidationError
 from opensearchpy.exceptions import NotFoundError
 from pprint import pformat
