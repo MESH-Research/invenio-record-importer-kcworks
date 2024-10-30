@@ -251,12 +251,10 @@ def create_invenio_record(
                             system_identity, id_=rec_id
                         ).to_dict()
                     )
-            recs = [
-                dict(t)
-                for t in {
-                    tuple(d.items()) for d in published_recs + draft_recs
-                }
-            ]
+            recs = published_recs
+            for k, v in draft_recs.items():
+                if k not in recs.keys() or v != recs[k]:
+                    recs.append({k: v})
 
             app.logger.info(
                 f"    found {same_doi['hits']['total']['value']} existing"
