@@ -141,7 +141,6 @@ class FilesHelper:
                 uow=uow,
             )
             uow.register(RecordCommitOp(existing_record))
-            uow.commit()
             assert k not in existing_record.files.entries.keys()
 
             app.logger.debug(
