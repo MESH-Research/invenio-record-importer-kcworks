@@ -638,6 +638,11 @@ class CommunitiesHelper:
         """Remove a record from any group collections that are not in the
         group list.
         """
+        app.logger.debug(f"group_list: {pformat(group_list)}")
+        app.logger.debug(
+            f"metadata_record['parent']['communities']: "
+            f"{pformat([c.get('custom_fields', {}).get('kcr:commons_group_id') for c in metadata_record['parent']['communities'].get('entries', [])])}"
+        )
         extraneous_collections = [
             c
             for c in metadata_record["parent"]["communities"].get(
