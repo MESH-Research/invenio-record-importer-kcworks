@@ -403,7 +403,7 @@ class FilesHelper:
         print("existing files:", existing_files)
         if len(existing_files) == 0:
             same_files = False
-            record = records_service.files._get_record(
+            record = records_service.draft_files._get_record(
                 draft_id, system_identity, "delete_files"
             )
             print("record.files.entries:", record.files.entries)
