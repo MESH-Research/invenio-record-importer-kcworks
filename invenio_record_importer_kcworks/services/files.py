@@ -135,7 +135,7 @@ class FilesHelper:
             )
             return True
         else:
-            app.logger.error(existing_record.files.entries[k].to_dict())
+            app.logger.error(existing_record.files.entries[k].metadata)
             app.logger.error(
                 "    file key already exists on record but is not found in "
                 "draft metadata retrieved by record service"
@@ -144,6 +144,69 @@ class FilesHelper:
                 f"File key {k} already exists on record but is not found in "
                 "draft metadata retrieved by record service"
             )
+
+    def _sanitize_filename(self, filename: str) -> str:
+
+        long_filename = filename.replace(
+            "/srv/www/commons/current/web/app/uploads/humcore/", ""
+        )
+        long_filename = long_filename.replace(
+            "/srv/www/commons/shared/uploads/humcore/", ""
+        )
+        long_filename = long_filename.replace(
+            "/app/site/web/app/uploads/humcore/", ""
+        )
+        # app.logger.debug(filename)
+        # app.logger.debug(source_filename)
+        # app.logger.debug(normalize_string(filename))
+        # app.logger.debug(normalize_string(unquote(source_filename)))
+        try:
+            assert normalize_string(filename) in normalize_string(
+                unquote(filename)
+            )
+        except AssertionError:
+            app.logger.error(
+                f"    file key {filename} does not match source filename"
+                f" {filename}..."
+            )
+            raise UploadFileNotFoundError(
+                f"File key from metadata {filename} not found in source "
+                f"file path {filename}"
+            )
+        return long_filename
+
+    def _find_file_path(self, filename: str, key: str) -> Path:
+
+        file_path = (
+            Path(app.config["RECORD_IMPORTER_FILES_LOCATION"]) / filename
+        )
+        try:
+            assert file_path.is_file()
+        except AssertionError:
+            try:
+                full_length = len(filename.split("."))
+                try_index = -2
+                while abs(try_index) + 2 <= full_length:
+                    file_path = Path(
+                        app.config["RECORD_IMPORTER_FILES_LOCATION"],
+                        ".".join(filename.split(".")[:try_index]) + "." + key,
+                    )
+                    if file_path.is_file():
+                        break
+                    else:
+                        try_index -= 1
+                assert file_path.is_file()
+            except AssertionError:
+                try:
+                    file_path = Path(
+                        unicodedata.normalize("NFD", str(file_path))
+                    )
+                    assert file_path.is_file()
+                except AssertionError:
+                    raise UploadFileNotFoundError(
+                        f"    file not found for upload {file_path}..."
+                    )
+        return file_path
 
     def _upload_draft_files(
         self,
@@ -154,66 +217,10 @@ class FilesHelper:
         output = {}
 
         for k, v in files_dict.items():
-            source_filename = source_filenames[k]
-            long_filename = source_filename.replace(
-                "/srv/www/commons/current/web/app/uploads/humcore/", ""
-            )
-            long_filename = long_filename.replace(
-                "/srv/www/commons/shared/uploads/humcore/", ""
-            )
-            long_filename = long_filename.replace(
-                "/app/site/web/app/uploads/humcore/", ""
-            )
-            app.logger.debug(k)
-            app.logger.debug(source_filename)
-            app.logger.debug(normalize_string(k))
-            app.logger.debug(normalize_string(unquote(source_filename)))
-            try:
-                assert normalize_string(k) in normalize_string(
-                    unquote(source_filename)
-                )
-            except AssertionError:
-                app.logger.error(
-                    f"    file key {k} does not match source filename"
-                    f" {source_filename}..."
-                )
-                raise UploadFileNotFoundError(
-                    f"File key from metadata {k} not found in source file path"
-                    f" {source_filename}"
-                )
-            file_path = (
-                Path(app.config["RECORD_IMPORTER_FILES_LOCATION"])
-                / long_filename
-            )
+            long_filename = self._sanitize_filename(source_filenames[k])
+
+            file_path = self._find_file_path(long_filename, k)
             app.logger.debug(f"    uploading file: {file_path}")
-            try:
-                assert file_path.is_file()
-            except AssertionError:
-                try:
-                    full_length = len(long_filename.split("."))
-                    try_index = -2
-                    while abs(try_index) + 2 <= full_length:
-                        file_path = Path(
-                            app.config["RECORD_IMPORTER_FILES_LOCATION"],
-                            ".".join(long_filename.split(".")[:try_index])
-                            + "."
-                            + k,
-                        )
-                        if file_path.is_file():
-                            break
-                        else:
-                            try_index -= 1
-                    assert file_path.is_file()
-                except AssertionError:
-                    try:
-                        file_path = Path(
-                            unicodedata.normalize("NFD", str(file_path))
-                        )
-                        assert file_path.is_file()
-                    except AssertionError:
-                        raise UploadFileNotFoundError(
-                            f"    file not found for upload {file_path}..."
-                        )
 
             try:
                 initialization = self.files_service.init_files(
@@ -229,7 +236,7 @@ class FilesHelper:
                     )
                     == 1
                 )
-            except InvalidKeyError:
+            except InvalidKeyError:  # file with same key already exists
                 self._retry_file_initialization(draft_id, k)
             except Exception as e:
                 app.logger.error(
