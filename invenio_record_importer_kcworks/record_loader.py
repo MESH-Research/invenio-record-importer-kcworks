@@ -277,27 +277,35 @@ def create_invenio_record(
                     f" {rec_list}"
                 )
                 app.logger.info("   deleting extra records...")
-                for i in [r["id"] for r in recs[1:]]:
+                for r in recs[1:]:
                     try:
-                        delete_invenio_record(i)
+                        delete_invenio_record(r["id"])
                     except PIDUnregistered as e:
                         app.logger.error(
                             "    error deleting extra record with same DOI:"
-                            f"{i} was unregistered: {str(e)}"
+                            f"{r['id']} was unregistered: {str(e)}"
                         )
                         raise DraftDeletionFailedError(
                             f"Draft deletion failed because PID for record "
-                            f"{i} was unregistered: {str(e)}"
+                            f"{r['id']} was unregistered: {str(e)}"
                         )
                     except Exception as e:
-                        app.logger.error(
-                            f"    error deleting extra record {i} with "
-                            f"same DOI: {str(e)}"
-                        )
-                        raise DraftDeletionFailedError(
-                            f"Draft deletion failed for record {i} with "
-                            f"same DOI: {str(e)}"
-                        )
+                        if r["is_published"] and not r["is_draft"]:
+                            app.logger.error(
+                                f"    error deleting extra published record "
+                                f"{r['id']} with same DOI: {str(e)}"
+                            )
+                            raise DraftDeletionFailedError(
+                                f"Draft deletion failed for published record "
+                                f"{r['id']} with same DOI: {str(e)}"
+                            )
+                        else:
+                            app.logger.info(
+                                f"    could not delete draft record {r['id']} "
+                                f"with same DOI. It will be cleaned up by the "
+                                f"system later."
+                            )
+                            pass
             existing_metadata = published_recs[0] or draft_recs[0]
             # app.logger.debug(
             #     f"existing_metadata: {pformat(existing_metadata)}"
