@@ -235,20 +235,23 @@ def create_invenio_record(
             )
             raise e
         if same_doi["hits"]["total"]["value"] > 0:
-            try:
-                recs = [
-                    records_service.read(
-                        system_identity, id_=r["_source"]["id"]
-                    ).to_dict()
-                    for r in same_doi["hits"]["hits"]
-                ]
-            except PIDUnregistered:
-                recs = [
-                    records_service.read_draft(
-                        system_identity, id_=r["_source"]["id"]
-                    ).to_dict()
-                    for r in same_doi["hits"]["hits"]
-                ]
+            draft_recs = []
+            published_recs = []
+            rec_ids = [r["_source"]["id"] for r in same_doi["hits"]["hits"]]
+            for rec_id in rec_ids:
+                try:
+                    published_recs.append(
+                        records_service.read(
+                            system_identity, id_=rec_id
+                        ).to_dict()
+                except PIDUnregistered:
+                    draft_recs.append(
+                        records_service.read_draft(
+                            system_identity, id_=rec_id
+                        ).to_dict()
+                    )
+            recs = published_recs + draft_recs
+
             app.logger.info(
                 f"    found {same_doi['hits']['total']['value']} existing"
                 " records with same DOI..."
@@ -256,23 +259,38 @@ def create_invenio_record(
             assert len(recs) == same_doi["hits"]["total"]["value"]
             # delete extra records with the same doi
             if len(recs) > 1:
-                rec_list = [(r["id"], r["status"]) for r in recs]
+                rec_list = [
+                    (r["id"], r["status"]) for r in recs
+                ]
                 app.logger.info(
                     "    found more than one existing record with same DOI:"
                     f" {rec_list}"
                 )
                 app.logger.info("   deleting extra records...")
-                for i in [r["id"] for r in recs[1:] if "draft" in r["status"]]:
+                for i in [r["id"] for r in recs[1:]]:
                     try:
-                        delete_invenio_draft_record(i)
-                    except PIDUnregistered as e:
-                        app.logger.error(
-                            "    error deleting extra record with same DOI:"
-                        )
-                        raise DraftDeletionFailedError(
-                            f"Draft deletion failed because PID for record "
-                            f"{i} was unregistered: {str(e)}"
-                        )
+                        if i in draft_recs:
+                            try:
+                                delete_invenio_draft_record(i)
+                            except PIDUnregistered as e:
+                                app.logger.error(
+                                    "    error deleting extra record with same DOI:"
+                                )
+                                raise DraftDeletionFailedError(
+                                    f"Draft deletion failed because PID for record "
+                                    f"{i} was unregistered: {str(e)}"
+                                )
+                        else:
+                            try:
+                                delete_invenio_draft_record(i)
+                            except PIDUnregistered as e:
+                                app.logger.error(
+                                    "    error deleting extra record with same DOI:"
+                                )
+                                raise DraftDeletionFailedError(
+                                    f"Deletion of published record with "
+                                    f"same DOI failed because PID for record " f"{i} was unregistered: {str(e)}"
+                                )
                     except Exception as e:
                         app.logger.error(
                             f"    error deleting extra record {i} with "
@@ -282,7 +300,7 @@ def create_invenio_record(
                             f"Draft deletion failed for record {i} with "
                             f"same DOI: {str(e)}"
                         )
-            existing_metadata = recs[0]
+            existing_metadata = published_recs[0] or draft_recs[0]
             # app.logger.debug(
             #     f"existing_metadata: {pformat(existing_metadata)}"
             # )

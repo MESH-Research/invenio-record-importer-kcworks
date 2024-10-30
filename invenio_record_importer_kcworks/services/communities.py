@@ -657,6 +657,8 @@ class CommunitiesHelper:
                     current_community_records_service.community_record_schema.schema
                 )
                 removed = current_community_records_service.delete(
-                    system_identity, c["id"], ""
+                    system_identity,
+                    c["id"],
+                    {"records": [{"id": metadata_record["id"]}]},
                 )
                 app.logger.debug(f"    removed {removed}")
