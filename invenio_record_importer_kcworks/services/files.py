@@ -104,7 +104,7 @@ class FilesHelper:
         print(f"handle_record_files file_data: {pformat(file_data)}")
         print(
             f"handle_record_files existing_record.files: "
-            f"{pformat(existing_record.get("files"))}"
+            f"{pformat(existing_record.get('files'))}"
         )
         assert metadata["files"]["enabled"] is True
         uploaded_files = {}
