@@ -554,21 +554,20 @@ class CommunitiesHelper:
                     #     if c["custom_fields"].get("kcr:commons_group_name")
                     #     == group_name
                     # ]
-                    app.logger.debug(
-                        f"coll_record: {pformat(coll_search.to_dict())}"
-                    )
+                    app.logger.debug(f"coll_record: {pformat(coll_search)}")
                     try:
                         assert len(coll_records) == 1
                     except AssertionError:
                         app.logger.debug(pformat(metadata_record))
-                        if (
-                            len(coll_records) > 1
-                            and metadata_record["is_published"] is False
-                            and metadata_record["status"] != "published"
-                        ):
+                        if len(coll_records) > 1:
                             raise MultipleActiveCollectionsError(
                                 f"    multiple active collections found "
                                 f"for {group_id}"
+                            )
+                        else:
+                            raise CollectionNotFoundError(
+                                f"    no active collections found for "
+                                f'"{group_id}"'
                             )
                     coll_record = coll_records[0]
                     app.logger.debug(
