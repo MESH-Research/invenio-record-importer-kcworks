@@ -135,6 +135,8 @@ class FilesHelper:
                 "delete_file",
                 system_identity,
                 draft_id,
+                k,
+                existing_record,
                 removed_file,
                 uow=uow,
             )
