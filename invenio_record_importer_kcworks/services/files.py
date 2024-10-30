@@ -108,6 +108,7 @@ class FilesHelper:
         existing_record = self.files_service._get_record(
             draft_id, system_identity, "create_files"
         )
+        print("retrying initialization for file:", k)
 
         if existing_record.files.entries[k] == {"metadata": {}}:
             removed_file = existing_record.files.delete(
