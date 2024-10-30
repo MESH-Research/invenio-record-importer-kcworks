@@ -244,6 +244,7 @@ def create_invenio_record(
                         records_service.read(
                             system_identity, id_=rec_id
                         ).to_dict()
+                    )
                 except PIDUnregistered:
                     draft_recs.append(
                         records_service.read_draft(
@@ -259,9 +260,7 @@ def create_invenio_record(
             assert len(recs) == same_doi["hits"]["total"]["value"]
             # delete extra records with the same doi
             if len(recs) > 1:
-                rec_list = [
-                    (r["id"], r["status"]) for r in recs
-                ]
+                rec_list = [(r["id"], r["status"]) for r in recs]
                 app.logger.info(
                     "    found more than one existing record with same DOI:"
                     f" {rec_list}"
