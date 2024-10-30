@@ -253,6 +253,8 @@ def create_invenio_record(
                     )
             raw_recs = published_recs + draft_recs
             recs = []
+            # deduplicate based on invenio record id and prefer published
+            # records over drafts
             for r in raw_recs:
                 if r["id"] not in [p["id"] for p in recs]:
                     recs.append(r)
@@ -261,7 +263,6 @@ def create_invenio_record(
                 f"    found {same_doi['hits']['total']['value']} existing"
                 " records with same DOI..."
             )
-            assert len(recs) == same_doi["hits"]["total"]["value"]
             # delete extra records with the same doi
             if len(recs) > 1:
                 rec_list = [(r["id"], r["status"]) for r in recs]
