@@ -777,13 +777,12 @@ def assign_record_ownership(
             )
             app.logger.warning(
                 f"    finding existing user {new_owner_username} "
-                f"({new_owner_email})...{existing_user.id}"
+                f"({new_owner_email})...{existing_user}"
             )
             print(
                 f"    finding existing user {new_owner_username} "
-                f"({new_owner_email})...{existing_user.id}"
+                f"({new_owner_email})...{existing_user}"
             )
-            print(existing_user.user_profile)
             assert existing_user
             idp_slug = (
                 "kc" if record_source == "knowledgeCommons" else record_source
