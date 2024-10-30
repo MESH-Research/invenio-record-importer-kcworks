@@ -301,7 +301,8 @@ class FilesHelper:
                         == 1
                     )
                     app.logger.debug(
-                        f"initialization.entries.keys: {pformat(initialization.entries.keys())}"
+                        f"initialization.entries keys: "
+                        f"{[e['key'] for e in initialization['entries']]}"
                     )
                 except Exception as e:
                     app.logger.error(
