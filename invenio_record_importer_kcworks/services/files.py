@@ -33,7 +33,10 @@ class FilesHelper:
     def __init__(self):
         self.files_service = records_service.draft_files
 
-    def _delete_file(self, draft_id: str, key: str) -> bool:
+    @unit_of_work()
+    def _delete_file(
+        self, draft_id: str, key: str, uow: Optional[UnitOfWork] = None
+    ) -> bool:
 
         def inner_delete_file(key: str):
             try:
@@ -57,9 +60,28 @@ class FilesHelper:
                 )._record
                 print("attempting to unlock files:", record.files.entries)
                 record.files.unlock()
-                record.files.delete(key, softdelete_obj=False, remove_rf=True)
-                db.session.commit()
+                # Duplicating logic from files_service.delete_file
+                # to allow unlocking the published record files
+                removed_file = record.files.delete(
+                    key, softdelete_obj=False, remove_rf=True
+                )
+                self.files_service.run_components(
+                    "delete_file",
+                    system_identity,
+                    draft_id,
+                    key,
+                    record,
+                    removed_file,
+                    uow=uow,
+                )
+                uow.register(RecordCommitOp(record))
                 assert key not in record.files.entries.keys()
+
+                app.logger.debug(
+                    "...file key existed on record but was empty and was "
+                    "removed. This probably indicates a prior failed upload."
+                )
+                app.logger.debug(pformat(removed_file))
                 return True
             except Exception as e:
                 app.logger.error(
