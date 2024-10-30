@@ -251,18 +251,11 @@ def create_invenio_record(
                             system_identity, id_=rec_id
                         ).to_dict()
                     )
-            recs = published_recs
-            app.logger.debug(
-                f"published_recs: {[p['id'] for p in published_recs]}"
-            )
-            app.logger.debug(f"draft_recs: {[d['id'] for d in draft_recs]}")
-            recs.extend(
-                [
-                    r
-                    for r in draft_recs
-                    if r["id"] not in [p["id"] for p in published_recs]
-                ]
-            )
+            raw_recs = published_recs + draft_recs
+            recs = []
+            for r in raw_recs:
+                if r["id"] not in [p["id"] for p in recs]:
+                    recs.append(r)
 
             app.logger.info(
                 f"    found {same_doi['hits']['total']['value']} existing"
