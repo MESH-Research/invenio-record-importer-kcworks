@@ -129,6 +129,7 @@ class FilesHelper:
                 k, softdelete_obj=False, remove_rf=True
             )
             uow.register(RecordCommitOp(existing_record))
+            uow.commit()
             app.logger.debug(
                 "...file key existed on record but was empty and was "
                 "removed. This probably indicates a prior failed upload."
