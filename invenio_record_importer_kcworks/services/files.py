@@ -50,6 +50,7 @@ class FilesHelper:
                 record = records_service.read(
                     system_identity, draft_id
                 )._record
+                print("attempting to unlock files:", record.files.entries)
                 record.files.unlock()
                 inner_delete_file(key)
             except Exception as e:
