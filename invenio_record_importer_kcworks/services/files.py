@@ -254,6 +254,10 @@ class FilesHelper:
     ) -> dict:
         output = {}
 
+        app.logger.debug(
+            f"files_dict in _upload_draft_files: {pformat(files_dict.keys())}"
+        )
+
         for k, v in files_dict.items():
             long_filename = self._sanitize_filename(source_filenames[k])
 
@@ -279,25 +283,31 @@ class FilesHelper:
                 app.logger.error(f"handling InvalidKeyError: {e}")
                 self._retry_file_initialization(draft_id, k)
 
-                initialization = self.files_service.init_files(
-                    system_identity, draft_id, data=[{"key": k}]
-                ).to_dict()
-                app.logger.debug(f"initialization: {pformat(initialization)}")
-                assert (
-                    len(
-                        [
-                            e["key"]
-                            for e in initialization["entries"]
-                            if e["key"] == k
-                        ]
+                try:
+                    initialization = self.files_service.init_files(
+                        system_identity, draft_id, data=[{"key": k}]
+                    ).to_dict()
+                    app.logger.debug(
+                        f"initialization: {pformat(initialization)}"
                     )
-                    == 1
-                )
-            except Exception as e:
-                app.logger.error(
-                    f"    failed to initialize file upload for {draft_id}..."
-                )
-                raise e
+                    assert (
+                        len(
+                            [
+                                e["key"]
+                                for e in initialization["entries"]
+                                if e["key"] == k
+                            ]
+                        )
+                        == 1
+                    )
+                    app.logger.debug(
+                        f"initialization.entries.keys: {pformat(initialization.entries.keys())}"
+                    )
+                except Exception as e:
+                    app.logger.error(
+                        f"    failed to initialize file upload for {draft_id}..."
+                    )
+                    raise e
 
             try:
                 with open(
