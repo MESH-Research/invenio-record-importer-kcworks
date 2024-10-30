@@ -252,6 +252,7 @@ def create_invenio_record(
                         ).to_dict()
                     )
             recs = published_recs
+            app.logger.debug(f"published_recs: {pformat(published_recs)}")
             recs.extend(
                 [
                     r
