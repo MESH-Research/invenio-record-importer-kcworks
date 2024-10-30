@@ -269,32 +269,20 @@ def create_invenio_record(
                 app.logger.info("   deleting extra records...")
                 for i in [r["id"] for r in recs[1:]]:
                     try:
-                        if i in draft_recs:
-                            try:
-                                delete_invenio_draft_record(i)
-                            except PIDUnregistered as e:
-                                app.logger.error(
-                                    "    error deleting extra record with same DOI:"
-                                )
-                                raise DraftDeletionFailedError(
-                                    f"Draft deletion failed because PID for record "
-                                    f"{i} was unregistered: {str(e)}"
-                                )
-                        else:
-                            try:
-                                delete_invenio_draft_record(i)
-                            except PIDUnregistered as e:
-                                app.logger.error(
-                                    "    error deleting extra record with same DOI:"
-                                )
-                                raise DraftDeletionFailedError(
-                                    f"Deletion of published record with "
-                                    f"same DOI failed because PID for record " f"{i} was unregistered: {str(e)}"
-                                )
+                        delete_invenio_draft_record(i)
+                    except PIDUnregistered as e:
+                        app.logger.error(
+                            "    error deleting extra record with same DOI:"
+                            f"{i} was unregistered: {str(e)}"
+                        )
+                        raise DraftDeletionFailedError(
+                            f"Draft deletion failed because PID for record "
+                            f"{i} was unregistered: {str(e)}"
+                        )
                     except Exception as e:
                         app.logger.error(
                             f"    error deleting extra record {i} with "
-                            "same DOI:"
+                            f"same DOI: {str(e)}"
                         )
                         raise DraftDeletionFailedError(
                             f"Draft deletion failed for record {i} with "
