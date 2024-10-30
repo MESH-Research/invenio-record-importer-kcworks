@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./invenio_record_importer_kcworks/dependencies/invenio-records-resources",
+        "./invenio_record_importer_kcworks/dependencies/invenio-rdm-records"
+    ]
+}
