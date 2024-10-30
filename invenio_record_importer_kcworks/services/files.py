@@ -112,7 +112,7 @@ class FilesHelper:
         print("retrying initialization for file:", k)
         print("existing record file:", existing_record.files.entries[k])
 
-        if existing_record.files.entries[k].metadata == {}:
+        if not existing_record.files.entries[k].metadata:
             removed_file = existing_record.files.delete(
                 k, softdelete_obj=False, remove_rf=True
             )
