@@ -16,6 +16,11 @@ from invenio_record_importer_kcworks.utils.utils import (
 from invenio_records_resources.services.errors import (
     FileKeyNotFoundError,
 )
+from invenio_records_resources.services.uow import (
+    unit_of_work,
+    UnitOfWork,
+    RecordCommitOp,
+)
 from pprint import pformat
 from pathlib import Path
 from sqlalchemy.orm.exc import NoResultFound
@@ -105,7 +110,13 @@ class FilesHelper:
             )
         return uploaded_files
 
-    def _retry_file_initialization(self, draft_id: str, k: str) -> bool:
+    @unit_of_work()
+    def _retry_file_initialization(
+        self,
+        draft_id: str,
+        k: str,
+        uow: Optional[UnitOfWork] = None,
+    ) -> bool:
         existing_record = self.files_service._get_record(
             draft_id, system_identity, "create_files"
         )
@@ -117,7 +128,7 @@ class FilesHelper:
             removed_file = existing_record.files.delete(
                 k, softdelete_obj=False, remove_rf=True
             )
-            db.session.commit()
+            uow.register(RecordCommitOp(existing_record))
             app.logger.debug(
                 "...file key existed on record but was empty and was "
                 "removed. This probably indicates a prior failed upload."
