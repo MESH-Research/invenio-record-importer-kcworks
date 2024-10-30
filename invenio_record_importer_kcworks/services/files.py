@@ -98,9 +98,14 @@ class FilesHelper:
         self,
         metadata: dict,
         file_data: dict,
-        existing_record: Optional[dict] = None,
+        existing_record: Optional[dict] = {},
     ):
         print(f"handle_record_files metadata: {pformat(metadata)}")
+        print(f"handle_record_files file_data: {pformat(file_data)}")
+        print(
+            f"handle_record_files existing_record.files: "
+            f"{pformat(existing_record.get("files"))}"
+        )
         assert metadata["files"]["enabled"] is True
         uploaded_files = {}
         same_files = False
