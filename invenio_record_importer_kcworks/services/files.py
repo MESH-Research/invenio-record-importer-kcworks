@@ -52,7 +52,8 @@ class FilesHelper:
                 )._record
                 print("attempting to unlock files:", record.files.entries)
                 record.files.unlock()
-                inner_delete_file(key)
+                record.files.delete(key, softdelete_obj=False, remove_rf=True)
+                record.files.commit()
             except Exception as e:
                 app.logger.error(
                     f"    failed to unlock files for record {draft_id}..."
