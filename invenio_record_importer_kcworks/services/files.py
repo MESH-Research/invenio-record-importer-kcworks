@@ -125,11 +125,22 @@ class FilesHelper:
 
         if not existing_record.files.entries[k].metadata:
             existing_record.files.unlock()
+
+            # Duplicating logic from files_service.delete_file
+            # to allow unlocking the published record files
             removed_file = existing_record.files.delete(
                 k, softdelete_obj=False, remove_rf=True
             )
+            self.files_service.run_components(
+                "delete_file",
+                system_identity,
+                draft_id,
+                removed_file,
+                uow=uow,
+            )
             uow.register(RecordCommitOp(existing_record))
-            uow.commit()
+            assert k not in existing_record.files.entries.keys()
+
             app.logger.debug(
                 "...file key existed on record but was empty and was "
                 "removed. This probably indicates a prior failed upload."
