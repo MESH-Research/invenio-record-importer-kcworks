@@ -235,12 +235,20 @@ def create_invenio_record(
             )
             raise e
         if same_doi["hits"]["total"]["value"] > 0:
-            recs = [
-                records_service.read(
-                    system_identity, id_=r["_source"]["id"]
-                ).to_dict()
-                for r in same_doi["hits"]["hits"]
-            ]
+            try:
+                recs = [
+                    records_service.read(
+                        system_identity, id_=r["_source"]["id"]
+                    ).to_dict()
+                    for r in same_doi["hits"]["hits"]
+                ]
+            except PIDUnregistered:
+                recs = [
+                    records_service.read_draft(
+                        system_identity, id_=r["_source"]["id"]
+                    ).to_dict()
+                    for r in same_doi["hits"]["hits"]
+                ]
             app.logger.info(
                 f"    found {same_doi['hits']['total']['value']} existing"
                 " records with same DOI..."
