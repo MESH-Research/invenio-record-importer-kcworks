@@ -11,7 +11,10 @@ from flask import current_app as app
 
 
 from invenio_access.permissions import system_identity
-from invenio_communities.proxies import current_communities
+from invenio_communities.proxies import (
+    current_communities,
+    current_community_records_service,
+)
 from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
 from invenio_group_collections_kcworks.errors import (
     CollectionNotFoundError,
@@ -527,12 +530,6 @@ class CommunitiesHelper:
                 group_name = group["group_name"]
                 coll_record = None
                 try:
-                    coll_search = collections_service.search(
-                        system_identity,
-                        record_source,
-                        commons_group_id=group_id,
-                    )
-
                     coll_search = current_search_client.search(
                         index="kcworks-communities",
                         q=f'custom_fields.kcr\:commons_group_id:"{group_id}"',
@@ -619,6 +616,9 @@ class CommunitiesHelper:
                     # app.logger.debug(f"    add_result: "
                     #     f"{pformat(add_result)}")
             if added_to_collections:
+                self._remove_from_extraneous_collections(
+                    metadata_record, group_list
+                )
                 app.logger.info(
                     f"    record {metadata_record['id']} successfully added "
                     f"to group collections {added_to_collections}..."
@@ -633,3 +633,29 @@ class CommunitiesHelper:
         else:
             app.logger.info("    no group collections to add to...")
             return []
+
+    def _remove_from_extraneous_collections(
+        self, metadata_record: dict, group_list: list
+    ) -> None:
+        """Remove a record from any group collections that are not in the
+        group list.
+        """
+        extraneous_collections = [
+            c
+            for c in metadata_record["parent"]["communities"].get(
+                "entries", []
+            )
+            if c.get("custom_fields", {}).get("kcr:commons_group_id")
+            and c.get("custom_fields", {}).get("kcr:commons_group_id")
+            not in group_list
+        ]
+        if extraneous_collections:
+            app.logger.debug(
+                f"    removing record from extraneous collections "
+                f"{extraneous_collections}..."
+            )
+            for c in extraneous_collections:
+                removed = current_community_records_service.delete(
+                    system_identity, c["id"], ""
+                )
+                app.logger.debug(f"    removed {removed}")
