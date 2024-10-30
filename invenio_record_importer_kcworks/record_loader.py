@@ -300,186 +300,193 @@ def create_invenio_record(
                                 f"system later."
                             )
                             pass
-            existing_metadata = published_recs[0] or draft_recs[0]
+            existing_metadata = recs[0] if len(recs) > 0 else None
             # app.logger.debug(
             #     f"existing_metadata: {pformat(existing_metadata)}"
             # )
             # Check for differences in metadata
-            differences = compare_metadata(existing_metadata, metadata)
-            app.logger.debug(f"differences: {differences}")
-            if differences:
-                app.logger.info(
-                    "    existing record with same DOI has different"
-                    f" metadata: existing record: {differences['A']}; new"
-                    f" record: {differences['B']}"
-                )
-                if no_updates:
-                    raise RuntimeError(
-                        "no_updates flag is set, so not updating existing"
-                        " record"
+            if existing_metadata:
+                differences = compare_metadata(existing_metadata, metadata)
+                app.logger.debug(f"differences: {differences}")
+                if differences:
+                    app.logger.info(
+                        "    existing record with same DOI has different"
+                        f" metadata: existing record: {differences['A']}; new"
+                        f" record: {differences['B']}"
                     )
-                update_payload = existing_metadata.copy()
-                for key, val in differences["B"].items():
-                    if key in [
-                        "access",
-                        "custom_fields",
-                        "files",
-                        "metadata",
-                        "pids",
-                    ]:
-                        for k2 in val.keys():
-                            if val[k2] is None:
-                                update_payload.setdefault(key, {}).pop(k2)
-                            else:
-                                update_payload.setdefault(key, {})[k2] = (
-                                    metadata[key][k2]
-                                )
-                app.logger.info(
-                    "    updating existing record with new metadata..."
-                )
-                new_comparison = compare_metadata(
-                    existing_metadata, update_payload
-                )
-                if new_comparison:
-                    app.logger.debug(
-                        f"existing record: {pformat(new_comparison['A'])}"
-                        "new record:"
-                        f" {pformat(new_comparison['B'])}"
-                    )
-                    raise ExistingRecordNotUpdatedError(
-                        "    metadata still does not match migration source"
-                        " after update attempt..."
-                    )
-                else:
-                    update_payload = {
-                        k: v
-                        for k, v in update_payload.items()
-                        if k
-                        in [
+                    if no_updates:
+                        raise RuntimeError(
+                            "no_updates flag is set, so not updating existing"
+                            " record"
+                        )
+                    update_payload = existing_metadata.copy()
+                    for key, val in differences["B"].items():
+                        if key in [
                             "access",
                             "custom_fields",
                             "files",
                             "metadata",
                             "pids",
-                        ]
-                    }
-                    # TODO: Check whether this is the right way to update
-                    if existing_metadata["files"].get("enabled") and (
-                        len(existing_metadata["files"]["entries"].keys()) > 0
-                    ):
-                        app.logger.info(
-                            "    existing record has files attached..."
-                        )
-                        update_payload["files"] = existing_metadata["files"]
-                    # Invenio validator will reject other rights metadata
-                    # values from existing records
-                    if existing_metadata["metadata"].get("rights"):
-                        existing_metadata["metadata"]["rights"] = [
-                            {"id": r["id"]}
-                            for r in existing_metadata["metadata"]["rights"]
-                        ]
+                        ]:
+                            for k2 in val.keys():
+                                if val[k2] is None:
+                                    update_payload.setdefault(key, {}).pop(k2)
+                                else:
+                                    update_payload.setdefault(key, {})[k2] = (
+                                        metadata[key][k2]
+                                    )
                     app.logger.info(
-                        "    metadata updated to match migration source..."
+                        "    updating existing record with new metadata..."
                     )
-                    # if existing_metadata["status"] != "published":
-                    try:
-                        result = records_service.update_draft(
-                            system_identity,
-                            id_=existing_metadata,
-                            data=update_payload,
-                        )
-                        app.logger.info(
-                            "    continuing with existing draft record"
-                            " (new metadata)..."
-                        )
-                        app.logger.debug(pformat(result))
-                        return {
-                            "status": "updated_draft",
-                            "record_data": result.to_dict(),
-                            "recid": result._record.id,
-                        }
-                    # else:
-                    except PIDDoesNotExistError:
-                        # TODO: What is status here???
-                        app.logger.info(
-                            "    creating new draft of published record"
-                            " or recovering unsaved draft..."
-                        )
-                        # app.logger.debug(pprint(existing_metadata))
-                        # rec = records_service.read(
-                        #     system_identity, id_=existing_metadata["id"]
-                        # )
-                        create_draft_result = records_service.edit(
-                            system_identity, id_=existing_metadata["id"]
-                        )
-                        app.logger.info(
-                            "    updating new draft of published record"
-                            " with new metadata..."
-                        )
-                        result = records_service.update_draft(
-                            system_identity,
-                            id_=create_draft_result.id,
-                            data=update_payload,
-                        )
-                        result = records_service.update_draft(
-                            system_identity,
-                            id_=create_draft_result.id,
-                            data=update_payload,
-                        )
-                        if result.to_dict().get("errors"):
-                            # NOTE: some validation errors don't prevent
-                            # the update and aren't indicative of actual
-                            # problems
-                            errors = [
-                                e
-                                for e in result.to_dict()["errors"]
-                                if e.get("field") != "metadata.rights.0.icon"
-                                and e.get("messages") != ["Unknown field."]
-                                and "Missing uploaded files"
-                                not in e.get("messages")[0]
-                            ]
-                            if errors:
-                                raise UpdateValidationError(
-                                    f"Validation error when trying to update "
-                                    f"existing record: {pformat(errors)}"
-                                )
-                        app.logger.info(
-                            f"updated new draft of published: "
-                            f"{pformat(result.to_dict())}"
-                        )
+                    new_comparison = compare_metadata(
+                        existing_metadata, update_payload
+                    )
+                    if new_comparison:
                         app.logger.debug(
-                            f"****title: "
-                            f"{result.to_dict()['metadata'].get('title')}"
+                            f"existing record: {pformat(new_comparison['A'])}"
+                            "new record:"
+                            f" {pformat(new_comparison['B'])}"
                         )
-                        return {
-                            "status": "updated_published",
-                            "record_data": result.to_dict(),
-                            "recid": result._record.id,
+                        raise ExistingRecordNotUpdatedError(
+                            "    metadata still does not match migration source"
+                            " after update attempt..."
+                        )
+                    else:
+                        update_payload = {
+                            k: v
+                            for k, v in update_payload.items()
+                            if k
+                            in [
+                                "access",
+                                "custom_fields",
+                                "files",
+                                "metadata",
+                                "pids",
+                            ]
                         }
+                        # TODO: Check whether this is the right way to update
+                        if existing_metadata["files"].get("enabled") and (
+                            len(existing_metadata["files"]["entries"].keys())
+                            > 0
+                        ):
+                            app.logger.info(
+                                "    existing record has files attached..."
+                            )
+                            update_payload["files"] = existing_metadata[
+                                "files"
+                            ]
+                        # Invenio validator will reject other rights metadata
+                        # values from existing records
+                        if existing_metadata["metadata"].get("rights"):
+                            existing_metadata["metadata"]["rights"] = [
+                                {"id": r["id"]}
+                                for r in existing_metadata["metadata"][
+                                    "rights"
+                                ]
+                            ]
+                        app.logger.info(
+                            "    metadata updated to match migration source..."
+                        )
+                        # if existing_metadata["status"] != "published":
+                        try:
+                            result = records_service.update_draft(
+                                system_identity,
+                                id_=existing_metadata,
+                                data=update_payload,
+                            )
+                            app.logger.info(
+                                "    continuing with existing draft record"
+                                " (new metadata)..."
+                            )
+                            app.logger.debug(pformat(result))
+                            return {
+                                "status": "updated_draft",
+                                "record_data": result.to_dict(),
+                                "recid": result._record.id,
+                            }
+                        # else:
+                        except PIDDoesNotExistError:
+                            # TODO: What is status here???
+                            app.logger.info(
+                                "    creating new draft of published record"
+                                " or recovering unsaved draft..."
+                            )
+                            # app.logger.debug(pprint(existing_metadata))
+                            # rec = records_service.read(
+                            #     system_identity, id_=existing_metadata["id"]
+                            # )
+                            create_draft_result = records_service.edit(
+                                system_identity, id_=existing_metadata["id"]
+                            )
+                            app.logger.info(
+                                "    updating new draft of published record"
+                                " with new metadata..."
+                            )
+                            result = records_service.update_draft(
+                                system_identity,
+                                id_=create_draft_result.id,
+                                data=update_payload,
+                            )
+                            result = records_service.update_draft(
+                                system_identity,
+                                id_=create_draft_result.id,
+                                data=update_payload,
+                            )
+                            if result.to_dict().get("errors"):
+                                # NOTE: some validation errors don't prevent
+                                # the update and aren't indicative of actual
+                                # problems
+                                errors = [
+                                    e
+                                    for e in result.to_dict()["errors"]
+                                    if e.get("field")
+                                    != "metadata.rights.0.icon"
+                                    and e.get("messages") != ["Unknown field."]
+                                    and "Missing uploaded files"
+                                    not in e.get("messages")[0]
+                                ]
+                                if errors:
+                                    raise UpdateValidationError(
+                                        f"Validation error when trying to update "
+                                        f"existing record: {pformat(errors)}"
+                                    )
+                            app.logger.info(
+                                f"updated new draft of published: "
+                                f"{pformat(result.to_dict())}"
+                            )
+                            app.logger.debug(
+                                f"****title: "
+                                f"{result.to_dict()['metadata'].get('title')}"
+                            )
+                            return {
+                                "status": "updated_published",
+                                "record_data": result.to_dict(),
+                                "recid": result._record.id,
+                            }
 
-            if not differences:
-                record_type = (
-                    "draft"
-                    if existing_metadata["status"] != "published"
-                    else "published"
-                )
-                app.logger.info(
-                    f"    continuing with existing {record_type} record "
-                    "(same metadata)..."
-                )
-                existing_record_hit = records_service.search_drafts(
-                    system_identity,
-                    q=f"id:{existing_metadata['id']}",
-                )._results[0]
-                result = {
-                    "record_data": existing_metadata,
-                    "status": f"unchanged_existing_{record_type}",
-                    "recid": existing_record_hit.to_dict()["uuid"],
-                }
-                app.logger.debug(
-                    f"metadata for existing record: {pformat(result)}"
-                )
-                return result
+                if not differences:
+                    record_type = (
+                        "draft"
+                        if existing_metadata["status"] != "published"
+                        else "published"
+                    )
+                    app.logger.info(
+                        f"    continuing with existing {record_type} record "
+                        "(same metadata)..."
+                    )
+                    existing_record_hit = records_service.search_drafts(
+                        system_identity,
+                        q=f"id:{existing_metadata['id']}",
+                    )._results[0]
+                    result = {
+                        "record_data": existing_metadata,
+                        "status": f"unchanged_existing_{record_type}",
+                        "recid": existing_record_hit.to_dict()["uuid"],
+                    }
+                    app.logger.debug(
+                        f"metadata for existing record: {pformat(result)}"
+                    )
+                    return result
 
     # Make draft and publish
     app.logger.info("    creating new draft record...")
