@@ -53,6 +53,7 @@ class FilesHelper:
                 print("attempting to unlock files:", record.files.entries)
                 record.files.unlock()
                 record.files.delete(key, softdelete_obj=False, remove_rf=True)
+                db.session.commit()
                 assert key not in record.files.entries.keys()
                 return True
             except Exception as e:
