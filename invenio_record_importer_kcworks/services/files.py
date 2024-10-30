@@ -135,7 +135,7 @@ class FilesHelper:
             )
             return True
         else:
-            app.logger.error(existing_record.files.entries[k].metadata)
+            app.logger.error(existing_record.files.entries)
             app.logger.error(
                 "    file key already exists on record but is not found in "
                 "draft metadata retrieved by record service"
