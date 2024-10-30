@@ -551,7 +551,8 @@ class CommunitiesHelper:
                         app.logger.debug(pformat(metadata_record))
                         if (
                             len(coll_records) > 1
-                            and not metadata_record["is_published"]
+                            and metadata_record["is_published"] is False
+                            and metadata_record["status"] != "published"
                         ):
                             raise MultipleActiveCollectionsError(
                                 f"    multiple active collections found "
