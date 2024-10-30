@@ -289,7 +289,7 @@ class StatsFabricator:
             print(f"downloads: {downloads}")
             print(f"record creation date: {record_creation}")
 
-        files_request = records_service.draft_files.list_files(
+        files_request = records_service.files.list_files(
             system_identity, record_id
         ).to_dict()
 

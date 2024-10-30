@@ -936,6 +936,9 @@ def import_record_to_invenio(
         existing_record = result["existing_record"] = record_created[
             "record_data"
         ]
+    is_draft = (
+        False if existing_record and existing_record["is_published"] else True
+    )
     metadata_record = record_created["record_data"]
     draft_id = metadata_record["id"]
     app.logger.info(f"    metadata record id: {draft_id}")
@@ -947,7 +950,9 @@ def import_record_to_invenio(
     # Upload the files
     if len(import_data["files"]["entries"]) > 0:
         app.logger.info("    uploading files for draft...")
-        result["uploaded_files"] = FilesHelper().handle_record_files(
+        result["uploaded_files"] = FilesHelper(
+            is_draft=is_draft
+        ).handle_record_files(
             metadata_record,
             file_data,
             existing_record=existing_record,

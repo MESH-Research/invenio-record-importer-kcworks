@@ -30,8 +30,10 @@ from urllib.parse import unquote
 
 
 class FilesHelper:
-    def __init__(self):
-        self.files_service = records_service.draft_files
+    def __init__(self, is_draft: bool):
+        self.files_service = (
+            records_service.draft_files if is_draft else records_service.files
+        )
 
     @unit_of_work()
     def _delete_file(
