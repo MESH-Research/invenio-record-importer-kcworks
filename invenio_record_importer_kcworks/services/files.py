@@ -403,7 +403,9 @@ class FilesHelper:
         print("existing files:", existing_files)
         if len(existing_files) == 0:
             same_files = False
-            record = records_service.read(system_identity, draft_id)._record
+            record = records_service.files._get_record(
+                draft_id, system_identity, "create_files"
+            )
             if record.files.entries:
                 record.files.unlock()
                 record.files.delete_all(
