@@ -141,6 +141,7 @@ class FilesHelper:
                 uow=uow,
             )
             uow.register(RecordCommitOp(existing_record))
+            uow.commit()
             assert k not in existing_record.files.entries.keys()
 
             app.logger.debug(
@@ -149,19 +150,6 @@ class FilesHelper:
             )
             app.logger.debug(pformat(removed_file))
 
-            initialization = self.files_service.init_files(
-                system_identity, draft_id, data=[{"key": k}]
-            ).to_dict()
-            assert (
-                len(
-                    [
-                        e["key"]
-                        for e in initialization["entries"]
-                        if e["key"] == k
-                    ]
-                )
-                == 1
-            )
             return True
         else:
             app.logger.error(existing_record.files.entries)
@@ -269,6 +257,21 @@ class FilesHelper:
             except InvalidKeyError as e:  # file with same key already exists
                 app.logger.error(f"handling InvalidKeyError: {e}")
                 self._retry_file_initialization(draft_id, k)
+
+                initialization = self.files_service.init_files(
+                    system_identity, draft_id, data=[{"key": k}]
+                ).to_dict()
+                app.logger.debug(f"initialization: {pformat(initialization)}")
+                assert (
+                    len(
+                        [
+                            e["key"]
+                            for e in initialization["entries"]
+                            if e["key"] == k
+                        ]
+                    )
+                    == 1
+                )
             except Exception as e:
                 app.logger.error(
                     f"    failed to initialize file upload for {draft_id}..."
