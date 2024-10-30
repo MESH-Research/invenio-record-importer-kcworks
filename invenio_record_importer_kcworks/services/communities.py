@@ -654,7 +654,7 @@ class CommunitiesHelper:
             )
             for c in extraneous_collections:
                 app.logger.debug(
-                    current_community_records_service.community_record_schema
+                    current_community_records_service.community_record_schema.schema
                 )
                 removed = current_community_records_service.delete(
                     system_identity, c["id"], ""
