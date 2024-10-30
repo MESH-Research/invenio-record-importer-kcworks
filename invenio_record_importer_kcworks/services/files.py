@@ -113,6 +113,7 @@ class FilesHelper:
         print("existing record file:", existing_record.files.entries[k])
 
         if not existing_record.files.entries[k].metadata:
+            existing_record.files.unlock()
             removed_file = existing_record.files.delete(
                 k, softdelete_obj=False, remove_rf=True
             )
