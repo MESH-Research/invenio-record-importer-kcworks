@@ -251,9 +251,8 @@ def create_invenio_record(
                             system_identity, id_=rec_id
                         ).to_dict()
                     )
-            recs = published_recs.extend(
-                [r for r in draft_recs if r not in published_recs]
-            )
+            recs = published_recs
+            recs.extend([r for r in draft_recs if r not in published_recs])
 
             app.logger.info(
                 f"    found {same_doi['hits']['total']['value']} existing"
