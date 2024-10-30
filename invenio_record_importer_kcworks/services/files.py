@@ -404,7 +404,7 @@ class FilesHelper:
         if len(existing_files) == 0:
             same_files = False
             record = records_service.files._get_record(
-                draft_id, system_identity, "create_files"
+                draft_id, system_identity, "delete_files"
             )
             if record.files.entries:
                 record.files.unlock()
