@@ -306,7 +306,7 @@ class FilesHelper:
                     )
                 except Exception as e:
                     app.logger.error(
-                        f"    failed to initialize file upload for {draft_id}..."
+                        f"    failed to initialize file upload for {draft_id}"
                     )
                     raise e
 
