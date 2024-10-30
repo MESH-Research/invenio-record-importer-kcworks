@@ -251,7 +251,7 @@ def create_invenio_record(
                             system_identity, id_=rec_id
                         ).to_dict()
                     )
-            recs = published_recs + draft_recs
+            recs = list(set(published_recs + draft_recs))
 
             app.logger.info(
                 f"    found {same_doi['hits']['total']['value']} existing"
@@ -268,7 +268,7 @@ def create_invenio_record(
                 app.logger.info("   deleting extra records...")
                 for i in [r["id"] for r in recs[1:]]:
                     try:
-                        delete_invenio_draft_record(i)
+                        delete_invenio_record(i)
                     except PIDUnregistered as e:
                         app.logger.error(
                             "    error deleting extra record with same DOI:"
@@ -489,7 +489,7 @@ def create_invenio_record(
     }
 
 
-def delete_invenio_draft_record(record_id: str) -> bool:
+def delete_invenio_record(record_id: str) -> bool:
     """
     Delete a draft Invenio record with the provided Id
 
@@ -506,15 +506,6 @@ def delete_invenio_draft_record(record_id: str) -> bool:
     result = None
     app.logger.info(f"    deleting draft record {record_id}...")
 
-    # TODO: Is this read necessary anymore?
-    # In case the record is actually published
-    try:
-        record = records_service.read(system_identity, id_=record_id).to_dict()
-    except PIDUnregistered:
-        record = records_service.search_drafts(
-            system_identity, q=f'id:"{record_id}'
-        ).to_dict()
-
     try:
         reviews = records_service.review.read(system_identity, id_=record_id)
         if reviews:
@@ -530,7 +521,9 @@ def delete_invenio_draft_record(record_id: str) -> bool:
 
     try:  # In case the record is actually published
         result = records_service.delete_record(
-            system_identity, id_=record_id, data=record
+            system_identity,
+            id_=record_id,
+            data={"note": "duplicate record for same DOI"},
         )
     except PIDUnregistered:  # this draft not published
         try:  # no published version exists, so unregistered DOI can be deleted

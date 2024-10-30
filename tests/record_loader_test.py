@@ -35,7 +35,7 @@ from invenio_record_importer_kcworks.record_loader import (
     api_request,
     create_invenio_record,
     create_invenio_user,
-    delete_invenio_draft_record,
+    delete_invenio_record,
     import_record_to_invenio,
 )
 from invenio_record_importer_kcworks.services.communities import (
@@ -840,7 +840,7 @@ def test_create_invenio_record(
     print("Confirming record was created...")
 
     # Clean up created record from live db
-    deleted = delete_invenio_draft_record(actual_id)
+    deleted = delete_invenio_record(actual_id)
     assert deleted is True
 
     # # Confirm it no longer exists
