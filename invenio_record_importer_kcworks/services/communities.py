@@ -547,7 +547,7 @@ class CommunitiesHelper:
                     )
                     try:
                         assert len(coll_records) == 1
-                    except AssertionError as e:
+                    except AssertionError:
                         app.logger.debug(pformat(metadata_record))
                         if (
                             len(coll_records) > 1
@@ -558,8 +558,6 @@ class CommunitiesHelper:
                                 f"    multiple active collections found "
                                 f"for {group_id}"
                             )
-                        else:
-                            raise e
                     coll_record = coll_records[0]
                     app.logger.debug(
                         f"    found group collection {coll_record['id']}"
