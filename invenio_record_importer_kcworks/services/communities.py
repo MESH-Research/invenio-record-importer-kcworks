@@ -11,10 +11,7 @@ from flask import current_app as app
 
 
 from invenio_access.permissions import system_identity
-from invenio_communities.proxies import (
-    current_communities,
-    current_community_records_service,
-)
+from invenio_communities.proxies import current_communities
 from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
 from invenio_group_collections_kcworks.errors import (
     CollectionNotFoundError,
@@ -27,6 +24,7 @@ from invenio_pidstore.errors import PIDUnregistered
 from invenio_rdm_records.proxies import (
     current_rdm_records,
     current_rdm_records_service as records_service,
+    current_community_records_service,
 )
 from invenio_rdm_records.services.errors import (
     ReviewNotFoundError,
