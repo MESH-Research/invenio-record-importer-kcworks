@@ -34,6 +34,7 @@ from invenio_record_importer_kcworks.services.stats.stats import (
     StatsFabricator,
     AggregationFabricator,
 )
+from invenio_search.proxies import current_search_client
 import itertools
 import json
 from simplejson.errors import JSONDecodeError as SimpleJSONDecodeError
@@ -216,7 +217,6 @@ def create_invenio_record(
                 f"query: q=f'pids.doi.identifier:{doi_for_query[0]}/"
                 f"{doi_for_query[1]}'"
             )
-            from invenio_search.proxies import current_search_client
 
             same_doi = current_search_client.search(
                 index="kcworks-rdmrecords",

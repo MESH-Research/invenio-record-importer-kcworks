@@ -531,7 +531,18 @@ class CommunitiesHelper:
                         record_source,
                         commons_group_id=group_id,
                     )
-                    coll_records = coll_search.to_dict()["hits"]["hits"]
+
+                    coll_search = current_search_client.search(
+                        index="kcworks-communities",
+                        q=f'custom_fields.kcr\:commons_group_id:"{group_id}"',
+                    )
+                    coll_records = coll_search["hits"]["hits"]
+                    coll_records = [
+                        current_communities.service.read(
+                            system_identity, id_=c["_source"]["id"]
+                        ).to_dict()
+                        for c in coll_records
+                    ]
                     # NOTE: Don't check for identical group name because
                     # sometimes the group name has changed since the record
                     # was created
