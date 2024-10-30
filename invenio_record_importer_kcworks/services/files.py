@@ -406,6 +406,7 @@ class FilesHelper:
             record = records_service.files._get_record(
                 draft_id, system_identity, "delete_files"
             )
+            print("record.files.entries:", record.files.entries)
             if record.files.entries:
                 record.files.unlock()
                 record.files.delete_all(
