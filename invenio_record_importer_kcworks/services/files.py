@@ -403,7 +403,15 @@ class FilesHelper:
         print("existing files:", existing_files)
         if len(existing_files) == 0:
             same_files = False
-            app.logger.info("    no files attached to existing record")
+            record = records_service.read(system_identity, draft_id)._record
+            if record.files.entries:
+                record.files.unlock()
+                record.files.delete_all(
+                    remove_obj=True, softdelete_obj=False, remove_rf=True
+                )
+                app.logger.info("    deleted all files from existing record")
+            else:
+                app.logger.info("    no files attached to existing record")
         else:
             normalized_new_keys = [
                 unicodedata.normalize("NFC", k) for k in new_entries.keys()
