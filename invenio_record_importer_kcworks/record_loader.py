@@ -937,7 +937,11 @@ def import_record_to_invenio(
             "record_data"
         ]
     is_draft = (
-        False if existing_record and existing_record["is_published"] else True
+        False
+        if existing_record
+        and existing_record["is_published"]
+        and not existing_record["is_draft"]
+        else True
     )
     metadata_record = record_created["record_data"]
     draft_id = metadata_record["id"]
