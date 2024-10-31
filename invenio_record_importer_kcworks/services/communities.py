@@ -11,6 +11,7 @@ from flask import current_app as app
 
 
 from invenio_access.permissions import system_identity
+from invenio_communities.errors import CommunityDeletedError
 from invenio_communities.proxies import current_communities
 from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
 from invenio_group_collections_kcworks.errors import (
@@ -532,13 +533,23 @@ class CommunitiesHelper:
                         index="kcworks-communities",
                         q=f'custom_fields.kcr\:commons_group_id:"{group_id}"',
                     )
-                    coll_records = coll_search["hits"]["hits"]
-                    coll_records = [
-                        current_communities.service.read(
-                            system_identity, id_=c["_source"]["id"]
-                        ).to_dict()
-                        for c in coll_records
-                    ]
+                    coll_record_hits = coll_search["hits"]["hits"]
+                    coll_records = []
+                    for h in coll_record_hits:
+                        try:
+                            coll_records.append(
+                                current_communities.service.read(
+                                    system_identity, id_=h["_source"]["id"]
+                                ).to_dict()
+                            )
+                        except NotFoundError:
+                            app.logger.warning(
+                                f"    collection {h['_source']['id']} not found"
+                            )
+                        except CommunityDeletedError:
+                            app.logger.warning(
+                                f"    collection {h['_source']['id']} deleted"
+                            )
                     # NOTE: Don't check for identical group name because
                     # sometimes the group name has changed since the record
                     # was created
@@ -549,7 +560,9 @@ class CommunitiesHelper:
                     #     if c["custom_fields"].get("kcr:commons_group_name")
                     #     == group_name
                     # ]
-                    app.logger.debug(f"coll_record: {pformat(coll_search)}")
+                    # app.logger.debug(
+                    #     f"coll_record_search: {pformat(coll_search)}"
+                    # )
                     try:
                         assert len(coll_records) == 1
                     except AssertionError:
