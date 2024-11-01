@@ -510,7 +510,12 @@ def compare_metadata(A: dict, B: dict) -> dict:
                 return people_diff
         for idx, c in enumerate(list_b):
             same = True
-            c_2 = list_a[idx]  # order should be the same
+            try:
+                c_2 = list_a[idx]  # order should be the same
+            except IndexError:
+                people_diff.setdefault("A", []).append(c)
+                people_diff.setdefault("B", []).append(None)
+                break
             if _normalize_punctuation(
                 c_2["person_or_org"].get("name")
             ) != _normalize_punctuation(c["person_or_org"].get("name")):
