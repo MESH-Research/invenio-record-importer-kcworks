@@ -928,7 +928,7 @@ def import_record_to_invenio(
     }
 
     submitted_data["access"] = {"records": "public", "files": "public"}
-    if len(file_data["entries"]) > 0:
+    if len(file_data.get("entries", [])) > 0:
         submitted_data["files"] = {"enabled": True}
     else:
         submitted_data["files"] = {"enabled": False}
@@ -978,7 +978,7 @@ def import_record_to_invenio(
     )
 
     # Upload the files
-    if len(import_data["files"]["entries"]) > 0:
+    if len(import_data["files"].get("entries", [])) > 0:
         app.logger.info("    uploading files for draft...")
         result["uploaded_files"] = FilesHelper(
             is_draft=is_draft
@@ -1609,6 +1609,7 @@ def delete_records_from_invenio(record_ids):
                 "previous versions"
             )
 
+        # FIXME: Harmonize this function with service.delete_record() ?
         deleted = service.delete(id_=record_id, identity=admin_identity)
         deleted_records[record_id] = deleted
 
