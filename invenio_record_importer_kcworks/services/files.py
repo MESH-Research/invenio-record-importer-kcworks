@@ -130,6 +130,8 @@ class FilesHelper:
             app.logger.warning("file data: %s", pformat(file_data))
             try:
                 first_file = next(iter(file_data["entries"]))
+                if isinstance(first_file, dict) and "key" in first_file:
+                    first_file = first_file["key"]
             except TypeError:  # entries are not an iterator - why???
                 first_file = file_data.keys()[0]
 
