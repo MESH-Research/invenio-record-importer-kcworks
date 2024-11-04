@@ -132,8 +132,10 @@ class FilesHelper:
                 first_file = next(iter(file_data["entries"]))
                 if isinstance(first_file, dict) and "key" in first_file.keys():
                     first_file = first_file["key"]
+                app.logger.warning("no type error")
             except TypeError:  # entries are not an iterator - why???
                 first_file = list(file_data["entries"].keys())[0]
+                app.logger.warning("type error")
             app.logger.warning("first file: %s", first_file)
             app.logger.warning("type of first file: %s", type(first_file))
 
