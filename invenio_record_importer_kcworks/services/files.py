@@ -128,14 +128,18 @@ class FilesHelper:
         else:
             app.logger.info("    uploading new files...")
             app.logger.warning("file data: %s", pformat(file_data))
+            try:
+                first_file = next(iter(file_data["entries"]))
+            except TypeError:  # entries are not an iterator - why???
+                first_file = file_data.keys()[0]
 
             uploaded_files = self._upload_draft_files(
                 metadata["id"],
                 file_data["entries"],
                 {
-                    next(iter(file_data["entries"])): metadata[
-                        "custom_fields"
-                    ]["hclegacy:file_location"]
+                    first_file: metadata["custom_fields"][
+                        "hclegacy:file_location"
+                    ]
                 },
             )
         return uploaded_files
