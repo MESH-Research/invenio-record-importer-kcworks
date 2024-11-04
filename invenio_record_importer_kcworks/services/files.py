@@ -127,6 +127,7 @@ class FilesHelper:
             )
         else:
             app.logger.info("    uploading new files...")
+            app.logger.warning("file data: %s", pformat(file_data))
 
             uploaded_files = self._upload_draft_files(
                 metadata["id"],
