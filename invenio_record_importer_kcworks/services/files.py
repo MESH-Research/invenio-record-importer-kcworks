@@ -134,6 +134,8 @@ class FilesHelper:
                     first_file = first_file["key"]
             except TypeError:  # entries are not an iterator - why???
                 first_file = file_data.keys()[0]
+            app.logger.warning("first file: %s", first_file)
+            app.logger.warning("type of first file: %s", type(first_file))
 
             uploaded_files = self._upload_draft_files(
                 metadata["id"],
