@@ -130,10 +130,7 @@ def api_request(
 
     # files = {'file': ('report.xls', open('report.xls', 'rb'),
     # 'application/vnd.ms-excel', {'Expires': '0'})}
-    app.logger.debug(f"{method} request to {api_url}")
     # print(f'headers: {headers}')
-    app.logger.debug(f"params: {params}")
-    app.logger.debug(f"payload_args: {payload_args}")
     response = callfunc(
         api_url, headers=headers, params=params, **payload_args, verify=False
     )
@@ -145,17 +142,6 @@ def api_request(
         RequestsJSONDecodeError,
         json.decoder.JSONDecodeError,
     ):
-        app.logger.error("url for API request:")
-        app.logger.error(api_url)
-        app.logger.error("response status code:")
-        app.logger.error(response.status_code)
-        if params:
-            app.logger.error("url parameters:")
-            app.logger.error(params)
-        if payload_args:
-            app.logger.error("payload arguments sent:")
-            app.logger.error(payload_args)
-        app.logger.error(response.text)
         raise requests.HTTPError(
             f"Failed to decode JSON response from API request to {api_url}"
         )
@@ -168,8 +154,6 @@ def api_request(
     }
 
     if json_response and "errors" in json_response.keys():
-        app.logger.error("API request to {api_url} reported errors:")
-        app.logger.error(json_response["errors"])
         result_dict["errors"] = json_response["errors"]
 
     return result_dict
@@ -1641,7 +1625,6 @@ def delete_records_from_invenio(record_ids, visible, reason, note):
         if note:
             payload["note"] = note
 
-        app.logger.warning("payload: %s", pformat(payload))
         deleted = service.delete_record(
             admin_identity, id_=record_id, data=payload
         )
