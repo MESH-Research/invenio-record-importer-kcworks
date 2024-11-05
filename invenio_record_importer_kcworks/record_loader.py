@@ -1600,8 +1600,10 @@ def delete_records_from_invenio(record_ids):
         service = current_rdm_records.records_service
         record = service.read(id_=record_id, identity=system_identity)._record
         siblings = list(RDMRecord.get_records_by_parent(record.parent))
+        app.logger.warning("siblings: %s", pformat(siblings))
         # remove the 0th (latest) version to leave the previous version(s):
         siblings.pop(0)
+        app.logger.warning("siblings after pop: %s", pformat(siblings))
         # already deleted previous versions will have nothing for metadata
         # (sibling.get('id') will return nothing)
         has_versions = any([sibling.get("id") for sibling in siblings])
