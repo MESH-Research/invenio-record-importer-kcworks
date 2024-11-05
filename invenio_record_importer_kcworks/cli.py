@@ -613,13 +613,32 @@ def count_objects():
 
 @cli.command(name="delete")
 @click.argument("records", nargs=-1)
+@click.option(
+    "-v",
+    "--visible",
+    is_flag=True,
+    default=False,
+    help=("If True, the record tombstone will be visible after deletion."),
+)
+@click.option(
+    "-r",
+    "--reason",
+    default="take-down-request",
+    help=("The reason for the record deletion."),
+)
+@click.option(
+    "-n",
+    "--note",
+    default="",
+    help=("The note to include in the record deletion."),
+)
 @with_appcontext
-def delete_records(records):
+def delete_records(records, visible, reason, note):
     """
     Delete one or more records from InvenioRDM by record id.
     """
     print("Starting to delete records")
-    results = delete_records_from_invenio(records)
+    results = delete_records_from_invenio(records, visible, reason, note)
     pprint(results)
     print(f"All done deleting records: {[k for k in results.keys()]}")
 

@@ -8,12 +8,18 @@ from invenio_accounts import current_accounts
 from invenio_accounts.errors import AlreadyLinkedError
 from invenio_accounts.models import User
 from invenio_db import db
+from invenio_i18n.proxies import current_i18n
 from invenio_oauthclient.models import UserIdentity
 from invenio_pidstore.errors import PIDUnregistered, PIDDoesNotExistError
 from invenio_rdm_records.records.api import RDMRecord
 from invenio_rdm_records.proxies import (
     current_rdm_records,
     current_rdm_records_service as records_service,
+)
+from invenio_rdm_records.resources.serializers.csl import (
+    CSLJSONSerializer,
+    get_citation_string,
+    get_style_location,
 )
 from invenio_rdm_records.services.errors import (
     ReviewNotFoundError,
@@ -1587,7 +1593,7 @@ def load_records_into_invenio(
         )
 
 
-def delete_records_from_invenio(record_ids):
+def delete_records_from_invenio(record_ids, visible, reason, note):
     """
     Delete the selected records from the invenioRDM instance.
     """
@@ -1614,8 +1620,30 @@ def delete_records_from_invenio(record_ids):
                 "previous versions"
             )
 
-        # FIXME: Harmonize this function with service.delete_record() ?
-        deleted = service.delete(id_=record_id, identity=admin_identity)
+        payload = {
+            "removal_reason": {"id": reason},
+            "is_visible": visible,
+        }
+
+        default_citation_style = app.config.get(
+            "RDM_CITATION_STYLES_DEFAULT", "apa"
+        )
+        serializer = CSLJSONSerializer()
+        style = get_style_location(default_citation_style)
+        default_citation = get_citation_string(
+            serializer.dump_obj(record),
+            record.pid.pid_value,
+            style,
+            locale=current_i18n.language,
+        )
+        payload["citation_text"] = default_citation
+
+        if note:
+            payload["note"] = note
+
+        deleted = service.delete_record(
+            admin_identity, id_=record_id, data=payload
+        )
         deleted_records[record_id] = deleted
 
     return deleted_records
