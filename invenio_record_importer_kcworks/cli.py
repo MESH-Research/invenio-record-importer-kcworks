@@ -617,7 +617,7 @@ def count_objects():
     "-v",
     "--visible",
     is_flag=True,
-    default=False,
+    default=True,
     help=("If True, the record tombstone will be visible after deletion."),
 )
 @click.option(
