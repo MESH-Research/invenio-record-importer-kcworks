@@ -613,6 +613,7 @@ def count_objects():
 
 @cli.command(name="delete")
 @click.argument("records", nargs=-1)
+@with_appcontext
 def delete_records(records):
     """
     Delete one or more records from InvenioRDM by record id.
