@@ -1641,6 +1641,7 @@ def delete_records_from_invenio(record_ids, visible, reason, note):
         if note:
             payload["note"] = note
 
+        app.logger.warning("payload: %s", pformat(payload))
         deleted = service.delete_record(
             admin_identity, id_=record_id, data=payload
         )
