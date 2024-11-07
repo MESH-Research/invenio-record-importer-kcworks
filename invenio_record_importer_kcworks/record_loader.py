@@ -306,7 +306,7 @@ def create_invenio_record(
                         f" record: {differences['B']}"
                     )
                     if no_updates:
-                        raise NoUpdatesError(
+                        raise NoUpdates(
                             "no_updates flag is set, so not updating existing"
                             " record with changed metadata..."
                         )
