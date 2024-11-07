@@ -28,6 +28,7 @@ from invenio_records.systemfields.relations.errors import InvalidRelationValue
 from invenio_record_importer_kcworks.errors import (
     DraftDeletionFailedError,
     ExistingRecordNotUpdatedError,
+    NoUpdates,
     PublicationValidationError,
     SkipRecord,
     UpdateValidationError,
@@ -305,9 +306,9 @@ def create_invenio_record(
                         f" record: {differences['B']}"
                     )
                     if no_updates:
-                        raise RuntimeError(
+                        raise NoUpdatesError(
                             "no_updates flag is set, so not updating existing"
-                            " record"
+                            " record with changed metadata..."
                         )
                     update_payload = existing_metadata.copy()
                     for key, val in differences["B"].items():
@@ -1475,6 +1476,7 @@ def load_records_into_invenio(
                     "TooManyViewEventsError": msg,
                     "TooManyDownloadEventsError": msg,
                     "UpdateValidationError": msg,
+                    "NoUpdatesError": msg,
                 }
                 log_object = {
                     "index": current_record,
@@ -1488,7 +1490,7 @@ def load_records_into_invenio(
                     log_object.update(
                         {"reason": error_reasons[e.__class__.__name__]}
                     )
-                if e.__class__.__name__ != "SkipRecord":
+                if e.__class__.__name__ not in ["SkipRecord", "NoUpdates"]:
                     failed_records, residual_failed_records = (
                         _log_failed_record(
                             **log_object, skipped_records=skipped_records

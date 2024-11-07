@@ -73,6 +73,15 @@ class MultipleActiveCollectionsError(Exception):
         self.message = message
 
 
+class NoUpdates(Exception):
+    """No updates error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(NoUpdates, self).__init__(message)
+        self.message = message
+
+
 class PublicationValidationError(Exception):
     """Publication validation error."""
 
