@@ -1520,7 +1520,7 @@ def load_records_into_invenio(
         set_string = f"{start_index}{target_string}"
     message = (
         f"Processed {str(record_counter)} records in InvenioRDM ({set_string})"
-        f" \n    {str(successful_records)} successful \n   "
+        f" \n    {str(successful_records + len(no_updates_records))} successful \n   "
         f" {str(new_records)} new records created \n   "
         f" {str(successful_records - new_records + len(no_updates_records))} already existed \n       "
         f" {str(updated_published)} updated published records \n       "
@@ -1530,7 +1530,7 @@ def load_records_into_invenio(
         f"   {str(len(failed_records))} failed \n"
         f"   {str(len(skipped_records))} records skipped (marked in overrides)"
         f"\n   "
-        f"   {str(len(no_updates_records))} records not updated because "
+        f"    {str(len(no_updates_records))} records not updated because "
         f"'no updates' flag was set \n   "
     )
     app.logger.info(message)
