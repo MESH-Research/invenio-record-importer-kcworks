@@ -1,7 +1,7 @@
 from flask import current_app as app
 from invenio_access.permissions import system_identity
-from invenio_db import db
 from invenio_files_rest.errors import InvalidKeyError, BucketLockedError
+from invenio_pidstore.errors import PIDUnregistered
 from invenio_rdm_records.proxies import (
     current_rdm_records_service as records_service,
 )
@@ -34,6 +34,23 @@ class FilesHelper:
         self.files_service = (
             records_service.draft_files if is_draft else records_service.files
         )
+
+    @unit_of_work()
+    def set_to_metadata_only(
+        self, draft_id: str, uow: Optional[UnitOfWork] = None
+    ):
+        try:
+            record = records_service.read(system_identity, draft_id)._record
+        except PIDUnregistered:
+            record = records_service.read_draft(
+                system_identity, draft_id
+            )._record
+        if record.files.entries:
+            for k in record.files.entries.keys():
+                self._delete_file(draft_id, k, uow)
+        record.files.enabled = False
+        record["access"]["status"] = "metadata-only"
+        uow.register(RecordCommitOp(record))
 
     @unit_of_work()
     def _delete_file(

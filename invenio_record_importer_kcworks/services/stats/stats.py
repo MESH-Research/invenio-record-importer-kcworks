@@ -290,17 +290,11 @@ class StatsFabricator:
             print(f"downloads: {downloads}")
             print(f"record creation date: {record_creation}")
 
+        pid = record.pid
+
         files_request = records_service.files.list_files(
             system_identity, record_id
         ).to_dict()
-
-        first_file = files_request["entries"][0]
-        file_id = first_file["file_id"]
-        file_key = first_file["key"]
-        size = first_file["size"]
-        bucket_id = first_file["bucket_id"]
-
-        pid = record.pid
 
         # Check for existing view and download events
         # imported events are flagged with country: "imported"
@@ -311,12 +305,7 @@ class StatsFabricator:
             app.logger.warning(f"Error searching for view events: {e}")
             print(f"Error searching for view events: {e}")
             existing_view_events = []
-        try:
-            existing_download_events = download_events_search(file_id)
-        except NotFoundError as e:
-            app.logger.warning(f"Error searching for download events: {e}")
-            print(f"Error searching for download events: {e}")
-            existing_download_events = []
+
         if verbose:
             app.logger.info(
                 "existing view events: "
@@ -398,67 +387,82 @@ class StatsFabricator:
                 )
                 current_stats.publish("record-view", view_events)
 
-        existing_download_count = len(existing_download_events)
-        if existing_download_count == downloads:
-            app.logger.info(
-                "    skipping download events creation. "
-                f"{existing_download_count} "
-                "download events already exist."
-            )
-        else:
-            if existing_download_count > downloads:
-                # TODO: we should probably log this, but
-                # we don't want to raise an error and prevent
-                # the import from completing
-                #
-                # raise TooManyDownloadEventsError(
-                #     "    existing imported download events exceed expected "
-                #     "count."
-                # )
-                pass
-            else:
-                # only create enough new download events to reach the expected
-                # count
-                if existing_download_count > 0:
-                    downloads -= existing_download_count
-                download_events = []
-                for idx, dt in enumerate(
-                    self.generate_datetimes(record_creation, downloads)
-                ):
-                    uid = str(uuid.uuid4())
-                    doc = {
-                        "timestamp": dt.naive.isoformat(),
-                        "bucket_id": str(bucket_id),  # UUID
-                        "file_id": str(file_id),  # UUID
-                        "file_key": file_key,
-                        "size": size,
-                        "recid": record_id,
-                        "parent_recid": metadata_record["parent"]["id"],
-                        "is_robot": False,
-                        "user_id": uid,
-                        "session_id": uid,
-                        "country": "imported",
-                        "unique_id": f"{str(bucket_id)}_{str(file_id)}",
-                        "via_api": False,
-                    }
-                    # doc = anonymize_user(doc)
-                    # NOTE: no longer using anonymize_user to generate
-                    # unique_session_id and visitor_id from
-                    # user_id, session_id, user_agent, ip_address
-                    # instead, we're using a UUID that should be unique
-                    # to ensure events are aggregated as unique
-                    doc["unique_session_id"] = uid
-                    doc["visitor_id"] = uid
-                    download_events.append(build_file_unique_id(doc))
-                print(
-                    "DOWNLOAD EVENTS being published:",
-                    pformat(len(download_events)),
+        if files_request["enabled"] is True:
+            first_file = files_request["entries"][0]
+            file_id = first_file["file_id"]
+            file_key = first_file["key"]
+            size = first_file["size"]
+            bucket_id = first_file["bucket_id"]
+
+            try:
+                existing_download_events = download_events_search(file_id)
+            except NotFoundError as e:
+                app.logger.warning(f"Error searching for download events: {e}")
+                print(f"Error searching for download events: {e}")
+                existing_download_events = []
+
+            existing_download_count = len(existing_download_events)
+
+            if existing_download_count == downloads:
+                app.logger.info(
+                    "    skipping download events creation. "
+                    f"{existing_download_count} "
+                    "download events already exist."
                 )
-                current_stats.publish("file-download", download_events)
+            else:
+                if existing_download_count > downloads:
+                    # TODO: we should probably log this, but
+                    # we don't want to raise an error and prevent
+                    # the import from completing
+                    #
+                    # raise TooManyDownloadEventsError(
+                    #     "    existing imported download events exceed expected "
+                    #     "count."
+                    # )
+                    pass
+                else:
+                    # only create enough new download events to reach the expected
+                    # count
+                    if existing_download_count > 0:
+                        downloads -= existing_download_count
+                    download_events = []
+                    for idx, dt in enumerate(
+                        self.generate_datetimes(record_creation, downloads)
+                    ):
+                        uid = str(uuid.uuid4())
+                        doc = {
+                            "timestamp": dt.naive.isoformat(),
+                            "bucket_id": str(bucket_id),  # UUID
+                            "file_id": str(file_id),  # UUID
+                            "file_key": file_key,
+                            "size": size,
+                            "recid": record_id,
+                            "parent_recid": metadata_record["parent"]["id"],
+                            "is_robot": False,
+                            "user_id": uid,
+                            "session_id": uid,
+                            "country": "imported",
+                            "unique_id": f"{str(bucket_id)}_{str(file_id)}",
+                            "via_api": False,
+                        }
+                        # doc = anonymize_user(doc)
+                        # NOTE: no longer using anonymize_user to generate
+                        # unique_session_id and visitor_id from
+                        # user_id, session_id, user_agent, ip_address
+                        # instead, we're using a UUID that should be unique
+                        # to ensure events are aggregated as unique
+                        doc["unique_session_id"] = uid
+                        doc["visitor_id"] = uid
+                        download_events.append(build_file_unique_id(doc))
+                    print(
+                        "DOWNLOAD EVENTS being published:",
+                        pformat(len(download_events)),
+                    )
+                    current_stats.publish("file-download", download_events)
 
         try:
             app.logger.warning("Trying to process events...")
-            app.logger.warning(f"EAGER: { eager }")
+            app.logger.warning(f"EAGER: {eager}")
             if eager:
                 app.logger.warning("Processing events...")
                 events = process_events(["record-view", "file-download"])

@@ -1003,7 +1003,9 @@ def import_record_to_invenio(
         app.logger.warning(
             f"files in metadata: {pformat(metadata_record.get('files'))}"
         )
+        FilesHelper(is_draft=is_draft).set_to_metadata_only(draft_id)
         metadata_record["files"]["enabled"] = False
+        existing_record["files"]["enabled"] = False
 
     # Attach the record to the communities
     result[
