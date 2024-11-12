@@ -290,6 +290,7 @@ class FilesHelper:
                 app.logger.debug(f"initialization: {pformat(initialization)}")
             except InvalidKeyError as e:  # file with same key already exists
                 raise e
+                # FIXME: do we need this retry any more?
                 app.logger.error(f"handling InvalidKeyError: {e}")
                 self._retry_file_initialization(draft_id, k)
 
@@ -374,6 +375,17 @@ class FilesHelper:
             )
             app.logger.error(f"result is {pformat(result_record['entries'])}")
 
+        # Handle drafts of published records, where record needs file metadata
+        # from draft files service (usually synced during draft publication
+        # but we're not publishing a draft here)
+        check_record = records_service.read(system_identity, id_=draft_id)
+        if check_record.to_dict()["files"]["entries"] == {}:
+            check_draft = records_service.read_draft(
+                system_identity, id_=draft_id
+            )
+            check_record._record.files.sync(check_draft._record.files)
+            check_record._record.files.lock()
+
         return output
 
     def _compare_existing_files(
@@ -394,7 +406,7 @@ class FilesHelper:
             files_request = files_service.list_files(
                 system_identity, draft_id
             ).to_dict()
-        except NoResultFound:
+        except (NoResultFound, AttributeError):
             try:
                 files_request = records_service.draft_files.list_files(
                     system_identity, draft_id

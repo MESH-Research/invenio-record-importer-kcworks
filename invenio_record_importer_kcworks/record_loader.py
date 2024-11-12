@@ -24,6 +24,7 @@ from invenio_rdm_records.resources.serializers.csl import (
 from invenio_rdm_records.services.errors import (
     ReviewNotFoundError,
 )
+from invenio_rdm_records.services.pids.providers.base import PIDProvider
 from invenio_records.systemfields.relations.errors import InvalidRelationValue
 from invenio_record_importer_kcworks.errors import (
     DraftDeletionFailedError,
@@ -242,6 +243,16 @@ def create_invenio_record(
                             system_identity, id_=rec_id
                         ).to_dict()
                     )
+                except KeyError:
+                    # FIXME: indicates missing published record for
+                    # registered PID; we try to delete PID locally
+                    # and ignore the corrupted draft
+                    provider = PIDProvider("base", client=None, pid_type="doi")
+                    stranded_pid = provider.get(
+                        metadata["pids"]["doi"]["identifier"]
+                    )
+                    stranded_pid.status = "N"
+                    stranded_pid.delete()
             raw_recs = published_recs + draft_recs
             recs = []
             # deduplicate based on invenio record id and prefer published
@@ -465,14 +476,24 @@ def create_invenio_record(
                         f"    continuing with existing {record_type} record "
                         "(same metadata)..."
                     )
-                    existing_record_hit = records_service.search_drafts(
-                        system_identity,
-                        q=f"id:{existing_metadata['id']}",
-                    )._results[0]
+                    existing_record_id = ""
+                    try:
+                        existing_record_hit = records_service.search_drafts(
+                            system_identity,
+                            q=f"id:{existing_metadata['id']}",
+                        )._results[0]
+                        existing_record_id = existing_record_hit.to_dict()[
+                            "uuid"
+                        ]
+                    except IndexError:
+                        existing_record_hit = records_service.read(
+                            system_identity, id_=existing_metadata["id"]
+                        )
+                        existing_record_id = existing_record_hit.id
                     result = {
                         "record_data": existing_metadata,
                         "status": f"unchanged_existing_{record_type}",
-                        "recid": existing_record_hit.to_dict()["uuid"],
+                        "recid": existing_record_id,
                     }
                     app.logger.debug(
                         f"metadata for existing record: {pformat(result)}"

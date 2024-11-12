@@ -271,9 +271,10 @@ class StatsFabricator:
             try:
                 views = get_field_value(metadata_record, views_field)
                 downloads = get_field_value(metadata_record, downloads_field)
-                record_creation = arrow.get(
-                    get_field_value(metadata_record, date_field)
-                )
+                pub_date_string = get_field_value(metadata_record, date_field)
+                if "/" in pub_date_string:
+                    pub_date_string = pub_date_string.split("/")[1]
+                record_creation = arrow.get(pub_date_string)
             except KeyError as e:
                 app.logger.info(
                     f"Required fields not found for {record_id}: {e}"
