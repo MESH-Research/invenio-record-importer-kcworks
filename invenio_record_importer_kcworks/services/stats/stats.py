@@ -264,15 +264,17 @@ class StatsFabricator:
         # FIXME: this all assumes a single uploaded file per record on import
 
         if views_count and downloads_count and publication_date:
-            views = views_count
-            downloads = downloads_count
+            views = int(views_count)
+            downloads = int(downloads_count)
             record_creation = arrow.get(publication_date)
         else:
             try:
-                views = get_field_value(metadata_record, views_field)
+                views = int(get_field_value(metadata_record, views_field))
                 if views in [None, ""]:
                     views = 0
-                downloads = get_field_value(metadata_record, downloads_field)
+                downloads = int(
+                    get_field_value(metadata_record, downloads_field)
+                )
                 if downloads in [None, ""]:
                     downloads = 0
                 pub_date_string = get_field_value(metadata_record, date_field)

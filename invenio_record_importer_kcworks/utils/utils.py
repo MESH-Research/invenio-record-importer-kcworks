@@ -449,7 +449,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
             return all(deep_compare(a[k], b[k]) for k in a.keys())
 
     def obj_list_compare(list_name, key, a, b, comparators):
-        VERBOSE = True
+        VERBOSE = False
         if VERBOSE:
             app.logger.debug(f"comparing {list_name} &&&&&&")
             app.logger.debug(a.get(list_name))
@@ -756,12 +756,19 @@ def compare_metadata(A: dict, B: dict) -> dict:
 
         for s in simple_fields:
             if s in custom_b.keys():
+                if s in ["kcr:total_views", "kcr:total_downloads"]:
+                    print(f"comparing {s}")
+                    print(custom_a[s])
+                    print(custom_b[s])
                 same = True
                 if s in custom_a.keys():
                     if type(custom_a[s]) is str:
                         if unicodedata.normalize(
                             "NFC", custom_b[s]
                         ) != unicodedata.normalize("NFC", custom_a[s]):
+                            same = False
+                    elif type(custom_a[s]) is int:
+                        if custom_b[s] != custom_a[s]:
                             same = False
                     elif type(custom_a[s]) is list:
                         if custom_b[s] != custom_a[s]:
