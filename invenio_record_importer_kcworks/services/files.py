@@ -38,7 +38,7 @@ class FilesHelper:
     @unit_of_work()
     def set_to_metadata_only(
         self, draft_id: str, uow: Optional[UnitOfWork] = None
-    ):
+    )existing record: {'metadata': {'identifiers': [[{'identifier': 'hc:10053', 'scheme': 'hclegacy-pid'}, {'identifier': '1000361-170', 'scheme': 'hclegacy-record-id'}, {'identifier': '10.17613/M6BP51', 'scheme': 'datacite-doi'}, {'identifier': 'https://doi.org/10.17613/M6BP51', 'scheme': 'url'}]]}}; new record: {'metadata': {'identifiers': [[{'identifier': 'hc:10053', 'scheme': 'hclegacy-pid'}, {'identifier': '1000361-170', 'scheme': 'hclegacy-record-id'}]]}}:
         try:
             record = records_service.read(system_identity, draft_id)._record
         except PIDUnregistered:
@@ -395,13 +395,16 @@ class FilesHelper:
         # Handle drafts of published records, where record needs file metadata
         # from draft files service (usually synced during draft publication
         # but we're not publishing a draft here)
-        check_record = records_service.read(system_identity, id_=draft_id)
-        if check_record.to_dict()["files"]["entries"] == {}:
-            check_draft = records_service.read_draft(
-                system_identity, id_=draft_id
-            )
-            check_record._record.files.sync(check_draft._record.files)
-            check_record._record.files.lock()
+        try:
+            check_record = records_service.read(system_identity, id_=draft_id)
+            if check_record.to_dict()["files"]["entries"] == {}:
+                check_draft = records_service.read_draft(
+                    system_identity, id_=draft_id
+                )
+                check_record._record.files.sync(check_draft._record.files)
+                check_record._record.files.lock()
+        except PIDUnregistered:
+            pass
 
         return output
 
