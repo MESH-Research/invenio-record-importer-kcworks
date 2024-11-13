@@ -38,7 +38,7 @@ class FilesHelper:
     @unit_of_work()
     def set_to_metadata_only(
         self, draft_id: str, uow: Optional[UnitOfWork] = None
-    )existing record: {'metadata': {'identifiers': [[{'identifier': 'hc:10053', 'scheme': 'hclegacy-pid'}, {'identifier': '1000361-170', 'scheme': 'hclegacy-record-id'}, {'identifier': '10.17613/M6BP51', 'scheme': 'datacite-doi'}, {'identifier': 'https://doi.org/10.17613/M6BP51', 'scheme': 'url'}]]}}; new record: {'metadata': {'identifiers': [[{'identifier': 'hc:10053', 'scheme': 'hclegacy-pid'}, {'identifier': '1000361-170', 'scheme': 'hclegacy-record-id'}]]}}:
+    ):
         try:
             record = records_service.read(system_identity, draft_id)._record
         except PIDUnregistered:
