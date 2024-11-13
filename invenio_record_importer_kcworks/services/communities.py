@@ -166,24 +166,22 @@ class CommunitiesHelper:
         # Attachment to community unnecessary if the record is already
         # published or included in it, even if a new draft version
         try:
-            existing_record = records_service.read(
-                system_identity, id_=draft_id
-            ).to_dict()
-            assert existing_record
-        except (AssertionError, PIDUnregistered):
-            try:
-                existing_record = (
-                    records_service.search_drafts(
-                        system_identity, q=f"id:{draft_id}"
-                    )
-                    .to_dict()
-                    .get("hits", {})
-                    .get("hits", [])[0]
+            existing_record = (
+                records_service.search_drafts(
+                    system_identity, q=f"id:{draft_id}"
                 )
-            except IndexError:
+                .to_dict()
+                .get("hits", {})
+                .get("hits", [])[0]
+            )
+            assert existing_record
+        except (IndexError, NoResultFound):
+            try:
+                existing_record = records_service.read(
+                    system_identity, id_=draft_id
+                ).to_dict()
+            except (AssertionError, PIDUnregistered):
                 existing_record = None
-        except NoResultFound:
-            existing_record = None
 
         if (
             existing_record
