@@ -270,7 +270,11 @@ class StatsFabricator:
         else:
             try:
                 views = get_field_value(metadata_record, views_field)
+                if views in [None, ""]:
+                    views = 0
                 downloads = get_field_value(metadata_record, downloads_field)
+                if downloads in [None, ""]:
+                    downloads = 0
                 pub_date_string = get_field_value(metadata_record, date_field)
                 if "/" in pub_date_string:
                     pub_date_string = pub_date_string.split("/")[1]

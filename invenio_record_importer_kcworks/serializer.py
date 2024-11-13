@@ -2524,9 +2524,19 @@ def serialize_json() -> tuple[list[dict], dict]:
                 newrec["custom_fields"]["hclegacy:total_views"] = row[
                     "total_views"
                 ]
+                if newrec["custom_fields"]["hclegacy:total_views"] in [
+                    None,
+                    "",
+                ]:
+                    newrec["custom_fields"]["hclegacy:total_views"] = 0
                 newrec["custom_fields"]["hclegacy:total_downloads"] = row[
                     "total_downloads"
                 ]
+                if newrec["custom_fields"]["hclegacy:total_downloads"] in [
+                    None,
+                    "",
+                ]:
+                    newrec["custom_fields"]["hclegacy:total_downloads"] = 0
 
                 newrec["record_source"] = "knowledgeCommons"
 
