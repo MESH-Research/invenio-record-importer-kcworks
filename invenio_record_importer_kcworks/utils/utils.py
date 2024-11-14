@@ -756,10 +756,6 @@ def compare_metadata(A: dict, B: dict) -> dict:
 
         for s in simple_fields:
             if s in custom_b.keys():
-                if s in ["kcr:total_views", "kcr:total_downloads"]:
-                    print(f"comparing {s}")
-                    print(custom_a[s])
-                    print(custom_b[s])
                 same = True
                 if s in custom_a.keys():
                     if type(custom_a[s]) is str:

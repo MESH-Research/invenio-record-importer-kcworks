@@ -314,11 +314,11 @@ class StatsFabricator:
 
         if verbose:
             app.logger.info(
-                "existing view events: "
+                "existing imported view events: "
                 f"{pformat(len(existing_view_events))}"
             )
             print(
-                "existing view events: "
+                "existing imported view events: "
                 f"{pformat(len(existing_view_events))}"
             )
 
@@ -327,7 +327,7 @@ class StatsFabricator:
             app.logger.info(
                 "    skipping view events creation. "
                 f"{existing_view_count} "
-                "view events already exist."
+                "imported view events already exist."
             )
         else:
             if existing_view_count > views:
@@ -413,7 +413,7 @@ class StatsFabricator:
                 app.logger.info(
                     "    skipping download events creation. "
                     f"{existing_download_count} "
-                    "download events already exist."
+                    "imported download events already exist."
                 )
             else:
                 if existing_download_count > downloads:
@@ -470,12 +470,18 @@ class StatsFabricator:
             app.logger.warning("Trying to process events...")
             app.logger.warning(f"EAGER: {eager}")
             if eager:
-                app.logger.warning("Processing events...")
+                app.logger.warning(
+                    "Processing all waiting events (pending for all records)..."
+                )
                 events = process_events(["record-view", "file-download"])
                 print(f"Events processed successfully. {pformat(events)}")
                 app.logger.info(
                     f"Events processed successfully. {pformat(events)}"
                 )
+                # FIXME: this doesn't report accurate numbers because
+                # on a live server there will be other events pending
+                # for other records. Find a way to report the actual
+                # number of events processed for just this record.
                 return events
             else:
                 process_task = process_events.si(

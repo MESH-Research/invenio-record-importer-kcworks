@@ -426,18 +426,22 @@ class FilesHelper:
             files_request = files_service.list_files(
                 system_identity, draft_id
             ).to_dict()
-        except (NoResultFound, AttributeError):
+        except NoResultFound:  # draft record
             try:
                 files_request = records_service.draft_files.list_files(
                     system_identity, draft_id
                 ).to_dict()
             except NoResultFound:
                 files_request = None
+        except AttributeError:  # published record without files manager
+            files_request = None
         existing_files = (
             files_request.get("entries", []) if files_request else []
         )
         print("existing files:", existing_files)
-        if len(existing_files) == 0:
+        if len(existing_files) == 0 or (
+            old_files and old_files.get("entries", {}) == {}
+        ):
             same_files = False
             record = records_service.draft_files._get_record(
                 draft_id, system_identity, "delete_files"
