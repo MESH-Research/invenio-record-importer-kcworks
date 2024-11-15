@@ -70,6 +70,17 @@ class FilesHelper:
                     print("file not found for deletion")
                     raise e
 
+            try:
+                record = records_service.read(
+                    system_identity, draft_id
+                )._record
+                assert key not in record.files.entries.keys()
+            except PIDUnregistered:
+                record = records_service.read_draft(
+                    system_identity, draft_id
+                )._record
+                assert key not in record.files.entries.keys()
+
         try:
             inner_delete_file(key)
         except BucketLockedError:
@@ -119,6 +130,27 @@ class FilesHelper:
         file_data: dict,
         existing_record: Optional[dict] = {},
     ):
+        """
+        Handle the files for a record.
+
+        metadata (dict): the record metadata
+        file_data (dict): the file data to be uploaded
+        existing_record (dict): the existing record metadata, if we are
+            updating a draft of a published record or an unpublished
+            preexisting draft. It will only be empty if we are creating a
+            new record with no preexisting drafts.
+
+        NOTE: The files in `metadata` and `existing_record` will often be
+        different. `existing_record` may have files that were already on any pre-existing published or draft record. This is the
+        case *even if* we tried to update the file data during creation of
+        the new draft we're editing, because the new draft creation process
+        copies the files from the existing record over to the new draft.
+        If we are creating a brand new record, with no prior drafts, `metadata`
+        will have an empty files property. If there is an existing draft,
+        `metadata` will have the same files as `existing_record`. This means
+        that only `file_data` provides the file data for the current import.
+
+        """
         print(f"handle_record_files metadata: {pformat(metadata)}")
         print(f"handle_record_files file_data: {pformat(file_data)}")
         print(
@@ -415,34 +447,101 @@ class FilesHelper:
         old_files: dict[str, dict],
         new_entries: dict[str, dict],
     ) -> bool:
-        files_service = (
-            records_service.files
-            if not is_draft
-            else records_service.draft_files
-        )
+        """
+        Compare existing files to new entries.
+
+        draft_id (str): id of the draft record we're checking. (Although this
+            will always be a draft record, it may be a draft revising a
+            previously published record.)
+        is_draft (bool): True if working with a draft record that has never
+            been published, False if checking a draft of a published record.
+        old_files (dict): existing files on the previously saved record
+            metadata. This could be a prior published record or a prior
+            unpublished draft. It will only be empty for a new record with no
+            prior drafts. (Dict is shaped like the "entries" key of a record's
+            files property.)
+        new_entries (dict): new files to be uploaded to the record. (Dict is
+            shaped like the "entries" key of a record's files property.)
+
+        If files are different, delete the wrong files from the record. If
+        files are missing the file services and/or the draft metadata, ensure
+        that the files are deleted from the draft record's file manager.
+
+        Note that there are separate files services for published and draft
+        records. We have to use the correct one for the record we're
+        checking.
+
+        Note too that the "entries" property of a the return object from the
+        files service is a list, not a dict. The "entries" property of the
+        return object of the record metadata is a dict whose values are the
+        same as the items in the files service's list.
+
+        We also have to check for the cases where
+        - the record lacks files in the update metadata. In this case simply
+          return False. (FIXME: What if only some files are missing? Will
+          we generate a key error when we try to initialize?)
+        - the record has files that are not present in the update metadata.
+          In this case we want to ensure that the extra files are deleted from
+          the draft record's file manager. We still return False.  FIXME: Do we need to return False here? We don't have to upload anything.
+        - the record has no files manager (record without files). In this case
+          just return False.
+        - the previous version of the draft record had files, but the new
+          version does not. In this case we want to ensure that the files are
+          deleted from the draft record's file manager.
+        - the prior existing draft record has different files from the
+          published record (draft was not published). In this case we want
+          to ensure that the extra files from the draft are removed from the
+          draft file manager, even if they are not present in the published
+          record file manager.
+
+        FIXME: Do we ever have a record that is not a draft version, even
+        if it has been published prior? Yes, if we're checking an unchanged
+        published record? But in that case we're not changing anything?
+
+        Return True if files are the same, False otherwise.
+
+        """
+        # files_service = (
+        #     records_service.files
+        #     if not is_draft
+        #     else records_service.draft_files
+        # )
+        print("is_draft:", is_draft)
         same_files = True
 
+        existing_published_files = []
         try:
-            files_request = files_service.list_files(
+            published_files_request = records_service.files.list_files(
                 system_identity, draft_id
             ).to_dict()
+            print("published files request:", published_files_request)
+            existing_published_files = published_files_request.get(
+                "entries", []
+            )
         except NoResultFound:  # draft record
-            try:
-                files_request = records_service.draft_files.list_files(
-                    system_identity, draft_id
-                ).to_dict()
-            except NoResultFound:
-                files_request = None
+            pass
         except AttributeError:  # published record without files manager
-            files_request = None
+            pass
+
+        existing_draft_files = []
+        try:
+            draft_files_request = records_service.draft_files.list_files(
+                system_identity, draft_id
+            ).to_dict()
+            print("draft files request:", draft_files_request)
+            existing_draft_files = draft_files_request.get("entries", [])
+        except NoResultFound:
+            pass
+
         existing_files = (
-            files_request.get("entries", []) if files_request else []
+            existing_draft_files if is_draft else existing_published_files
         )
         print("existing files:", existing_files)
-        if len(existing_files) == 0 or (
-            old_files and old_files.get("entries", {}) == {}
-        ):
-            same_files = False
+        print("new entries:", new_entries)
+        if len(existing_files) == 0 or old_files == {}:
+            if len(new_entries) > 0:
+                same_files = False
+
             record = records_service.draft_files._get_record(
                 draft_id, system_identity, "delete_files"
             )
@@ -459,12 +558,14 @@ class FilesHelper:
             normalized_new_keys = [
                 unicodedata.normalize("NFC", k) for k in new_entries.keys()
             ]
+            print("normalized new keys:", normalized_new_keys)
             old_wrong_files = [
                 f
                 for f in existing_files
                 if unicodedata.normalize("NFC", f["key"])
                 not in normalized_new_keys
             ]
+            print("old_wrong_files:", old_wrong_files)
             for o in old_wrong_files:
                 print("old wrong file:", o)
                 self._delete_file(draft_id, o["key"])

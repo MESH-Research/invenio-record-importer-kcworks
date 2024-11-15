@@ -232,11 +232,23 @@ def create_invenio_record(
             rec_ids = [r["_source"]["id"] for r in same_doi["hits"]["hits"]]
             for rec_id in rec_ids:
                 try:
-                    published_recs.append(
-                        records_service.read(
-                            system_identity, id_=rec_id
-                        ).to_dict()
-                    )
+                    published_rec = records_service.read(
+                        system_identity, id_=rec_id
+                    ).to_dict()
+                    if published_rec["pids"]["doi"]["identifier"] != my_doi:
+                        print(
+                            f"published rec doi for {rec_id} ("
+                            f"{published_recs[-1]['pids']['doi']['identifier']}"
+                            f") does not actually match doi for new "
+                            f"record ({my_doi}). draft was corrupted."
+                        )
+                        # raise ValueError(
+                        #     "published record doi does not match the doi "
+                        #     "for the new record"
+                        # )
+                        pass  # Don't use this record
+                    else:
+                        published_recs.append(published_rec)
                 except PIDUnregistered:
                     draft_recs.append(
                         records_service.read_draft(
@@ -265,9 +277,29 @@ def create_invenio_record(
                 f"    found {same_doi['hits']['total']['value']} existing"
                 " records with same DOI..."
             )
+            # check for corrupted draft with different DOI and add to recs
+            # so that we can delete it
+            try:
+                existing_draft_hit = records_service.search_drafts(
+                    system_identity,
+                    q=f"id:{rec_ids[0]}",
+                )._results[0]
+                if (
+                    existing_draft_hit.to_dict()["pids"]["doi"]["identifier"]
+                    != my_doi
+                ):
+                    recs.append(existing_draft_hit.to_dict())
+            except IndexError:
+                pass
             # delete extra records with the same doi
             if len(recs) > 1:
-                rec_list = [(r["id"], r["status"]) for r in recs]
+                rec_list = [
+                    (
+                        r["id"],
+                        ("published" if r["is_published"] else "draft"),
+                    )
+                    for r in recs
+                ]
                 app.logger.info(
                     "    found more than one existing record with same DOI:"
                     f" {rec_list}"
@@ -371,12 +403,24 @@ def create_invenio_record(
                             len(existing_metadata["files"]["entries"].keys())
                             > 0
                         ):
+                            # update_draft below will copy files from the
+                            # existing draft's file manager over to the new
+                            # draft's file manager. We need *some* files in
+                            # the metadata here to avoid a validation error,
+                            # but it will be overwritten by the files in the
+                            # file manager. We have to use the existing draft's
+                            # files here to avoid problems setting the default
+                            # files for the new draft in BaseRecordFilesComponent.update_draft
                             app.logger.info(
                                 "    existing record has files attached..."
                             )
                             update_payload["files"] = existing_metadata[
                                 "files"
                             ]
+                            # update_payload["files"] = metadata["files"]
+                            print(
+                                f"update_payload['files']: {pformat(update_payload['files'])}"
+                            )
                         # Invenio validator will reject other rights metadata
                         # values from existing records
                         if existing_metadata["metadata"].get("rights"):
@@ -389,11 +433,13 @@ def create_invenio_record(
                         app.logger.info(
                             "    metadata updated to match migration source..."
                         )
-                        # if existing_metadata["status"] != "published":
                         try:
+                            # If there is an existing draft for a published
+                            # record, or an unpublished draft, we update the
+                            # draft
                             result = records_service.update_draft(
                                 system_identity,
-                                id_=existing_metadata,
+                                id_=existing_metadata["id"],
                                 data=update_payload,
                             )
                             app.logger.info(
@@ -406,12 +452,12 @@ def create_invenio_record(
                                 "record_data": result.to_dict(),
                                 "recid": result._record.id,
                             }
-                        # else:
                         except PIDDoesNotExistError:
-                            # TODO: What is status here???
+                            # If there is no existing draft for the published
+                            # record, we create a new draft to edit
                             app.logger.info(
                                 "    creating new draft of published record"
-                                " or recovering unsaved draft..."
+                                " or recovering unpublished draft..."
                             )
                             # app.logger.debug(pprint(existing_metadata))
                             # rec = records_service.read(
@@ -482,6 +528,10 @@ def create_invenio_record(
                             system_identity,
                             q=f"id:{existing_metadata['id']}",
                         )._results[0]
+                        print(
+                            f"existing_record_hit draft: "
+                            f"{pformat(existing_record_hit.to_dict()['pids'])}"
+                        )
                         existing_record_id = existing_record_hit.to_dict()[
                             "uuid"
                         ]
@@ -521,7 +571,9 @@ def create_invenio_record(
     }
 
 
-def delete_invenio_record(record_id: str) -> bool:
+def delete_invenio_record(
+    record_id: str, record_type: Optional[str] = None
+) -> bool:
     """
     Delete a draft Invenio record with the provided Id
 
@@ -536,34 +588,17 @@ def delete_invenio_record(record_id: str) -> bool:
     :returns: True if the record was deleted, False otherwise
     """
     result = None
-    app.logger.info(f"    deleting draft record {record_id}...")
+    app.logger.info(
+        f"    deleting {record_type if record_type else ''} record {record_id}..."
+    )
 
-    try:
-        reviews = records_service.review.read(system_identity, id_=record_id)
-        if reviews:
-            # FIXME: What if there are multiple reviews?
-            app.logger.debug(
-                f"    deleting review request for draft record {record_id}..."
-            )
-            records_service.review.delete(system_identity, id_=record_id)
-    except ReviewNotFoundError:
-        app.logger.info(
-            f"    no review requests found for draft record {record_id}..."
-        )
-
-    try:  # In case the record is actually published
-        result = records_service.delete_record(
-            system_identity,
-            id_=record_id,
-            data={"note": "duplicate record for same DOI"},
-        )
-    except PIDUnregistered:  # this draft not published
-        try:  # no published version exists, so unregistered DOI can be deleted
+    def inner_delete_draft(record_id: str) -> dict:
+        try:  # unregistered DOI can be deleted
             result = records_service.delete_draft(
                 system_identity, id_=record_id
             )
-        # TODO: if published version exists (so DOI registered) or DOI
-        # is reserved, the draft can't be manually deleted (involves deleting
+        # TODO: if DOI is registered or reserved, but no published version
+        # exists, the draft can't be manually deleted (involves deleting
         # DOI from PID registry). We let the draft be cleaned up by the
         # system after a period of time.
         except ValidationError as e:
@@ -579,6 +614,32 @@ def delete_invenio_record(record_id: str) -> bool:
                 )
             else:
                 raise e
+        return result
+
+    try:
+        reviews = records_service.review.read(system_identity, id_=record_id)
+        if reviews:
+            # FIXME: What if there are multiple reviews?
+            app.logger.debug(
+                f"    deleting review request for draft record {record_id}..."
+            )
+            records_service.review.delete(system_identity, id_=record_id)
+    except ReviewNotFoundError:
+        app.logger.info(
+            f"    no review requests found for draft record {record_id}..."
+        )
+
+    if record_type == "draft":
+        result = inner_delete_draft(record_id)
+    else:
+        try:  # In case the record is actually published
+            result = records_service.delete_record(
+                system_identity,
+                id_=record_id,
+                data={"note": "duplicate record for same DOI"},
+            )
+        except PIDUnregistered:  # this draft not published
+            result = inner_delete_draft(record_id)
 
     return result
 
