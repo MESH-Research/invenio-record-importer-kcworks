@@ -574,6 +574,7 @@ class FilesHelper:
             (existing_draft_files, records_service.draft_files),
             (existing_published_files, records_service.files),
         ]:
+            print("files service:", files_service)
             print("existing files:", existing_files)
             print("new entries:", new_entries)
             if len(existing_files) == 0 or old_files == {}:
