@@ -307,7 +307,7 @@ def create_invenio_record(
                 app.logger.info("   deleting extra records...")
                 for r in recs[1:]:
                     try:
-                        delete_invenio_record(r["id"])
+                        delete_invenio_record(r["id"], record_type="draft")
                     except PIDUnregistered as e:
                         app.logger.error(
                             "    error deleting extra record with same DOI:"
@@ -452,7 +452,7 @@ def create_invenio_record(
                                 "record_data": result.to_dict(),
                                 "recid": result._record.id,
                             }
-                        except PIDDoesNotExistError:
+                        except (PIDDoesNotExistError, NoResultFound):
                             # If there is no existing draft for the published
                             # record, we create a new draft to edit
                             app.logger.info(

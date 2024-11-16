@@ -41,53 +41,69 @@ class FilesHelper:
     ):
         try:
             record = records_service.read(system_identity, draft_id)._record
+            if record.files.entries:
+                for k in record.files.entries.keys():
+                    self._delete_file(draft_id, k, records_service.files)
         except PIDUnregistered:
+            pass
+
+        try:
             record = records_service.read_draft(
                 system_identity, draft_id
             )._record
-        if record.files.entries:
-            for k in record.files.entries.keys():
-                self._delete_file(draft_id, k, uow)
+            if record.files.entries:
+                for k in record.files.entries.keys():
+                    self._delete_file(draft_id, k, records_service.draft_files)
+        except NoResultFound:
+            pass
         record.files.enabled = False
         record["access"]["status"] = "metadata-only"
         uow.register(RecordCommitOp(record))
 
     @unit_of_work()
     def _delete_file(
-        self, draft_id: str, key: str, uow: Optional[UnitOfWork] = None
+        self,
+        draft_id: str,
+        key: str,
+        files_service=None,
+        files_type: str = "",
+        uow: Optional[UnitOfWork] = None,
     ) -> bool:
+        if files_service is None:
+            files_service = self.files_service
+        read_method = (
+            records_service.read
+            if files_service == records_service.files
+            else records_service.read_draft
+        )
 
         def inner_delete_file(key: str):
-            try:
-                self.files_service.delete_file(system_identity, draft_id, key)
-            except NoResultFound:
-                try:
-                    records_service.files.delete_file(
-                        system_identity, draft_id, key
-                    )
-                except FileKeyNotFoundError as e:
-                    app.logger.info("file not found for deletion")
-                    print("file not found for deletion")
-                    raise e
+            # try:
+            files_service.delete_file(system_identity, draft_id, key)
+            # except NoResultFound:
+            #     try:
+            #         records_service.files.delete_file(
+            #             system_identity, draft_id, key
+            #         )
+            #     except FileKeyNotFoundError as e:
+            #         app.logger.info("file not found for deletion")
+            #         print("file not found for deletion")
+            #         raise e
 
-            try:
-                record = records_service.read(
-                    system_identity, draft_id
-                )._record
-                assert key not in record.files.entries.keys()
-            except PIDUnregistered:
-                record = records_service.read_draft(
-                    system_identity, draft_id
-                )._record
-                assert key not in record.files.entries.keys()
+            # try:
+            record = read_method(system_identity, draft_id)._record
+            assert key not in record.files.entries.keys()
+            # except PIDUnregistered:
+            #     record = records_service.read_draft(
+            #         system_identity, draft_id
+            #     )._record
+            #     assert key not in record.files.entries.keys()
 
         try:
             inner_delete_file(key)
         except BucketLockedError:
             try:
-                record = records_service.read(
-                    system_identity, draft_id
-                )._record
+                record = read_method(system_identity, draft_id)._record
                 print("attempting to unlock files:", record.files.entries)
                 record.files.unlock()
                 # Duplicating logic from files_service.delete_file
@@ -95,7 +111,7 @@ class FilesHelper:
                 removed_file = record.files.delete(
                     key, softdelete_obj=False, remove_rf=True
                 )
-                self.files_service.run_components(
+                files_service.run_components(
                     "delete_file",
                     system_identity,
                     draft_id,
@@ -119,16 +135,18 @@ class FilesHelper:
                 )
                 raise e
 
-        record = records_service.read(system_identity, draft_id)._record
+        record = read_method(system_identity, draft_id)._record
         assert key not in record.files.entries.keys()
 
         return True
 
+    @unit_of_work()
     def handle_record_files(
         self,
         metadata: dict,
         file_data: dict,
         existing_record: Optional[dict] = {},
+        uow: Optional[UnitOfWork] = None,
     ):
         """
         Handle the files for a record.
@@ -179,6 +197,20 @@ class FilesHelper:
             app.logger.warning("file data: %s", pformat(file_data))
             first_file = next(iter(file_data["entries"]))
 
+            # If we're updating a draft of a published record, we need to
+            # unlock the published record files before we can upload new
+            # files.
+            need_to_unlock = existing_record.get("is_published")
+            record = None
+
+            if need_to_unlock:
+                app.logger.warning("    unlocking published record files...")
+                record = records_service.read(
+                    system_identity, existing_record["id"]
+                )._record
+                record.files.unlock()
+                uow.register(RecordCommitOp(record))
+
             uploaded_files = self._upload_draft_files(
                 metadata["id"],
                 file_data["entries"],
@@ -188,6 +220,11 @@ class FilesHelper:
                     ]
                 },
             )
+
+            if need_to_unlock:
+                record.files.lock()
+                uow.register(RecordCommitOp(record))
+
         return uploaded_files
 
     @unit_of_work()
@@ -533,65 +570,76 @@ class FilesHelper:
         except NoResultFound:
             pass
 
-        existing_files = (
-            existing_draft_files if is_draft else existing_published_files
-        )
-        print("existing files:", existing_files)
-        print("new entries:", new_entries)
-        if len(existing_files) == 0 or old_files == {}:
-            if len(new_entries) > 0:
-                same_files = False
+        for existing_files, files_service in [
+            (existing_draft_files, records_service.draft_files),
+            (existing_published_files, records_service.files),
+        ]:
+            print("existing files:", existing_files)
+            print("new entries:", new_entries)
+            if len(existing_files) == 0 or old_files == {}:
+                if len(new_entries) > 0:
+                    same_files = False
 
-            record = records_service.draft_files._get_record(
-                draft_id, system_identity, "delete_files"
-            )
-            print("record.files.entries:", record.files.entries)
-            if record.files.entries:
-                record.files.unlock()
-                record.files.delete_all(
-                    remove_obj=True, softdelete_obj=False, remove_rf=True
+                record = files_service._get_record(
+                    draft_id, system_identity, "delete_files"
                 )
-                app.logger.info("    deleted all files from existing record")
+                print("record.files.entries:", record.files.entries)
+                if record.files.entries:
+                    record.files.unlock()
+                    record.files.delete_all(
+                        remove_obj=True, softdelete_obj=False, remove_rf=True
+                    )
+                    app.logger.info(
+                        "    deleted all files from existing record"
+                    )
+                else:
+                    app.logger.info("    no files attached to existing record")
             else:
-                app.logger.info("    no files attached to existing record")
-        else:
-            normalized_new_keys = [
-                unicodedata.normalize("NFC", k) for k in new_entries.keys()
-            ]
-            print("normalized new keys:", normalized_new_keys)
-            old_wrong_files = [
-                f
-                for f in existing_files
-                if unicodedata.normalize("NFC", f["key"])
-                not in normalized_new_keys
-            ]
-            print("old_wrong_files:", old_wrong_files)
-            for o in old_wrong_files:
-                print("old wrong file:", o)
-                self._delete_file(draft_id, o["key"])
-
-            for k, v in new_entries.items():
-                wrong_file = False
-                existing_file = [
+                normalized_new_keys = [
+                    unicodedata.normalize("NFC", k) for k in new_entries.keys()
+                ]
+                print("normalized new keys:", normalized_new_keys)
+                old_wrong_files = [
                     f
                     for f in existing_files
                     if unicodedata.normalize("NFC", f["key"])
-                    == unicodedata.normalize("NFC", k)
+                    not in normalized_new_keys
                 ]
+                print("old_wrong_files:", old_wrong_files)
+                for o in old_wrong_files:
+                    print("old wrong file:", o)
+                    self._delete_file(
+                        draft_id,
+                        o["key"],
+                        files_service=files_service,
+                    )
 
-                if len(existing_file) == 0:
-                    same_files = False
-                    print("no existing file found")
+                for k, v in new_entries.items():
+                    wrong_file = False
+                    existing_file = [
+                        f
+                        for f in existing_files
+                        if unicodedata.normalize("NFC", f["key"])
+                        == unicodedata.normalize("NFC", k)
+                    ]
 
-                elif (existing_file[0]["status"] == "pending") or (
-                    str(v["size"]) != str(existing_file[0]["size"])
-                ):
-                    same_files = False
-                    wrong_file = True
-                    print("pending or size mismatch")
+                    if len(existing_file) == 0:
+                        same_files = False
+                        print("no existing file found")
 
-                if wrong_file:
-                    self._delete_file(draft_id, existing_file[0]["key"])
+                    elif (existing_file[0]["status"] == "pending") or (
+                        str(v["size"]) != str(existing_file[0]["size"])
+                    ):
+                        same_files = False
+                        wrong_file = True
+                        print("pending or size mismatch")
+
+                    if wrong_file:
+                        self._delete_file(
+                            draft_id,
+                            existing_file[0]["key"],
+                            files_service=files_service,
+                        )
 
             print("same files:", same_files)
             return same_files

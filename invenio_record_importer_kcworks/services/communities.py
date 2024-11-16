@@ -198,22 +198,21 @@ class CommunitiesHelper:
                 "    skipping attaching the record to the community (already"
                 " published to it)..."
             )
-            # Publish new draft (otherwise would be published at community
-            # review acceptance)
-            if existing_record["is_draft"]:
-                app.logger.info("    publishing new draft record version...")
-                app.logger.debug(
-                    pformat(
-                        records_service.search_drafts(
-                            system_identity, q=f"id:{draft_id}"
-                        ).to_dict()
-                    )
+            # Publish new version of metadata (otherwise would be published at
+            # community review acceptance)
+            app.logger.info("    publishing new draft record version...")
+            # FIXME: Does this call ensure that the draft has a
+            # files manager instance? (lazy creation?)
+            app.logger.debug(
+                pformat(
+                    records_service.read(system_identity, id_=draft_id)._record
                 )
-                # Edit is sometimes necessary if the draft status has become
-                # confused
-                edit = records_service.edit(system_identity, id_=draft_id)
-                publish = records_service.publish(system_identity, id_=edit.id)
-                assert publish.data["status"] == "published"
+            )
+            # edit method creates a new draft of the published record
+            # if one doesn't already exist, otherwise retrieves draft
+            edit = records_service.edit(system_identity, id_=draft_id)
+            publish = records_service.publish(system_identity, id_=edit.id)
+            assert publish.data["status"] == "published"
         # for records that haven't been attached to the community yet
         # submit and accept a review request
         else:
