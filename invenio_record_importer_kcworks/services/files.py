@@ -172,17 +172,61 @@ class FilesHelper:
         metadata: dict,
         file_data: dict,
         existing_record: Optional[dict] = {},
+        source_filepaths: Optional[dict] = {},
         uow: Optional[UnitOfWork] = None,
-    ):
+    ) -> dict:
         """
-        Handle the files for a record.
+        Ensure that the files for a record are uploaded correctly.
 
-        metadata (dict): the record metadata
-        file_data (dict): the file data to be uploaded
-        existing_record (dict): the existing record metadata, if we are
-            updating a draft of a published record or an unpublished
-            preexisting draft. It will only be empty if we are creating a
-            new record with no preexisting drafts.
+        If the record already exists, we need to check if the files have
+        changed. If they have, we need to upload the new files and delete the
+        old files. If they have not changed, we can skip the upload.
+
+        If the record has been published and we are not working with a draft
+        of a new version, we need to unlock the published record files before
+        we can upload new files. We then lock the files after the upload is
+        complete.
+
+        Note that file data is managed indirectly by a file manager object
+        that is separate from the record metadata. The file manager is what
+        actually knows about the files for a record. The file manager is
+        synchronized with the record metadata, but it is the source of truth
+        for the file data. In a straightforward upload for a new draft, the
+        record service's file service handles operations on the record's file
+        manager. But when a previous draft or published record is involved,
+        we need to inspect and possibly alter the file manager's state directly.
+
+        This is complicated by the fact that the record service actually has
+        two separate file services, one for drafts of a record and one for
+        the published version of the record (the drafts and published version
+        share the same id). We need to ensure both that the draft file service
+        has updated the file manager for the draft and that (if a published
+        version exists) the published record file service has updated the
+        manager for any existing published version. Most of this checking is
+        done in the `_compare_existing_files` method.
+
+        params:
+            metadata (dict): the complete record metadata for the new
+                draft before the files are uploaded or altered. The `files`
+                value will either be a dict with an empty `entries` dict
+                or will contain the file information for the previous draft
+                or published record if there was one. It cannot be used as
+                a source of file data for the new draft.
+            file_data (dict): the file data to be uploaded to the new draft.
+                This will be drawn directly from the import file data and is
+                the source of truth for the new draft.
+            existing_record (dict): the existing record metadata, if we are
+                updating a draft of a published record or an unpublished
+                preexisting draft. It will only be empty if we are creating a
+                new record with no preexisting drafts.
+            source_filepaths (dict): a dictionary mapping file keys to the
+                source file paths for the files to be uploaded. FIXME: We
+                need to implement an input pathway to provide this value
+                for all imports.
+            uow (UnitOfWork): the unit of work to register the commit operation
+                for the record if we are locking and unlocking a record
+                (provided by the unit of work decorator if
+                not provided by the caller)
 
         NOTE: The files in `metadata` and `existing_record` will often be
         different. `existing_record` may have files that were already on
@@ -194,6 +238,12 @@ class FilesHelper:
         will have an empty files property. If there is an existing draft,
         `metadata` will have the same files as `existing_record`. This means
         that only `file_data` provides the file data for the current import.
+
+        Returns:
+            dict: A dictionary with the new draft's files after any necessary
+                file uploads and deletions have been completed. The dictionary
+                is shaped like the record's `files` property (after it is
+                dumped to a dictionary in a record result object).
 
         """
         print(f"handle_record_files metadata: {pformat(metadata)}")
@@ -219,10 +269,22 @@ class FilesHelper:
             app.logger.info(
                 "    skipping uploading files (same already uploaded)..."
             )
+            uploaded_files = existing_record["files"]
         else:
             app.logger.info("    uploading new files...")
             app.logger.warning("file data: %s", pformat(file_data))
-            first_file = next(iter(file_data["entries"]))
+            # FIXME: Below is an implementation detail for the CORE
+            # migration that should be removed when we use this method
+            # for all imports.
+            if not source_filepaths:
+                first_file = next(iter(file_data["entries"]))
+                source_filepaths = (
+                    {
+                        first_file: metadata["custom_fields"][
+                            "hclegacy:file_location"
+                        ]
+                    },
+                )
 
             # If we're updating a draft of a published record, we need to
             # unlock the published record files before we can upload new
@@ -245,19 +307,18 @@ class FilesHelper:
             uploaded_files = self._upload_draft_files(
                 metadata["id"],
                 file_data["entries"],
-                {
-                    first_file: metadata["custom_fields"][
-                        "hclegacy:file_location"
-                    ]
-                },
+                source_filepaths,
             )
 
             if need_to_unlock:
                 record.files.lock()
                 uow.register(RecordCommitOp(record))
 
+        print("returning uploaded_files:", pformat(uploaded_files))
+
         return uploaded_files
 
+    # FIXME: This method is not currently used.
     @unit_of_work()
     def _retry_file_initialization(
         self,
@@ -532,12 +593,16 @@ class FilesHelper:
             shaped like the "entries" key of a record's files property.)
 
         If files are different, delete the wrong files from the record. If
-        files are missing the file services and/or the draft metadata, ensure
-        that the files are deleted from the draft record's file manager.
+        files are missing from the file services and/or the draft metadata,
+        ensure that the files are deleted from the draft record's file manager.
 
-        Note that there are separate files services for published and draft
-        records. We have to use the correct one for the record we're
-        checking.
+        Note that there are separate files services for operations on the
+        file managers for the published and draft versions of a record.
+        We have to ensure that both file services (and the managers for both
+        versions of the record) are updated correctly. Rather than trying to
+        anticipate which service to use based on the state of the record, we
+        simply try to check the record's file manager using both services and
+        update both as needed to align with the new import file data.
 
         Note too that the "entries" property of a the return object from the
         files service is a list, not a dict. The "entries" property of the
@@ -613,25 +678,34 @@ class FilesHelper:
                 if len(existing_files) == 0 or old_files == {}:
                     if len(new_entries) > 0:
                         same_files = False
-
-                    record = files_service._get_record(
-                        draft_id, system_identity, "delete_files"
-                    )
-                    print("record.files.entries:", record.files.entries)
-                    if record.files.entries:
-                        record.files.unlock()
-                        record.files.delete_all(
-                            remove_obj=True,
-                            softdelete_obj=False,
-                            remove_rf=True,
-                        )
                         app.logger.info(
-                            "    deleted all files from existing record"
+                            "    new files to be uploaded that are not "
+                            "present in the existing record"
                         )
                     else:
-                        app.logger.info(
-                            "    no files attached to existing record"
+                        record = files_service._get_record(
+                            draft_id, system_identity, "delete_files"
                         )
+                        if record.files.entries:
+                            app.logger.info(
+                                "    neither existing record nor import data "
+                                "has files. Ensuring that the record file "
+                                "manager is empty..."
+                            )
+                            record.files.unlock()
+                            record.files.delete_all(
+                                remove_obj=True,
+                                softdelete_obj=False,
+                                remove_rf=True,
+                            )
+                            app.logger.info(
+                                "    deleted all files from existing record"
+                            )
+                        else:
+                            app.logger.info(
+                                "    no files attached to existing record "
+                                "and no new files to be uploaded"
+                            )
                 else:
                     normalized_new_keys = [
                         unicodedata.normalize("NFC", k)
