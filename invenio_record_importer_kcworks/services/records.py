@@ -41,12 +41,10 @@ from invenio_record_importer_kcworks.utils.utils import (
     compare_metadata,
 )
 from invenio_records.systemfields.relations.errors import InvalidRelationValue
-from invenio_records_resources.services.records.errors import (
-    NoResultFound,
-)
 from invenio_search.proxies import current_search_client
 from marshmallow.exceptions import ValidationError
 from pprint import pformat
+from sqlalchemy.orm.exc import NoResultFound
 from typing import Optional
 
 
