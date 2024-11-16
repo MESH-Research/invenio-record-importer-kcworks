@@ -278,13 +278,11 @@ class FilesHelper:
             # for all imports.
             if not source_filepaths:
                 first_file = next(iter(file_data["entries"]))
-                source_filepaths = (
-                    {
-                        first_file: metadata["custom_fields"][
-                            "hclegacy:file_location"
-                        ]
-                    },
-                )
+                source_filepaths = {
+                    first_file: metadata["custom_fields"][
+                        "hclegacy:file_location"
+                    ]
+                }
 
             # If we're updating a draft of a published record, we need to
             # unlock the published record files before we can upload new
