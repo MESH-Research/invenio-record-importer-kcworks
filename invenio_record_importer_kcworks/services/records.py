@@ -196,6 +196,7 @@ class RecordsHelper:
             assert changed_ownership.owner_id == new_owner.id
         return new_owner
 
+    @staticmethod
     def _coerce_types(metadata: dict) -> dict:
         """
         Coerce metadata values to the correct types.
@@ -255,7 +256,7 @@ class RecordsHelper:
             - status: the status of the metadata record
         """
         app.logger.debug("~~~~~~~~")
-        metadata = self._coerce_types(metadata)
+        metadata = RecordsHelper._coerce_types(metadata)
         app.logger.debug("metadata for new record:")
         app.logger.debug(pformat(metadata))
 
