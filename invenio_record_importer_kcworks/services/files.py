@@ -1,4 +1,14 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+# Copyright (C) 2023-2024 Mesh Research
+#
+# invenio-record-importer-kcworks is free software; you can redistribute it
+# and/or modify it under the terms of the MIT License; see LICENSE file for
+# more details.
+
 from flask import current_app as app
+import fnmatch
 from invenio_access.permissions import system_identity
 from invenio_files_rest.errors import InvalidKeyError, BucketLockedError
 from invenio_pidstore.errors import PIDUnregistered
@@ -13,16 +23,19 @@ from invenio_record_importer_kcworks.utils.utils import (
     normalize_string,
     valid_date,
 )
-from invenio_records_resources.services.errors import (
-    FileKeyNotFoundError,
-)
+
+# from invenio_records_resources.services.errors import (
+#     FileKeyNotFoundError,
+# )
 from invenio_records_resources.services.uow import (
     unit_of_work,
     UnitOfWork,
     RecordCommitOp,
 )
+import os
 from pprint import pformat
 from pathlib import Path
+import re
 from sqlalchemy.orm.exc import NoResultFound
 from typing import Optional
 import unicodedata
@@ -34,6 +47,19 @@ class FilesHelper:
         self.files_service = (
             records_service.draft_files if is_draft else records_service.files
         )
+
+    @staticmethod
+    def sanitize_filenames(directory) -> list:
+        changed = []
+        for path, dirs, files in os.walk(directory):
+            for filename in fnmatch.filter(files, "*[“”‘’]*"):
+                file_path = os.path.join(path, filename)
+                newname = re.sub(r"[“”‘’]", "", filename)
+                new_file_path = os.path.join(path, newname)
+                if file_path != new_file_path:
+                    os.rename(file_path, new_file_path)
+                    changed.append(new_file_path)
+        return changed
 
     @unit_of_work()
     def set_to_metadata_only(
@@ -159,7 +185,8 @@ class FilesHelper:
             new record with no preexisting drafts.
 
         NOTE: The files in `metadata` and `existing_record` will often be
-        different. `existing_record` may have files that were already on any pre-existing published or draft record. This is the
+        different. `existing_record` may have files that were already on
+        any pre-existing published or draft record. This is the
         case *even if* we tried to update the file data during creation of
         the new draft we're editing, because the new draft creation process
         copies the files from the existing record over to the new draft.
@@ -173,7 +200,7 @@ class FilesHelper:
         print(f"handle_record_files file_data: {pformat(file_data)}")
         print(
             f"handle_record_files existing_record.files: "
-            f"{pformat(existing_record.get('files') if existing_record else None)}"
+            f"{pformat(existing_record.get('files') if existing_record else None)}"  # noqa: E501
         )
         assert metadata["files"]["enabled"] is True
         uploaded_files = {}
@@ -519,7 +546,8 @@ class FilesHelper:
           we generate a key error when we try to initialize?)
         - the record has files that are not present in the update metadata.
           In this case we want to ensure that the extra files are deleted from
-          the draft record's file manager. We still return False.  FIXME: Do we need to return False here? We don't have to upload anything.
+          the draft record's file manager. We still return False.  FIXME: Do
+          we need to return False here? We don't have to upload anything.
         - the record has no files manager (record without files). In this case
           just return False.
         - the previous version of the draft record had files, but the new

@@ -8,10 +8,9 @@
 # LICENSE file for more details.
 
 from flask import current_app as app
-
-
 from invenio_access.permissions import system_identity
 from invenio_communities.errors import CommunityDeletedError
+from invenio_communities.members.records.api import Member
 from invenio_communities.proxies import current_communities
 from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
 from invenio_group_collections_kcworks.errors import (
@@ -39,9 +38,6 @@ from invenio_record_importer_kcworks.errors import (
     PublicationValidationError,
     RestrictedRecordPublicationError,
 )
-from invenio_record_importer_kcworks.utils.utils import (
-    CommunityRecordHelper,
-)
 from invenio_records_resources.services.uow import (
     unit_of_work,
     RecordIndexOp,
@@ -54,6 +50,210 @@ from opensearchpy.exceptions import NotFoundError
 from pprint import pformat
 from sqlalchemy.orm.exc import NoResultFound, StaleDataError
 from werkzeug.exceptions import UnprocessableEntity
+
+
+class CommunityRecordHelper:
+    """A collection of methods for working with community records."""
+
+    def ___init__(self):
+        pass
+
+    @staticmethod
+    def set_record_policy(community_id: str, record_policy: str):
+        """Set the record policy for a community.
+
+        If the record policy is set to 'closed', members of the community
+        cannot submit records without review. If the record policy is set to
+        'open', members of the community can submit records without review.
+
+        params:
+            community_id: str: The id of the community to update
+            record_policy: str: The new record policy to set. Must be one of
+                                'open' or 'closed'
+
+        raises:
+            AssertionError: If the record policy was not updated successfully
+
+        returns:
+            bool: True if the record policy was updated successfully
+        """
+        record_data = current_communities.service.read(
+            system_identity, community_id
+        ).to_dict()
+        record_data["access"]["record_policy"] = record_policy
+        updated = current_communities.service.update(
+            system_identity, community_id, data=record_data
+        )
+        assert updated["access"]["record_policy"] == record_policy
+        return True
+
+    @staticmethod
+    def set_member_policy(community_id: str, member_policy: str):
+        """Set the member policy for a community.
+
+        If the member policy is set to 'closed', people cannot request
+        to become members of the community. If the member policy is
+        set to 'open', people can request to become members of the community.
+
+        params:
+            community_id: str: The id of the community to update
+            member_policy: str: The new member policy to set. Must be one of
+                                'open' or 'closed'
+
+        raises:
+            AssertionError: If the member policy was not updated successfully
+
+        returns:
+            bool: True if the member policy was updated successfully
+        """
+        record_data = current_communities.service.read(
+            system_identity, community_id
+        ).to_dict()
+        record_data["access"]["member_policy"] = member_policy
+        updated = current_communities.service.update(
+            system_identity, community_id, data=record_data
+        )
+        assert updated["access"]["member_policy"] == member_policy
+        return True
+
+    @staticmethod
+    def set_community_visibility(community_id: str, visibility: str):
+        """Set the visibility for a community.
+
+        If the visibility is set to 'public', the community is visible to
+        in searches and its landing page is visible to everyone. If the
+        visibility is set to 'restricted', the community is not visible in
+        searches except to logged-in members and its landing page is not
+        visible to everyone.
+
+        params:
+            community_id: str: The id of the community to update
+            visibility: str: The new visibility to set. Must be one of
+                            'public' or 'restricted'
+
+        raises:
+            AssertionError: If the visibility was not updated successfully
+
+        returns:
+            bool: True if the visibility was updated successfully
+        """
+        record_data = current_communities.service.read(
+            system_identity, community_id
+        ).to_dict()
+        record_data["access"]["visibility"] = visibility
+        updated = current_communities.service.update(
+            system_identity, community_id, data=record_data
+        )
+        assert updated["access"]["visibility"] == visibility
+        return True
+
+    @staticmethod
+    def set_member_visibility(community_id: str, visibility: str):
+        """Set the member visibility for a community.
+
+        Controls whether the members of the community are visible to the
+        public or restricted to members of the community. I.e., it
+        determines whether the "members" tab of the community landing page
+        is visible to the public or restricted to members of the community.
+
+        params:
+            community_id: str: The id of the community to update
+            visibility: str: The new member visibility to set. Must be one of
+                            'public' or 'restricted'
+
+        raises:
+            AssertionError: If the member visibility was not updated
+            successfully
+
+        returns:
+            bool: True if the member visibility was updated successfully
+        """
+        record_data = current_communities.service.read(
+            system_identity, community_id
+        ).to_dict()
+        record_data["access"]["member_visibility"] = visibility
+        updated = current_communities.service.update(
+            system_identity, community_id, data=record_data
+        )
+        assert updated["access"]["member_visibility"] == visibility
+        return True
+
+    @staticmethod
+    def set_review_policy(community_id: str, review_policy: bool):
+        """Set the review policy for a community.
+
+        params:
+            community_id: str: The id of the community to update
+            review_policy: bool: The new review policy to set
+
+        raises:
+            AssertionError: If the review policy was not updated successfully
+
+        returns:
+            bool: True if the review policy was updated successfully
+        """
+        record_data = current_communities.service.read(
+            system_identity, community_id
+        ).to_dict()
+        record_data["access"]["review_policy"] = review_policy
+        updated = current_communities.service.update(
+            system_identity, community_id, data=record_data
+        )
+        assert updated["access"]["review_policy"] == review_policy
+        return True
+
+    @staticmethod
+    def add_owner(community_id: str, owner_id: int):
+        """Add an owner to a community.
+
+        params:
+            community_id: str: The id of the community to update
+            owner_id: int: The id of the user to add as an owner
+
+        raises:
+            AssertionError: If the owner was not added successfully
+
+        returns:
+            bool: True if the owner was added successfully
+        """
+        try:
+            record_data = current_communities.service.read(
+                system_identity, community_id
+            ).to_dict()
+        except Exception as e:
+            raise e
+            community_list = current_communities.service.search(
+                identity=system_identity, q=f"slug:{community_id}"
+            )
+            assert community_list.total == 1
+            record_data = next(community_list.hits).to_dict()
+
+        community_members = Member.get_members(record_data["id"])
+        owners = [o.user_id for o in community_members if o.role == "owner"]
+        if owner_id not in owners:
+            owner = current_communities.service.members.add(
+                system_identity,
+                record_data["id"],
+                data={
+                    "members": [{"type": "user", "id": str(owner_id)}],
+                    "role": "owner",
+                },
+            )
+
+        community_members_b = Member.get_members(record_data["id"])
+
+        owner = [
+            {
+                "user_id": o.user_id,
+                "role": o.role,
+                "community_id": o.community_id,
+                "community_slug": record_data["slug"],
+            }
+            for o in community_members_b
+            if o.role == "owner" and o.user_id == owner_id
+        ][0]
+
+        return owner
 
 
 class CommunitiesHelper:
@@ -541,7 +741,8 @@ class CommunitiesHelper:
                             )
                         except NotFoundError:
                             app.logger.warning(
-                                f"    collection {h['_source']['id']} not found"
+                                f"    collection {h['_source']['id']} not "
+                                "found"
                             )
                         except CommunityDeletedError:
                             app.logger.warning(
@@ -650,10 +851,13 @@ class CommunitiesHelper:
         """
         group_ids = [g.get("group_identifier") for g in group_list]
         app.logger.debug(f"group_ids: {pformat(group_ids)}")
-        app.logger.debug(
-            f"metadata_record['parent']['communities']: "
-            f"{pformat([c.get('custom_fields', {}).get('kcr:commons_group_id') for c in metadata_record['parent']['communities'].get('entries', [])])}"
-        )
+        parent_communities = [
+            c.get("custom_fields", {}).get("kcr:commons_group_id")
+            for c in metadata_record["parent"]["communities"].get(
+                "entries", []
+            )
+        ]
+        app.logger.debug(f"parent_communities: {pformat(parent_communities)}")
         extraneous_collections = [
             c
             for c in metadata_record["parent"]["communities"].get(
@@ -670,7 +874,7 @@ class CommunitiesHelper:
             )
             for c in extraneous_collections:
                 app.logger.debug(
-                    current_community_records_service.community_record_schema.schema
+                    current_community_records_service.community_record_schema.schema  # noqa: E501
                 )
                 removed = current_community_records_service.delete(
                     system_identity,

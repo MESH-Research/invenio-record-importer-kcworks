@@ -14,19 +14,94 @@ Utility functions for core-migrate
 from datetime import datetime
 from flask import current_app as app
 from flask_security.utils import hash_password
-from invenio_access.permissions import system_identity
-from invenio_accounts.proxies import current_accounts
-from invenio_communities.proxies import current_communities
-from invenio_communities.members.records.api import Member
 from invenio_search.proxies import current_search_client
 from isbnlib import is_isbn10, is_isbn13, clean
-import os
+import json
 import random
-import re
 import requests
+from requests.exceptions import JSONDecodeError as RequestsJSONDecodeError
+import re
+from simplejson.errors import JSONDecodeError as SimpleJSONDecodeError
 import string
-from typing import Any, Union
+from typing import Any, Optional, Union
 import unicodedata
+
+
+# TODO: Deprecated; remove
+def api_request(
+    method: str = "GET",
+    endpoint: str = "records",
+    server: str = "",
+    args: str = "",
+    token: str = "",
+    params: dict[str, str] = {},
+    json_dict: Optional[Union[dict[str, str], list[dict]]] = {},
+    file_data: Optional[bytes] = None,
+    protocol: str = "",
+) -> dict:
+    """
+    Make an api request and return the response
+    """
+    if not server:
+        server = app.config.get("APP_UI_URL")
+    if not token:
+        token = app.config.get("RECORD_IMPORTER_API_TOKEN")
+    if not protocol:
+        protocol = app.config.get("RECORD_IMPORTER_PROTOCOL", "http")
+
+    payload_args = {}
+
+    api_url = f"{protocol}://{server}/api/{endpoint}"
+    if args:
+        api_url = f"{api_url}/{args}"
+
+    callfuncs = {
+        "GET": requests.get,
+        "POST": requests.post,
+        "DELETE": requests.delete,
+        "PUT": requests.put,
+        "PATCH": requests.patch,
+    }
+    callfunc = callfuncs[method]
+
+    headers = {"Authorization": f"Bearer {token}"}
+    if json_dict and method in ["POST", "PUT", "PATCH"]:
+        headers["Content-Type"] = "application/json"
+        payload_args["data"] = json.dumps(json_dict)
+    elif file_data and method in ["POST", "PUT"]:
+        headers["content-type"] = "application/octet-stream"
+        # headers['content-length'] = str(len(file_data.read()))
+        payload_args["data"] = file_data
+
+    # files = {'file': ('report.xls', open('report.xls', 'rb'),
+    # 'application/vnd.ms-excel', {'Expires': '0'})}
+    # print(f'headers: {headers}')
+    response = callfunc(
+        api_url, headers=headers, params=params, **payload_args, verify=False
+    )
+
+    try:
+        json_response = response.json() if method != "DELETE" else None
+    except (
+        SimpleJSONDecodeError,
+        RequestsJSONDecodeError,
+        json.decoder.JSONDecodeError,
+    ):
+        raise requests.HTTPError(
+            f"Failed to decode JSON response from API request to {api_url}"
+        )
+
+    result_dict = {
+        "status_code": response.status_code,
+        "headers": response.headers,
+        "json": json_response,
+        "text": response.text,
+    }
+
+    if json_response and "errors" in json_response.keys():
+        result_dict["errors"] = json_response["errors"]
+
+    return result_dict
 
 
 class IndexHelper:
@@ -86,277 +161,6 @@ class IndexHelper:
                     index=f"kcworks-events-stats-record-view-{t}",
                     id=hit["_id"],
                 )
-
-
-class UsersHelper:
-    """A collection of methods for working with users."""
-
-    def __init__(self):
-        pass
-
-    @staticmethod
-    def get_admins():
-        """Get all users with the role of 'admin'."""
-        admin_role = current_accounts.datastore.find_role_by_id("admin")
-        admin_role_holders = [
-            u
-            for u in current_accounts.datastore.find_role(
-                admin_role.name
-            ).users
-        ]
-        assert len(admin_role_holders) > 0  # should be at least one admin
-        return admin_role_holders
-
-    @staticmethod
-    def get_user_by_source_id(source_id: str, record_source: str) -> dict:
-        """Get a user by their source id.
-
-        Note that this method depends on the invenio_remote_user_data module
-        being installed and configured. The record_source parameter should
-        correspond to the name of a remote api in the REMOTE_USER_DATA_API_ENDPOINTS config variable.
-
-        :param source_id: The id of the user on the source service from which
-            the record is coming (e.g. '1234')
-        :param record_source: The name of the source service from which the
-            record is coming (e.g. 'knowledgeCommons')
-
-        :returns: A dictionary containing the user data
-        """
-        endpoint_config = app.config.get("REMOTE_USER_DATA_API_ENDPOINTS")[
-            record_source
-        ]["users"]
-
-        remote_api_token = os.environ[
-            endpoint_config["token_env_variable_label"]
-        ]
-        api_url = f"{endpoint_config['remote_endpoint']}/{source_id}"
-        headers = {"Authorization": f"Bearer {remote_api_token}"}
-        response = requests.request(
-            endpoint_config["remote_method"],
-            url=api_url,
-            headers=headers,
-            verify=False,
-            timeout=10,
-        )
-        if response.status_code != 200:
-            app.logger.error(
-                f"Error fetching user data from remote API: {api_url}"
-            )
-            app.logger.error(
-                "Response status code: " + str(response.status_code)
-            )
-        try:
-            app.logger.debug(response.json())
-            return response.json()
-        except requests.exceptions.JSONDecodeError:
-            app.logger.error(
-                "JSONDecodeError: User group data API response was not"
-                " JSON:"
-            )
-            return None
-
-
-class CommunityRecordHelper:
-    """A collection of methods for working with community records."""
-
-    def ___init__(self):
-        pass
-
-    @staticmethod
-    def set_record_policy(community_id: str, record_policy: str):
-        """Set the record policy for a community.
-
-        If the record policy is set to 'closed', members of the community
-        cannot submit records without review. If the record policy is set to
-        'open', members of the community can submit records without review.
-
-        params:
-            community_id: str: The id of the community to update
-            record_policy: str: The new record policy to set. Must be one of
-                                'open' or 'closed'
-
-        raises:
-            AssertionError: If the record policy was not updated successfully
-
-        returns:
-            bool: True if the record policy was updated successfully
-        """
-        record_data = current_communities.service.read(
-            system_identity, community_id
-        ).to_dict()
-        record_data["access"]["record_policy"] = record_policy
-        updated = current_communities.service.update(
-            system_identity, community_id, data=record_data
-        )
-        assert updated["access"]["record_policy"] == record_policy
-        return True
-
-    @staticmethod
-    def set_member_policy(community_id: str, member_policy: str):
-        """Set the member policy for a community.
-
-        If the member policy is set to 'closed', people cannot request
-        to become members of the community. If the member policy is
-        set to 'open', people can request to become members of the community.
-
-        params:
-            community_id: str: The id of the community to update
-            member_policy: str: The new member policy to set. Must be one of
-                                'open' or 'closed'
-
-        raises:
-            AssertionError: If the member policy was not updated successfully
-
-        returns:
-            bool: True if the member policy was updated successfully
-        """
-        record_data = current_communities.service.read(
-            system_identity, community_id
-        ).to_dict()
-        record_data["access"]["member_policy"] = member_policy
-        updated = current_communities.service.update(
-            system_identity, community_id, data=record_data
-        )
-        assert updated["access"]["member_policy"] == member_policy
-        return True
-
-    @staticmethod
-    def set_community_visibility(community_id: str, visibility: str):
-        """Set the visibility for a community.
-
-        If the visibility is set to 'public', the community is visible to
-        in searches and its landing page is visible to everyone. If the
-        visibility is set to 'restricted', the community is not visible in
-        searches except to logged-in members and its landing page is not
-        visible to everyone.
-
-        params:
-            community_id: str: The id of the community to update
-            visibility: str: The new visibility to set. Must be one of
-                            'public' or 'restricted'
-
-        raises:
-            AssertionError: If the visibility was not updated successfully
-
-        returns:
-            bool: True if the visibility was updated successfully
-        """
-        record_data = current_communities.service.read(
-            system_identity, community_id
-        ).to_dict()
-        record_data["access"]["visibility"] = visibility
-        updated = current_communities.service.update(
-            system_identity, community_id, data=record_data
-        )
-        assert updated["access"]["visibility"] == visibility
-        return True
-
-    @staticmethod
-    def set_member_visibility(community_id: str, visibility: str):
-        """Set the member visibility for a community.
-
-        Controls whether the members of the community are visible to the
-        public or restricted to members of the community. I.e., it
-        determines whether the "members" tab of the community landing page
-        is visible to the public or restricted to members of the community.
-
-        params:
-            community_id: str: The id of the community to update
-            visibility: str: The new member visibility to set. Must be one of
-                            'public' or 'restricted'
-
-        raises:
-            AssertionError: If the member visibility was not updated successfully
-
-        returns:
-            bool: True if the member visibility was updated successfully
-        """
-        record_data = current_communities.service.read(
-            system_identity, community_id
-        ).to_dict()
-        record_data["access"]["member_visibility"] = visibility
-        updated = current_communities.service.update(
-            system_identity, community_id, data=record_data
-        )
-        assert updated["access"]["member_visibility"] == visibility
-        return True
-
-    @staticmethod
-    def set_review_policy(community_id: str, review_policy: bool):
-        """Set the review policy for a community.
-
-        params:
-            community_id: str: The id of the community to update
-            review_policy: bool: The new review policy to set
-
-        raises:
-            AssertionError: If the review policy was not updated successfully
-
-        returns:
-            bool: True if the review policy was updated successfully
-        """
-        record_data = current_communities.service.read(
-            system_identity, community_id
-        ).to_dict()
-        record_data["access"]["review_policy"] = review_policy
-        updated = current_communities.service.update(
-            system_identity, community_id, data=record_data
-        )
-        assert updated["access"]["review_policy"] == review_policy
-        return True
-
-    @staticmethod
-    def add_owner(community_id: str, owner_id: int):
-        """Add an owner to a community.
-
-        params:
-            community_id: str: The id of the community to update
-            owner_id: int: The id of the user to add as an owner
-
-        raises:
-            AssertionError: If the owner was not added successfully
-
-        returns:
-            bool: True if the owner was added successfully
-        """
-        try:
-            record_data = current_communities.service.read(
-                system_identity, community_id
-            ).to_dict()
-        except Exception as e:
-            raise e
-            community_list = current_communities.service.search(
-                identity=system_identity, q=f"slug:{community_id}"
-            )
-            assert community_list.total == 1
-            record_data = next(community_list.hits).to_dict()
-
-        community_members = Member.get_members(record_data["id"])
-        owners = [o.user_id for o in community_members if o.role == "owner"]
-        if owner_id not in owners:
-            owner = current_communities.service.members.add(
-                system_identity,
-                record_data["id"],
-                data={
-                    "members": [{"type": "user", "id": str(owner_id)}],
-                    "role": "owner",
-                },
-            )
-
-        community_members_b = Member.get_members(record_data["id"])
-
-        owner = [
-            {
-                "user_id": o.user_id,
-                "role": o.role,
-                "community_id": o.community_id,
-                "community_slug": record_data["slug"],
-            }
-            for o in community_members_b
-            if o.role == "owner" and o.user_id == owner_id
-        ][0]
-
-        return owner
 
 
 def generate_random_string(length):

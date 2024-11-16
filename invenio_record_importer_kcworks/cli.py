@@ -3,9 +3,9 @@
 #
 # Copyright (C) 2023-2024 Mesh Research
 #
-# invenio-record-importer-kcworks is free software; you can redistribute it and/or
-# modify it under the terms of the MIT License; see LICENSE file for more
-# details.
+# invenio-record-importer-kcworks is free software; you can redistribute it
+# and/or modify it under the terms of the MIT License; see LICENSE file for
+# more details.
 
 
 """
@@ -42,10 +42,10 @@ from invenio_record_importer_kcworks.services.stats.stats import (
     AggregationFabricator,
 )
 from invenio_record_importer_kcworks.record_loader import (
-    create_invenio_user,
-    delete_records_from_invenio,
-    load_records_into_invenio,
+    RecordLoader,
 )
+from invenio_record_importer_kcworks.services.records import RecordsHelper
+from invenio_record_importer_kcworks.services.users import UsersHelper
 
 from pprint import pformat, pprint
 from typing import Optional
@@ -243,7 +243,8 @@ def load_records(
         Since the operations involved are time-consuming, the program should
         be run as a background process (adding & to the end of the command).
         A running log of the program's progress will be written to the file
-        invenio_record_importer_kcworks.log in the base invenio_record_importer_kcworks/logs
+        invenio_record_importer_kcworks.log in the base
+        invenio_record_importer_kcworks/logs
         directory. A record of all records that have been created (a load
         attempt has been made) is recorded in the file
         record_importer_created_records.jsonl in a configurable directory.
@@ -353,7 +354,7 @@ def load_records(
             records = [arg.replace("\-", "-") for arg in records]  # noqa
             named_params["nonconsecutive"] = records
 
-    load_records_into_invenio(**named_params)
+    RecordLoader().load_records_into_invenio(**named_params)
 
 
 @cli.command(name="read")
@@ -532,7 +533,7 @@ def create_user(
     )
     spinner.start()
 
-    create_response = create_invenio_user(
+    create_response = UsersHelper().create_invenio_user(
         email,
         record_source=origin,
         source_username=source_username,
@@ -638,7 +639,9 @@ def delete_records(records, visible, reason, note):
     Delete one or more records from InvenioRDM by record id.
     """
     print("Starting to delete records")
-    results = delete_records_from_invenio(records, visible, reason, note)
+    results = RecordsHelper().delete_records_from_invenio(
+        records, visible, reason, note
+    )
     pprint(results)
     print(f"All done deleting records: {[k for k in results.keys()]}")
 
