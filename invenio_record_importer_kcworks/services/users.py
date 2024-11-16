@@ -13,7 +13,7 @@ from invenio_accounts.errors import AlreadyLinkedError
 from invenio_accounts.proxies import current_accounts
 from invenio_db import db
 from invenio_oauthclient.models import UserIdentity
-from invenio_record_importer_kcworks.utils.utils import (
+from invenio_record_importer_kcworks.services.communities import (
     CommunityRecordHelper,
 )
 import os
