@@ -227,7 +227,11 @@ class FilesHelper:
             # If we're updating a draft of a published record, we need to
             # unlock the published record files before we can upload new
             # files.
-            need_to_unlock = existing_record.get("is_published")
+            need_to_unlock = (
+                existing_record.get("is_published")
+                if existing_record
+                else False
+            )
             record = None
 
             if need_to_unlock:
