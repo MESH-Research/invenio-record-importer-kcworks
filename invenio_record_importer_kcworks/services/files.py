@@ -239,7 +239,8 @@ class FilesHelper:
         for the file data. In a straightforward upload for a new draft, the
         record service's file service handles operations on the record's file
         manager. But when a previous draft or published record is involved,
-        we need to inspect and possibly alter the file manager's state directly.
+        we need to inspect and possibly alter the file manager's state
+        directly.
 
         This is complicated by the fact that the record service actually has
         two separate file services, one for drafts of a record and one for
@@ -511,38 +512,16 @@ class FilesHelper:
                     == 1
                 )
                 app.logger.debug(f"initialization: {pformat(initialization)}")
-            except InvalidKeyError as e:  # file with same key already exists
+            except InvalidKeyError as e:
+                app.logger.error(
+                    f"    failed to initialize file upload for {draft_id}..."
+                )
                 raise e
-                # FIXME: do we need this retry any more?
-                app.logger.error(f"handling InvalidKeyError: {e}")
-                self._retry_file_initialization(draft_id, k)
-
-                try:
-                    initialization = self.files_service.init_files(
-                        system_identity, draft_id, data=[{"key": k}]
-                    ).to_dict()
-                    app.logger.debug(
-                        f"initialization: {pformat(initialization)}"
-                    )
-                    assert (
-                        len(
-                            [
-                                e["key"]
-                                for e in initialization["entries"]
-                                if e["key"] == k
-                            ]
-                        )
-                        == 1
-                    )
-                    app.logger.debug(
-                        f"initialization.entries keys: "
-                        f"{[e['key'] for e in initialization['entries']]}"
-                    )
-                except Exception as e:
-                    app.logger.error(
-                        f"    failed to initialize file upload for {draft_id}"
-                    )
-                    raise e
+            except Exception as e:
+                app.logger.error(
+                    f"    failed to initialize file upload for {draft_id}..."
+                )
+                raise e
 
             try:
                 with open(
@@ -598,9 +577,9 @@ class FilesHelper:
             )
             app.logger.error(f"result is {pformat(result_record['entries'])}")
 
-        # Handle drafts of published records, where record needs file metadata
-        # from draft files service (usually synced during draft publication
-        # but we're not publishing a draft here)
+        # Handle published records without drafts, where record needs
+        # file metadata from draft files service (usually synced during
+        # draft publication but we're not publishing a draft here)
         try:
             check_record = records_service.read(system_identity, id_=draft_id)
             if check_record.to_dict()["files"]["entries"] == {}:
