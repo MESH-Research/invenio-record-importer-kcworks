@@ -808,7 +808,7 @@ class FilesHelper:
         #   record (and from the upload data)
         if len(existing_files) > 0:
             same_files, files_to_upload = inner_compare_files(
-                existing_files, files_service
+                existing_files, files_service, files_to_upload, same_files
             )
 
         # If the existing record is a draft of a published record, we need to
