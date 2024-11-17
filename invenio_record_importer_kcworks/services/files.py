@@ -7,6 +7,7 @@
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
+from xml.dom.minidom import Element
 from flask import current_app as app
 import fnmatch
 from invenio_access.permissions import system_identity
@@ -85,6 +86,50 @@ class FilesHelper:
         record.files.enabled = False
         record["access"]["status"] = "metadata-only"
         uow.register(RecordCommitOp(record))
+
+    @unit_of_work()
+    def _clear_managers(
+        self,
+        record,
+        is_draft: bool,
+        is_published: bool,
+        uow: Optional[UnitOfWork] = None,
+    ):
+
+        def inner_clear_manager(record, is_published):
+            if is_published:
+                record.files.unlock()
+            record.files.delete_all(
+                remove_obj=True,
+                softdelete_obj=False,
+                remove_rf=True,
+            )
+
+        # Either way, we need to ensure the appropriate record
+        # file managers are empty
+        if is_draft:
+            app.logger.info("Handling record with existing draft")
+            draft_record = records_service.draft_files._get_record(
+                draft_id, system_identity, "delete_files"
+            )
+            if draft_record.files.entries:
+                inner_clear_manager(draft_record, is_published)
+            app.logger.info("    deleted all files from existing draft")
+        if is_published:
+            app.logger.info("Handling published record")
+            record = records_service.files._get_record(
+                draft_id, system_identity, "delete_files"
+            )
+            if record.files.entries:
+                inner_clear_manager(record, is_published)
+            app.logger.info(
+                "    deleted all files from existing " "published record"
+            )
+        else:
+            app.logger.info(
+                "    no files attached to existing record "
+                "and no new files to be uploaded"
+            )
 
     @unit_of_work()
     def _delete_file(
@@ -214,7 +259,8 @@ class FilesHelper:
                 a source of file data for the new draft.
             file_data (dict): the file data to be uploaded to the new draft.
                 This will be drawn directly from the import file data and is
-                the source of truth for the new draft.
+                the source of truth for the new draft. It is a dictionary
+                shaped like the record's `files` property.
             existing_record (dict): the existing record metadata, if we are
                 updating a draft of a published record or an unpublished
                 preexisting draft. It will only be empty if we are creating a
@@ -253,14 +299,15 @@ class FilesHelper:
             f"{pformat(existing_record.get('files') if existing_record else None)}"  # noqa: E501
         )
         assert metadata["files"]["enabled"] is True
+        files_to_upload = {k: v for k, v in file_data["entries"].items()}
         uploaded_files = {}
         same_files = False
 
         if existing_record:
-            same_files = self._compare_existing_files(
+            same_files, files_to_upload = self._compare_existing_files(
                 metadata["id"],
-                existing_record["is_draft"] is True
-                and existing_record["is_published"] is False,
+                existing_record["is_draft"],
+                existing_record["is_published"],
                 existing_record["files"]["entries"],
                 file_data["entries"],
             )
@@ -272,12 +319,12 @@ class FilesHelper:
             uploaded_files = existing_record["files"]
         else:
             app.logger.info("    uploading new files...")
-            app.logger.warning("file data: %s", pformat(file_data))
+            app.logger.warning("file data: %s", pformat(files_to_upload))
             # FIXME: Below is an implementation detail for the CORE
             # migration that should be removed when we use this method
             # for all imports.
             if not source_filepaths:
-                first_file = next(iter(file_data["entries"]))
+                first_file = next(iter(files_to_upload))
                 source_filepaths = {
                     first_file: metadata["custom_fields"][
                         "hclegacy:file_location"
@@ -304,7 +351,7 @@ class FilesHelper:
 
             uploaded_files = self._upload_draft_files(
                 metadata["id"],
-                file_data["entries"],
+                files_to_upload,
                 source_filepaths,
             )
 
@@ -571,28 +618,38 @@ class FilesHelper:
         self,
         draft_id: str,
         is_draft: bool,
+        is_published: bool,
         old_files: dict[str, dict],
         new_entries: dict[str, dict],
     ) -> bool:
         """
         Compare existing files to new entries.
 
+        Note that this function should only be called when we are updating a
+        pre-existing record:
+        - a published record without a draft
+        - a pre-existing draft of a published record
+        - a pre-existing draft of a never-published record
+
         draft_id (str): id of the draft record we're checking. (Although this
             will always be a draft record, it may be a draft revising a
             previously published record.)
-        is_draft (bool): True if working with a draft record that has never
-            been published, False if checking a draft of a published record.
+        is_draft (bool): True if working with a draft record whether a draft
+            of a published record or a draft that has never been published.
+        is_published (bool): True if checking a record that has been published,
+            whether or not a draft of that published record already exists.
         old_files (dict): existing files on the previously saved record
-            metadata. This could be a prior published record or a prior
-            unpublished draft. It will only be empty for a new record with no
-            prior drafts. (Dict is shaped like the "entries" key of a record's
-            files property.)
+            metadata. This could be a prior published record if no draft yet
+            exists, or an existing draft of that published record. (Dict is
+            shaped like the "entries" key of a record's files property.)
         new_entries (dict): new files to be uploaded to the record. (Dict is
             shaped like the "entries" key of a record's files property.)
 
-        If files are different, delete the wrong files from the record. If
+        If files are different, delete any wrong files from the record. If
         files are missing from the file services and/or the draft metadata,
         ensure that the files are deleted from the draft record's file manager.
+        If this is a published record with no draft, ensure that the files are
+        deleted from the published record's file manager.
 
         Note that there are separate files services for operations on the
         file managers for the published and draft versions of a record.
@@ -626,20 +683,69 @@ class FilesHelper:
           draft file manager, even if they are not present in the published
           record file manager.
 
-        FIXME: Do we ever have a record that is not a draft version, even
-        if it has been published prior? Yes, if we're checking an unchanged
-        published record? But in that case we're not changing anything?
-
-        Return True if files are the same, False otherwise.
-
+        Returns a tuple with two elements:
+            bool: True if files are the same, False otherwise.
+            list: A list of keys for files that are to be uploaded.
         """
-        # files_service = (
-        #     records_service.files
-        #     if not is_draft
-        #     else records_service.draft_files
-        # )
         print("is_draft:", is_draft)
         same_files = True
+        files_to_upload = {}
+
+        def inner_compare_files(
+            existing_files: list,
+            files_service,
+            inner_files_to_upload: dict,
+            inner_same_files: bool,
+        ):
+            normalized_new_keys = [
+                unicodedata.normalize("NFC", k) for k in new_entries.keys()
+            ]
+            print("normalized new keys:", normalized_new_keys)
+            old_wrong_files = [
+                f
+                for f in existing_files
+                if unicodedata.normalize("NFC", f["key"])
+                not in normalized_new_keys
+            ]
+            print("old_wrong_files:", old_wrong_files)
+            for o in old_wrong_files:
+                print("old wrong file:", o)
+                self._delete_file(
+                    draft_id,
+                    o["key"],
+                    files_service=files_service,
+                )
+                app.logger.info("    deleted wrong file: %s", o["key"])
+
+            for k, v in new_entries.items():
+                wrong_file = False
+                existing_file = [
+                    f
+                    for f in existing_files
+                    if unicodedata.normalize("NFC", f["key"])
+                    == unicodedata.normalize("NFC", k)
+                ]
+
+                if len(existing_file) == 0:
+                    inner_same_files = False
+                    inner_files_to_upload[k] = new_entries[k]
+                    print("no existing file found")
+
+                elif (existing_file[0]["status"] == "pending") or (
+                    str(v["size"]) != str(existing_file[0]["size"])
+                ):
+                    inner_same_files = False
+                    inner_files_to_upload[k] = new_entries[k]
+                    wrong_file = True
+                    print("pending or size mismatch")
+
+                if wrong_file:
+                    self._delete_file(
+                        draft_id,
+                        existing_file[0]["key"],
+                        files_service=files_service,
+                    )
+            return inner_same_files, inner_files_to_upload
 
         existing_published_files = []
         try:
@@ -665,90 +771,67 @@ class FilesHelper:
         except NoResultFound:
             pass
 
-        for existing_files, files_service in [
-            (existing_draft_files, records_service.draft_files),
-            (existing_published_files, records_service.files),
-        ]:
-            print("files service:", files_service.config)
-            print("existing files:", existing_files)
-            print("new entries:", new_entries)
-            if len(existing_files) == 0 or old_files == {}:
-                if len(new_entries) > 0:
-                    same_files = False
-                    app.logger.info(
-                        "    new files to be uploaded that are not "
-                        "present in the existing record"
-                    )
-                else:
-                    record = files_service._get_record(
-                        draft_id, system_identity, "delete_files"
-                    )
-                    if record.files.entries:
-                        app.logger.info(
-                            "    neither existing record nor import data "
-                            "has files. Ensuring that the record file "
-                            "manager is empty..."
-                        )
-                        record.files.unlock()
-                        record.files.delete_all(
-                            remove_obj=True,
-                            softdelete_obj=False,
-                            remove_rf=True,
-                        )
-                        app.logger.info(
-                            "    deleted all files from existing record"
-                        )
-                    else:
-                        app.logger.info(
-                            "    no files attached to existing record "
-                            "and no new files to be uploaded"
-                        )
-            elif len(existing_files) > 0:
-                normalized_new_keys = [
-                    unicodedata.normalize("NFC", k) for k in new_entries.keys()
-                ]
-                print("normalized new keys:", normalized_new_keys)
-                old_wrong_files = [
-                    f
-                    for f in existing_files
-                    if unicodedata.normalize("NFC", f["key"])
-                    not in normalized_new_keys
-                ]
-                print("old_wrong_files:", old_wrong_files)
-                for o in old_wrong_files:
-                    print("old wrong file:", o)
-                    self._delete_file(
-                        draft_id,
-                        o["key"],
-                        files_service=files_service,
-                    )
+        if (is_draft and is_published) or (is_draft and not is_published):
+            existing_files = existing_draft_files
+            files_service = records_service.draft_files
+        elif is_published and not is_draft:
+            existing_files = existing_published_files
+            files_service = records_service.files
+        else:
+            raise ValueError("Invalid record state for file comparison")
 
-                for k, v in new_entries.items():
-                    wrong_file = False
-                    existing_file = [
-                        f
-                        for f in existing_files
-                        if unicodedata.normalize("NFC", f["key"])
-                        == unicodedata.normalize("NFC", k)
-                    ]
+        print("files service:", files_service.config)
+        print("existing files:", existing_files)
+        print("new entries:", new_entries)
 
-                    if len(existing_file) == 0:
-                        same_files = False
-                        print("no existing file found")
+        # If the existing record has no files
+        if len(existing_files) == 0 or old_files == {}:
+            # Ensure that the appropriate file managers are empty
+            self._clear_managers(existing_files, is_draft, is_published)
 
-                    elif (existing_file[0]["status"] == "pending") or (
-                        str(v["size"]) != str(existing_file[0]["size"])
-                    ):
-                        same_files = False
-                        wrong_file = True
-                        print("pending or size mismatch")
+            # If there are new files to be uploaded, set same_files to False
+            if len(new_entries) > 0:
+                same_files = False
+                print(
+                    "    new files to be uploaded that are not "
+                    "present in the existing record"
+                )
 
-                    if wrong_file:
-                        self._delete_file(
-                            draft_id,
-                            existing_file[0]["key"],
-                            files_service=files_service,
-                        )
+            print("neither existing record nor upload data has files")
 
-            print("same files:", same_files)
-            return same_files
+        # If the existing record has files
+        # includes cases where
+        # - the upload data has files not present in the existing record
+        # - the upload data has files that are present in the existing record
+        # - the existing record has files not present in the upload data
+        # - the existing draft record has files that differ from the published
+        #   record (and from the upload data)
+        if len(existing_files) > 0:
+            same_files, files_to_upload = inner_compare_files(
+                existing_files, files_service
+            )
+
+        # If the existing record is a draft of a published record, we need to
+        # compare the draft files to the published files.
+        if is_draft and is_published:
+            pub_same_files, pub_files_to_upload = inner_compare_files(
+                existing_published_files,
+                records_service.files,
+                files_to_upload,
+                same_files,
+            )
+            if pub_same_files != same_files:
+                print("draft and published same_files results are different")
+                print("draft same_files:", same_files)
+                print("published same_files:", pub_same_files)
+                files_to_upload = pub_files_to_upload
+            if list(files_to_upload.keys()) != list(
+                pub_files_to_upload.keys()
+            ):
+                print("draft and published files to upload are different")
+                print("draft files to upload:", files_to_upload)
+                print("published files to upload:", pub_files_to_upload)
+
+        print("returning same files:", same_files)
+        print("returning files to upload:", files_to_upload)
+        return same_files, files_to_upload
