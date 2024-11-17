@@ -319,7 +319,7 @@ class FilesHelper:
                 "    skipping uploading files (same already uploaded)..."
             )
             uploaded_files = existing_record["files"]
-        else:
+        elif len(files_to_upload) > 0:
             app.logger.info("    uploading new files...")
             app.logger.warning("file data: %s", pformat(files_to_upload))
             # FIXME: Below is an implementation detail for the CORE
@@ -360,6 +360,8 @@ class FilesHelper:
             if need_to_unlock:
                 record.files.lock()
                 uow.register(RecordCommitOp(record))
+        else:
+            app.logger.info("    no files to upload...")
 
         print("returning uploaded_files:", pformat(uploaded_files))
 
