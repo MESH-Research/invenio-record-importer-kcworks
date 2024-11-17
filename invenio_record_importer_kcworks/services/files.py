@@ -90,6 +90,7 @@ class FilesHelper:
     @unit_of_work()
     def _clear_managers(
         self,
+        draft_id: str,
         record,
         is_draft: bool,
         is_published: bool,
@@ -766,7 +767,9 @@ class FilesHelper:
         # If the existing record has no files
         if len(existing_files) == 0 or old_files == {}:
             # Ensure that the appropriate file managers are empty
-            self._clear_managers(existing_files, is_draft, is_published)
+            self._clear_managers(
+                draft_id, existing_files, is_draft, is_published
+            )
 
             # If there are new files to be uploaded, set same_files to False
             if len(new_entries) > 0:
