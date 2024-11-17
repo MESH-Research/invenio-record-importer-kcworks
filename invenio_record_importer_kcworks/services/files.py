@@ -361,8 +361,10 @@ class FilesHelper:
                 record.files.lock()
                 uow.register(RecordCommitOp(record))
         else:
-            app.logger.info("    no files to upload...")
-
+            app.logger.info(
+                "    no files to upload marking as " "metadata-only..."
+            )
+            self.set_to_metadata_only(metadata["id"])
         print("returning uploaded_files:", pformat(uploaded_files))
 
         return uploaded_files
