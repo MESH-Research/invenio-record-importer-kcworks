@@ -10,6 +10,10 @@
 import arrow
 from halo import Halo
 from flask import current_app as app
+from invenio_access.permissions import system_identity
+from invenio_rdm_records.proxies import (
+    current_records_service as records_service,
+)
 from invenio_record_importer_kcworks.errors import (
     SkipRecord,
 )
@@ -180,6 +184,37 @@ class RecordLoader:
             community_id,
         )
         # Publishing the record happens during community acceptance
+        # If the record already belongs to the community...
+        # - if the record has no changes, we do nothing
+        # - if the metadata was not changed, but there are new files, we
+        #   create and publish a new draft of the record with the new files
+        # - if the metadata and/or files were changed, a new draft of the
+        #   record should already exist and we publish that
+        if (
+            result["community_review_accepted"]["status"]
+            == "already_published"
+        ):
+            if result["uploaded_files"].get("status") != "skipped":
+                app.logger.info("    publishing new draft record version...")
+                app.logger.debug(
+                    records_service.read(
+                        system_identity, id_=draft_id
+                    )._record.files.entries
+                )
+                try:
+                    check_rec = records_service.read_draft(
+                        system_identity, id_=draft_id
+                    )._record
+                    print(check_rec.files.bucket)
+                    print(check_rec.files.entries)
+                except Exception:
+                    # edit method creates a new draft of the published record
+                    # if one doesn't already exist
+                    records_service.edit(system_identity, id_=draft_id)
+                publish = records_service.publish(
+                    system_identity, id_=draft_id
+                )
+                assert publish.data["status"] == "published"
 
         # Assign ownership of the record
         result["assigned_ownership"] = RecordsHelper.assign_record_ownership(

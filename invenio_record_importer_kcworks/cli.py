@@ -356,6 +356,9 @@ def load_records(
 
     RecordLoader().load_records_into_invenio(**named_params)
 
+    # Make alert sound to signal end of loading process
+    print("\a")
+
 
 @cli.command(name="read")
 @click.argument("records", nargs=-1)
@@ -806,6 +809,8 @@ def create_stats(
     else:
         StatsFabricator().fabricate_events_from_db(**args)
     print("All done creating stats events!")
+    # Make alert sound to signal end of loading process
+    print("\a")
 
 
 @cli.command(name="aggregations")
@@ -950,6 +955,8 @@ def create_aggregations(start_date, end_date, verbose):
         )
 
     print("All done creating usage stats aggregations!")
+    # Make alert sound to signal end of loading process
+    print("\a")
 
 
 if __name__ == "__main__":

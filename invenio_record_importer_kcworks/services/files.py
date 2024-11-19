@@ -7,10 +7,12 @@
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
-from xml.dom.minidom import Element
 from flask import current_app as app
 import fnmatch
 from invenio_access.permissions import system_identity
+from invenio_drafts_resources.resources.records.errors import (
+    DraftNotCreatedError,
+)
 from invenio_files_rest.errors import InvalidKeyError, BucketLockedError
 from invenio_pidstore.errors import PIDUnregistered
 from invenio_rdm_records.proxies import (
@@ -213,6 +215,57 @@ class FilesHelper:
         return True
 
     @unit_of_work()
+    def _unlock_files(self, existing_record, uow: Optional[UnitOfWork] = None):
+
+        need_to_unlock = (
+            existing_record.get("is_published") if existing_record else False
+        )
+        record = None
+
+        if need_to_unlock:
+            app.logger.warning("    unlocking published record files...")
+            record = records_service.read(
+                system_identity, existing_record["id"]
+            )._record
+            record.files.unlock()
+            uow.register(RecordCommitOp(record))
+
+            try:
+                app.logger.warning("    unlocking draft record files...")
+                draft_record = records_service.read_draft(
+                    system_identity, existing_record["id"]
+                )._record
+                draft_record.files.unlock()
+                uow.register(RecordCommitOp(draft_record))
+            except (NoResultFound, DraftNotCreatedError):
+                pass
+
+    @unit_of_work()
+    def _lock_files(self, existing_record, uow: Optional[UnitOfWork] = None):
+
+        need_to_lock = (
+            existing_record.get("is_published") if existing_record else False
+        )
+        record = None
+
+        if need_to_lock:
+            record = records_service.read(
+                system_identity, id_=existing_record["id"]
+            )._record
+            record.files.lock()
+            uow.register(RecordCommitOp(record))
+
+            try:
+                app.logger.warning("    locking draft record files...")
+                draft_record = records_service.read_draft(
+                    system_identity, existing_record["id"]
+                )._record
+                draft_record.files.lock()
+                uow.register(RecordCommitOp(draft_record))
+            except (NoResultFound, DraftNotCreatedError):
+                pass
+
+    @unit_of_work()
     def handle_record_files(
         self,
         metadata: dict,
@@ -318,7 +371,30 @@ class FilesHelper:
             app.logger.info(
                 "    skipping uploading files (same already uploaded)..."
             )
-            uploaded_files = existing_record["files"]
+            uploaded_files = {"count": 0, "status": "skipped"}
+
+            # Check that any published record has the correct file entries
+            if existing_record["is_published"]:
+                check_record = records_service.read(
+                    system_identity, id_=metadata["id"]
+                )._record
+                # assert check_record.files.entries == file_data["entries"]
+                print("    published record files are...")
+                print(pformat(check_record.files.entries))
+
+            # Check that any draft record has the correct file entries
+            if existing_record["is_draft"]:
+                check_record = records_service.read_draft(
+                    system_identity, id_=metadata["id"]
+                )._record
+                if check_record.files.entries != file_data["entries"]:
+                    app.logger.error(
+                        "    draft record files are missing, updating..."
+                    )
+                    check_record.files.sync(file_data["entries"])
+                    uow.register(RecordCommitOp(check_record))
+                print("    draft record files are...")
+                print(pformat(check_record.files.entries))
         elif len(files_to_upload) > 0:
             app.logger.info("    uploading new files...")
             app.logger.warning("file data: %s", pformat(files_to_upload))
@@ -336,20 +412,7 @@ class FilesHelper:
             # If we're updating a draft of a published record, we need to
             # unlock the published record files before we can upload new
             # files.
-            need_to_unlock = (
-                existing_record.get("is_published")
-                if existing_record
-                else False
-            )
-            record = None
-
-            if need_to_unlock:
-                app.logger.warning("    unlocking published record files...")
-                record = records_service.read(
-                    system_identity, existing_record["id"]
-                )._record
-                record.files.unlock()
-                uow.register(RecordCommitOp(record))
+            self._unlock_files(existing_record)
 
             uploaded_files = self._upload_draft_files(
                 metadata["id"],
@@ -357,9 +420,8 @@ class FilesHelper:
                 source_filepaths,
             )
 
-            if need_to_unlock:
-                record.files.lock()
-                uow.register(RecordCommitOp(record))
+            # Lock the files again for a published record
+            self._lock_files(existing_record)
         else:
             app.logger.info(
                 "    no files to upload marking as " "metadata-only..."
@@ -484,17 +546,27 @@ class FilesHelper:
                     )
         return file_path
 
+    @unit_of_work()
     def _upload_draft_files(
         self,
         draft_id: str,
         files_dict: dict[str, dict],
         source_filenames: dict[str, str],
+        uow: Optional[UnitOfWork] = None,
     ) -> dict:
         output = {}
 
         app.logger.debug(
             f"files_dict in _upload_draft_files: {pformat(files_dict.keys())}"
         )
+
+        # Ensure a draft exists for a published record
+        try:
+            check_record = records_service.read_draft(
+                system_identity, id_=draft_id
+            )._record
+        except (NoResultFound, DraftNotCreatedError):
+            records_service.edit(system_identity, id_=draft_id)
 
         for k, v in files_dict.items():
             long_filename = self._sanitize_filename(source_filenames[k])
@@ -529,6 +601,24 @@ class FilesHelper:
                 raise e
 
             try:
+                # If a draft's file upload is interrupted, occasionally the
+                # file bucket is not created.
+                try:
+                    check_record = records_service.read_draft(
+                        system_identity, id_=draft_id
+                    )._record
+                    draft_files = check_record.files
+                    if draft_files.bucket is None:
+                        draft_files.create_bucket()
+                        app.logger.info(
+                            "    created bucket for draft files..."
+                        )
+                        uow.register(RecordCommitOp(check_record))
+                except (NoResultFound, DraftNotCreatedError):
+                    pass
+                except Exception as e:
+                    raise e
+
                 with open(
                     file_path,
                     "rb",
@@ -554,6 +644,7 @@ class FilesHelper:
 
             output[k] = "uploaded"
 
+        # Check that the files were uploaded correctly
         result_record = self.files_service.list_files(
             system_identity, draft_id
         ).to_dict()
@@ -588,12 +679,17 @@ class FilesHelper:
         try:
             check_record = records_service.read(system_identity, id_=draft_id)
             if check_record.to_dict()["files"]["entries"] == {}:
+                app.logger.info("    syncing published record files...")
                 check_draft = records_service.read_draft(
                     system_identity, id_=draft_id
                 )
+                app.logger.info("    draft record files are...")
+                app.logger.info(pformat(check_draft._record.files.entries))
                 check_record._record.files.sync(check_draft._record.files)
                 check_record._record.files.lock()
-        except PIDUnregistered:
+                app.logger.info("    published record files are...")
+                app.logger.info(pformat(check_record._record.files.entries))
+        except PIDUnregistered:  # no published record
             pass
 
         return output
@@ -778,12 +874,14 @@ class FilesHelper:
             # If there are new files to be uploaded, set same_files to False
             if len(new_entries) > 0:
                 same_files = False
+                files_to_upload = new_entries
                 print(
                     "    new files to be uploaded that are not "
                     "present in the existing record"
                 )
-
-            print("neither existing record nor upload data has files")
+            else:
+                files_to_upload = {}
+                print("neither existing record nor upload data has files")
 
         # If the existing record has files
         # includes cases where

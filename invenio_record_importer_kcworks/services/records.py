@@ -41,6 +41,11 @@ from invenio_record_importer_kcworks.utils.utils import (
     compare_metadata,
 )
 from invenio_records.systemfields.relations.errors import InvalidRelationValue
+from invenio_records_resources.services.uow import (
+    unit_of_work,
+    UnitOfWork,
+    RecordCommitOp,
+)
 from invenio_search.proxies import current_search_client
 from marshmallow.exceptions import ValidationError
 from pprint import pformat
@@ -215,10 +220,12 @@ class RecordsHelper:
             )
         return metadata
 
+    @unit_of_work()
     def create_invenio_record(
         self,
         metadata: dict,
         no_updates: bool = False,
+        uow: Optional[UnitOfWork] = None,
     ) -> dict:
         """
         Create a new Invenio record from the provided dictionary of metadata.
@@ -264,7 +271,7 @@ class RecordsHelper:
         if "pids" in metadata.keys() and "doi" in metadata["pids"].keys():
             my_doi = metadata["pids"]["doi"]["identifier"]
             doi_for_query = my_doi.split("/")
-            # TODO: Can we include deleted records here somehow?
+            # TODO: Can we flag presence of deleted records here somehow?
             try:
                 print(f"searching for existing record with DOI: {my_doi}")
                 print(
@@ -277,11 +284,6 @@ class RecordsHelper:
                     q=f'pids.doi.identifier:"{doi_for_query[0]}/'
                     f'{doi_for_query[1]}"',
                 )
-                # same_doi = records_service.search_drafts(
-                #     system_identity,
-                #     q=f"pids.doi.identifier:{doi_for_query[0]}/"
-                #     f"{doi_for_query[1]}",
-                # )
                 app.logger.debug(f"same_doi: {pformat(same_doi)}")
             except Exception as e:
                 app.logger.error(
@@ -322,17 +324,22 @@ class RecordsHelper:
                             ).to_dict()
                         )
                     except KeyError:
-                        # FIXME: indicates missing published record for
-                        # registered PID; we try to delete PID locally
-                        # and ignore the corrupted draft
-                        provider = PIDProvider(
-                            "base", client=None, pid_type="doi"
-                        )
-                        stranded_pid = provider.get(
-                            metadata["pids"]["doi"]["identifier"]
-                        )
-                        stranded_pid.status = "N"
-                        stranded_pid.delete()
+                        try:
+                            # FIXME: indicates missing published record for
+                            # registered PID; we try to delete PID locally
+                            # and ignore the corrupted draft
+                            provider = PIDProvider(
+                                "base", client=None, pid_type="doi"
+                            )
+                            stranded_pid = provider.get(
+                                metadata["pids"]["doi"]["identifier"]
+                            )
+                            stranded_pid.status = "N"
+                            stranded_pid.delete()
+                        except NoResultFound:
+                            # FIXME: happens for duplicate record ID with
+                            # same DOI??
+                            pass
                 raw_recs = published_recs + draft_recs
                 recs = []
                 # deduplicate based on invenio record id and prefer published
@@ -530,6 +537,11 @@ class RecordsHelper:
                                     "    continuing with existing draft record"
                                     " (new metadata)..."
                                 )
+                                if not result._record.files.bucket:
+                                    result._record.files.create_bucket()
+                                    uow.register(
+                                        RecordCommitOp(result._record)
+                                    )
                                 app.logger.debug(pformat(result))
                                 return {
                                     "status": "updated_draft",
@@ -544,11 +556,12 @@ class RecordsHelper:
                                     "    creating new draft of published "
                                     "record or recovering unpublished draft..."
                                 )
-                                # app.logger.debug(pprint(existing_metadata))
-                                # rec = records_service.read(
-                                #     system_identity,
-                                #     id_=existing_metadata["id"]
-                                # )
+                                app.logger.debug(
+                                    records_service.read(
+                                        system_identity,
+                                        id_=existing_metadata["id"],
+                                    )._record.files.entries
+                                )
                                 create_draft_result = records_service.edit(
                                     system_identity,
                                     id_=existing_metadata["id"],
@@ -556,6 +569,10 @@ class RecordsHelper:
                                 app.logger.info(
                                     "    updating new draft of published "
                                     "record with new metadata..."
+                                )
+                                app.logger.info(
+                                    f"    create_draft_result record files: "
+                                    f"{pformat(records_service.read_draft(system_identity, id_=create_draft_result.id)._record.files)}"
                                 )
                                 result = records_service.update_draft(
                                     system_identity,
