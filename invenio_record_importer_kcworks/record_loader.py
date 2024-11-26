@@ -12,7 +12,7 @@ from halo import Halo
 from flask import current_app as app
 from invenio_access.permissions import system_identity
 from invenio_rdm_records.proxies import (
-    current_records_service as records_service,
+    current_rdm_records_service as records_service,
 )
 from invenio_record_importer_kcworks.errors import (
     SkipRecord,
