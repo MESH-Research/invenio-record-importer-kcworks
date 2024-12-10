@@ -50,7 +50,7 @@ class StatAggregatorOverridable(StatAggregator):
         lower_limit = (
             start_date
             or previous_bookmark
-            or self._get_oldest_event_timestamp()
+            or self._get_oldest_event_timestamp()  # noqa: E501
         )
         # FIXME: this is to handle accidentally recording bookmark
         # with timezone awareness
@@ -82,7 +82,7 @@ class StatAggregatorOverridable(StatAggregator):
                 )
             )
         if update_bookmark:
-            self.bookmark_api.set_bookmark(end_date)
+            self.bookmark_api.set_bookmark(upper_limit)
         return results
 
     # NOTE: debugging statements in delete() may be useful again
