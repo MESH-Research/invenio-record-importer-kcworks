@@ -2,9 +2,11 @@ import arrow
 from datetime import datetime
 from flask import current_app
 from invenio_search.engine import dsl, search
-from invenio_search.proxies import current_search_client
+
+# from invenio_search.proxies import current_search_client
 from invenio_stats.aggregations import StatAggregator
-from invenio_stats.bookmark import format_range_dt
+
+# from invenio_stats.bookmark import format_range_dt
 from typing import Union
 
 
@@ -117,7 +119,8 @@ class StatAggregatorOverridable(StatAggregator):
     #     )
 
     #     if range_args:
-    #         bookmarks_query = bookmarks_query.filter("range", date=range_args)
+    #         bookmarks_query = bookmarks_query.filter("range",
+    #                                                  date=range_args)
 
     #     def _delete_actions():
     #         for query in (aggs_query, bookmarks_query):
