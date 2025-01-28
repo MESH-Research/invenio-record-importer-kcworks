@@ -77,6 +77,9 @@ importer = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
 [project.entry-points."invenio_base.api_apps"]
 importer = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
 
+[project.entry-points."invenio_base.api_blueprints"]
+importer = "invenio_record_importer_kcworks.resources:create_api_blueprint"
+
 [project.entry-points."flask.commands"]
 importer = "invenio_record_importer_kcworks.cli:cli"
 
