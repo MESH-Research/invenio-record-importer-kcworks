@@ -3,7 +3,7 @@ from flask_resources import Resource, ResourceConfig
 from flask_resources.config import from_conf
 from flask_resources.context import resource_requestctx
 from flask_resources.parsers.body import RequestBodyParser
-from flask_resources.parsers.decorators import request_parser, request_body_parser
+from flask_resources.parsers.decorators import request_parser
 from flask_resources.deserializers.json import JSONDeserializer
 from flask_resources.responses import ResponseHandler
 from flask_resources.resources import route
@@ -17,7 +17,7 @@ from werkzeug.exceptions import (
     UnprocessableEntity,
 )
 
-from .parser import RequestMultipartParser
+from .parser import RequestMultipartParser, request_body_parser
 
 # Decorators
 # request_data = request_body_parser(
@@ -26,7 +26,7 @@ from .parser import RequestMultipartParser
 # )
 
 request_form_data = request_body_parser(
-    parsers={"multipart/form-data": RequestBodyParser(JSONDeserializer())},
+    parsers={"multipart/form-data": RequestMultipartParser()},
     default_content_type="multipart/form-data",
 )
 
