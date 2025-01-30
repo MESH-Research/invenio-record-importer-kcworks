@@ -67,44 +67,40 @@ class RecordsHelper:
     @staticmethod
     def change_record_ownership(
         record_id: str,
-        new_owner: User,
+        new_owners: list[User],
     ) -> dict:
         """
         Change the owner of the specified record to a new user.
         """
         app.logger.debug(f"Changing ownership of record {record_id}")
 
-        record = records_service.read(
-            id_=record_id, identity=system_identity
-        )._record
+        record = records_service.read(id_=record_id, identity=system_identity)._record
 
         parent = record.parent
-        parent.access.owned_by = new_owner
+        parent.access.owned_by = new_owners
         parent.commit()
         db.session.commit()
 
         if records_service.indexer:
             records_service.indexer.index(record)
-        result = records_service.read(
-            id_=record_id, identity=system_identity
-        )._record
+        result = records_service.read(id_=record_id, identity=system_identity)._record
 
         return result.parent.access.owned_by
 
     @staticmethod
     def assign_record_ownership(
-        draft_id: str,
-        core_data: dict,
-        record_source: str,
+        draft_id: str = "",
+        submitted_data: dict = {},
+        submitted_owners: list[dict] = [],
+        record_source: str = "",
         existing_record: Optional[dict] = None,
-    ):
+    ) -> User:
         # Create/find the necessary user account
         app.logger.info("    creating or finding the user (submitter)...")
         # TODO: Make sure this will be the same email used for SAML login
-        new_owner_email = core_data["custom_fields"].get("kcr:submitter_email")
-        new_owner_username = core_data["custom_fields"].get(
-            "kcr:submitter_username"
-        )
+        for owner in submitted_owners:
+            new_owner_email = owner.get("email")
+            new_owner_username = owner.get("username")
         if not new_owner_email and not new_owner_username:
             app.logger.warning(
                 "    no submitter email or username found in source metadata. "
@@ -112,46 +108,34 @@ class RecordsHelper:
             )
             new_owner_email = app.config["RECORD_IMPORTER_ADMIN_EMAIL"]
             new_owner_username = None
-        full_name = ""
-        for c in [
-            *core_data["metadata"].get("creators", []),
-            *core_data["metadata"].get("contributors", []),
-        ]:
-            for i in c["person_or_org"].get("identifiers", []):
-                if i["scheme"] == "hc_username":
-                    full_name = c["person_or_org"]["name"]
-        existing_user = current_accounts.datastore.get_user_by_email(
-            new_owner_email
-        )
-        if not existing_user:
-            # handle case where user has multiple emails
-            try:
-                existing_user = current_accounts.datastore.find_user(
-                    username=f"{record_source.lower()}-{new_owner_username}",
-                )
-                app.logger.warning(
-                    f"    finding existing user {new_owner_username} "
-                    f"({new_owner_email})...{existing_user}"
-                )
-                print(
-                    f"    finding existing user {new_owner_username} "
-                    f"({new_owner_email})...{existing_user}"
-                )
-                assert existing_user
-                idp_slug = (
-                    "kc"
-                    if record_source == "knowledgeCommons"
-                    else record_source
-                )
-                existing_user.user_profile[
-                    f"identifier_{idp_slug}_username"
-                ] = new_owner_username
-                existing_user.user_profile["identifier_email"] = (
-                    new_owner_email
-                )
-                current_accounts.datastore.commit()
-            except (NoResultFound, AssertionError):
-                pass
+            existing_user = current_accounts.datastore.get_user_by_email(
+                new_owner_email
+            )
+            if not existing_user:
+                # handle case where user has multiple emails
+                try:
+                    existing_user = current_accounts.datastore.find_user(
+                        username=f"{record_source.lower()}-{new_owner_username}",
+                    )
+                    app.logger.warning(
+                        f"    finding existing user {new_owner_username} "
+                        f"({new_owner_email})...{existing_user}"
+                    )
+                    print(
+                        f"    finding existing user {new_owner_username} "
+                        f"({new_owner_email})...{existing_user}"
+                    )
+                    assert existing_user
+                    idp_slug = (
+                        "kc" if record_source == "knowledgeCommons" else record_source
+                    )
+                    existing_user.user_profile[f"identifier_{idp_slug}_username"] = (
+                        new_owner_username
+                    )
+                    existing_user.user_profile["identifier_email"] = new_owner_email
+                    current_accounts.datastore.commit()
+                except (NoResultFound, AssertionError):
+                    pass
         if existing_user:
             new_owner = existing_user
             app.logger.debug(
@@ -179,9 +163,7 @@ class RecordsHelper:
             and str(existing_record["parent"]["access"]["owned_by"]["user"])
             == str(new_owner.id)
         ):
-            app.logger.info(
-                "    skipping re-assigning ownership of the record "
-            )
+            app.logger.info("    skipping re-assigning ownership of the record ")
             app.logger.info(
                 f"    (already belongs to {new_owner_email}, "
                 f"user {new_owner.id})..."
@@ -194,7 +176,7 @@ class RecordsHelper:
                 f"{new_owner.id})..."
             )
             changed_ownership = RecordsHelper.change_record_ownership(
-                draft_id, new_owner
+                draft_id, new_owners
             )
             # Remember: changed_ownership is an Owner systemfield object,
             # not User
@@ -293,21 +275,14 @@ class RecordsHelper:
             if same_doi["hits"]["total"]["value"] > 0:
                 draft_recs = []
                 published_recs = []
-                rec_ids = [
-                    r["_source"]["id"] for r in same_doi["hits"]["hits"]
-                ]
+                rec_ids = [r["_source"]["id"] for r in same_doi["hits"]["hits"]]
                 for rec_id in rec_ids:
                     try:
                         published_rec = records_service.read(
                             system_identity, id_=rec_id
                         ).to_dict()
-                        if (
-                            published_rec["pids"]["doi"]["identifier"]
-                            != my_doi
-                        ):
-                            published_doi = published_rec["pids"]["doi"][
-                                "identifier"
-                            ]
+                        if published_rec["pids"]["doi"]["identifier"] != my_doi:
+                            published_doi = published_rec["pids"]["doi"]["identifier"]
                             print(
                                 f"published rec doi for {rec_id} ("
                                 f"{published_doi}) does not actually match "
@@ -328,9 +303,7 @@ class RecordsHelper:
                             # FIXME: indicates missing published record for
                             # registered PID; we try to delete PID locally
                             # and ignore the corrupted draft
-                            provider = PIDProvider(
-                                "base", client=None, pid_type="doi"
-                            )
+                            provider = PIDProvider("base", client=None, pid_type="doi")
                             stranded_pid = provider.get(
                                 metadata["pids"]["doi"]["identifier"]
                             )
@@ -360,9 +333,7 @@ class RecordsHelper:
                         q=f"id:{rec_ids[0]}",
                     )._results[0]
                     if (
-                        existing_draft_hit.to_dict()["pids"]["doi"][
-                            "identifier"
-                        ]
+                        existing_draft_hit.to_dict()["pids"]["doi"]["identifier"]
                         != my_doi
                     ):
                         recs.append(existing_draft_hit.to_dict())
@@ -384,9 +355,7 @@ class RecordsHelper:
                     app.logger.info("   deleting extra records...")
                     for r in recs[1:]:
                         try:
-                            self.delete_invenio_record(
-                                r["id"], record_type="draft"
-                            )
+                            self.delete_invenio_record(r["id"], record_type="draft")
                         except PIDUnregistered as e:
                             app.logger.error(
                                 f"    error deleting extra record with same "
@@ -443,13 +412,11 @@ class RecordsHelper:
                             ]:
                                 for k2 in val.keys():
                                     if val[k2] is None:
-                                        update_payload.setdefault(key, {}).pop(
-                                            k2
-                                        )
+                                        update_payload.setdefault(key, {}).pop(k2)
                                     else:
-                                        update_payload.setdefault(key, {})[
-                                            k2
-                                        ] = metadata[key][k2]
+                                        update_payload.setdefault(key, {})[k2] = (
+                                            metadata[key][k2]
+                                        )
                         app.logger.info(
                             "    updating existing record with new metadata..."
                         )
@@ -483,12 +450,7 @@ class RecordsHelper:
                             # TODO: Check whether this is the right way
                             # to update
                             if existing_metadata["files"].get("enabled") and (
-                                len(
-                                    existing_metadata["files"][
-                                        "entries"
-                                    ].keys()
-                                )
-                                > 0
+                                len(existing_metadata["files"]["entries"].keys()) > 0
                             ):
                                 # update_draft below will copy files from the
                                 # existing draft's file manager over to the new
@@ -503,9 +465,7 @@ class RecordsHelper:
                                 app.logger.info(
                                     "    existing record has files attached..."
                                 )
-                                update_payload["files"] = existing_metadata[
-                                    "files"
-                                ]
+                                update_payload["files"] = existing_metadata["files"]
                                 # update_payload["files"] = metadata["files"]
                                 print(
                                     f"update_payload['files']: "
@@ -516,13 +476,10 @@ class RecordsHelper:
                             if existing_metadata["metadata"].get("rights"):
                                 existing_metadata["metadata"]["rights"] = [
                                     {"id": r["id"]}
-                                    for r in existing_metadata["metadata"][
-                                        "rights"
-                                    ]
+                                    for r in existing_metadata["metadata"]["rights"]
                                 ]
                             app.logger.info(
-                                "    metadata updated to match migration "
-                                "source..."
+                                "    metadata updated to match migration " "source..."
                             )
                             try:
                                 # If there is an existing draft for a
@@ -539,9 +496,7 @@ class RecordsHelper:
                                 )
                                 if not result._record.files.bucket:
                                     result._record.files.create_bucket()
-                                    uow.register(
-                                        RecordCommitOp(result._record)
-                                    )
+                                    uow.register(RecordCommitOp(result._record))
                                 app.logger.debug(pformat(result))
                                 return {
                                     "status": "updated_draft",
@@ -591,10 +546,8 @@ class RecordsHelper:
                                     errors = [
                                         e
                                         for e in result.to_dict()["errors"]
-                                        if e.get("field")
-                                        != "metadata.rights.0.icon"
-                                        and e.get("messages")
-                                        != ["Unknown field."]
+                                        if e.get("field") != "metadata.rights.0.icon"
+                                        and e.get("messages") != ["Unknown field."]
                                         and "Missing uploaded files"
                                         not in e.get("messages")[0]
                                     ]
@@ -630,19 +583,15 @@ class RecordsHelper:
                         )
                         existing_record_id = ""
                         try:
-                            existing_record_hit = (
-                                records_service.search_drafts(
-                                    system_identity,
-                                    q=f"id:{existing_metadata['id']}",
-                                )._results[0]
-                            )
+                            existing_record_hit = records_service.search_drafts(
+                                system_identity,
+                                q=f"id:{existing_metadata['id']}",
+                            )._results[0]
                             print(
                                 f"existing_record_hit draft: "
                                 f"{pformat(existing_record_hit.to_dict()['pids'])}"  # noqa: E501
                             )
-                            existing_record_id = existing_record_hit.to_dict()[
-                                "uuid"
-                            ]
+                            existing_record_id = existing_record_hit.to_dict()["uuid"]
                         except IndexError:
                             existing_record_hit = records_service.read(
                                 system_identity, id_=existing_metadata["id"]
@@ -705,9 +654,7 @@ class RecordsHelper:
 
         def inner_delete_draft(record_id: str) -> dict:
             try:  # unregistered DOI can be deleted
-                result = records_service.delete_draft(
-                    system_identity, id_=record_id
-                )
+                result = records_service.delete_draft(system_identity, id_=record_id)
             # TODO: if DOI is registered or reserved, but no published version
             # exists, the draft can't be manually deleted (involves deleting
             # DOI from PID registry). We let the draft be cleaned up by the
@@ -728,20 +675,16 @@ class RecordsHelper:
             return result
 
         try:
-            reviews = records_service.review.read(
-                system_identity, id_=record_id
-            )
+            reviews = records_service.review.read(system_identity, id_=record_id)
             if reviews:
                 # FIXME: What if there are multiple reviews?
                 app.logger.debug(
-                    f"    deleting review request for draft record "
-                    f"{record_id}..."
+                    f"    deleting review request for draft record " f"{record_id}..."
                 )
                 records_service.review.delete(system_identity, id_=record_id)
         except ReviewNotFoundError:
             app.logger.info(
-                f"    no review requests found for draft record "
-                f"{record_id}..."
+                f"    no review requests found for draft record " f"{record_id}..."
             )
 
         if record_type == "draft":
@@ -771,9 +714,7 @@ class RecordsHelper:
                 current_accounts.datastore.get_user(admin_email)
             )
             service = current_rdm_records.records_service
-            record = service.read(
-                id_=record_id, identity=system_identity
-            )._record
+            record = service.read(id_=record_id, identity=system_identity)._record
             siblings = list(RDMRecord.get_records_by_parent(record.parent))
             app.logger.warning("siblings: %s", pformat(siblings))
             # remove the 0th (latest) version to leave the previous version(s):
@@ -810,9 +751,7 @@ class RecordsHelper:
             if note:
                 payload["note"] = note
 
-            deleted = service.delete_record(
-                admin_identity, id_=record_id, data=payload
-            )
+            deleted = service.delete_record(admin_identity, id_=record_id, data=payload)
             deleted_records[record_id] = deleted
 
         return deleted_records

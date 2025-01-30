@@ -46,6 +46,15 @@ class FileUploadError(Exception):
         self.message = message
 
 
+class InvalidParametersError(Exception):
+    """Invalid parameters error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(InvalidParametersError, self).__init__(message)
+        self.message = message
+
+
 class MissingNewUserEmailError(Exception):
     """Missing new user email error."""
 
@@ -79,6 +88,15 @@ class NoUpdates(Exception):
     def __init__(self, message):
         """Initialize the exception."""
         super(NoUpdates, self).__init__(message)
+        self.message = message
+
+
+class NoAvailableRecordsError(Exception):
+    """No available records error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(NoAvailableRecordsError, self).__init__(message)
         self.message = message
 
 

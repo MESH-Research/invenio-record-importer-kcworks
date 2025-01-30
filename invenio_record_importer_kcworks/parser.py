@@ -1,4 +1,4 @@
-from flask import request
+from flask import request, current_app as app
 from flask_resources.config import resolve_from_conf
 from flask_resources.context import resource_requestctx
 from flask_resources.deserializers import JSONDeserializer
@@ -36,8 +36,6 @@ def request_body_parser(
             )
             if "multipart/form-data" in content_type:
                 content_type = content_type.split(";")[0]
-            print("content_type")
-            print(content_type)
 
             # Get the parser
             parser = body_parsers.get(content_type)
@@ -59,6 +57,8 @@ class RequestMultipartParser:
 
     def parse(self):
         """Parse the request multipart data."""
+        app.logger.debug(f"form type: {type(request.form)}")
+        app.logger.debug(f"Request form: {request.form}")
         return {
             "form": request.form,
             "files": request.files,

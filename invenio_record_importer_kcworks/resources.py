@@ -1,14 +1,15 @@
-from flask import jsonify, request
+from flask import g, jsonify, current_app as app
 from flask_resources import Resource, ResourceConfig
 from flask_resources.config import from_conf
 from flask_resources.context import resource_requestctx
-from flask_resources.parsers.body import RequestBodyParser
 from flask_resources.parsers.decorators import request_parser
 from flask_resources.deserializers.json import JSONDeserializer
 from flask_resources.responses import ResponseHandler
 from flask_resources.resources import route
 from flask_resources.serializers.json import JSONSerializer
+import json
 import marshmallow as ma
+from werkzeug.datastructures import ImmutableMultiDict
 from werkzeug.exceptions import (
     Forbidden,
     MethodNotAllowed,
@@ -19,15 +20,26 @@ from werkzeug.exceptions import (
 
 from .parser import RequestMultipartParser, request_body_parser
 
+
+def bool_from_string(value: str) -> bool:
+    """Convert a string to a boolean.
+
+    If the value is already a boolean, just return it. If the value is not a
+    standard string representation of a boolean, raise a BadRequest exception.
+    """
+    if value in ["true", "True", "TRUE", "1", True]:
+        return True
+    elif value in ["false", "False", "FALSE", "0", False]:
+        return False
+    else:
+        raise BadRequest(f"Invalid boolean value: {value}")
+
+
 # Decorators
-# request_data = request_body_parser(
-#     parsers=from_conf("request_body_parsers"),
-#     default_content_type=from_conf("default_content_type"),
-# )
 
 request_form_data = request_body_parser(
-    parsers={"multipart/form-data": RequestMultipartParser()},
-    default_content_type="multipart/form-data",
+    parsers=from_conf("request_body_parsers"),
+    default_content_type=from_conf("default_content_type"),
 )
 
 request_parsed_view_args = request_parser(
@@ -36,31 +48,6 @@ request_parsed_view_args = request_parser(
     },
     location="view_args",
 )
-
-# request_parsed_args = request_parser(
-#     {
-#         "commons_instance": ma.fields.String(),
-#         "commons_group_id": ma.fields.String(),
-#         "collection": ma.fields.String(),
-#         "page": ma.fields.Integer(load_default=1),
-#         "size": ma.fields.Integer(
-#             validate=ma.validate.Range(min=4, max=1000), load_default=25
-#         ),
-#         "sort": ma.fields.String(
-#             validate=ma.validate.OneOf(
-#                 [
-#                     "newest",
-#                     "oldest",
-#                     "updated-desc",
-#                     "updated-asc",
-#                 ]
-#             ),
-#             load_default="updated-desc",
-#         ),
-#         "restore_deleted": ma.fields.Boolean(load_default=False),
-#     },
-#     location="args",
-# )
 
 
 class RecordImporterResourceConfig(ResourceConfig):
@@ -133,17 +120,71 @@ class RecordImporterResource(Resource):
     @request_parsed_view_args
     @request_form_data
     def import_records(self):
-        community_id = resource_requestctx.view_args.get("community")
-        file_data = request.files
-        review_required = request.form.get("review_required", True)
-        strict_validation = request.form.get("strict_validation", True)
-        all_or_none = request.form.get("all_or_none", True)
+        """Import records.
 
-        ## TODO: use the Falsk secure_filename function to sanitize the file name
+        Expects one view argument (url path parameter) for the community ID. This
+        can be either the community UUID or the community url slug.
+
+        Expects a multipart/form-data request with the following fields in the
+        form data:
+
+        - community(str): The community ID.
+        - files(ImmutableMultiDict[str, FileStorage]): The files to import. Each
+          key in the dictionary should be identical, "files". Each value is a
+          werkzeug.datastructures.FileStorage object. *Note: the list of values
+          must be obtained by calling .getlist("files") on the ImmutableMultiDict.
+          Requesting the key "files" will return only the first value in the
+          dictionary.
+        - metadata(dict): The metadata to attach to the records.
+        - review_required(bool): Whether to require review of the records.
+        - strict_validation(bool): Whether to strictly validate the records.
+        - all_or_none(bool): Whether to import all records or none.
+        """
+        community_id = resource_requestctx.view_args.get("community")
+        file_data = resource_requestctx.data["files"]
+        if isinstance(file_data, ImmutableMultiDict):
+            file_data = file_data.getlist("files")
+
+        metadata = json.loads(resource_requestctx.data["form"].get("metadata"))
+        app.logger.debug(f"metadata type: {type(metadata)}")
+        if not isinstance(metadata, list):
+            raise BadRequest("Invalid metadata")
+
+        id_scheme = resource_requestctx.data["form"].get("id_scheme", "neh_id")
+        alternate_id_scheme = resource_requestctx.data["form"].get(
+            "alternate_id_scheme", ""
+        )
+        review_required = bool_from_string(
+            resource_requestctx.data["form"].get("review_required", True)
+        )
+        strict_validation = bool_from_string(
+            resource_requestctx.data["form"].get("strict_validation", True)
+        )
+        all_or_none = bool_from_string(
+            resource_requestctx.data["form"].get("all_or_none", True)
+        )
+
+        user_id = g.identity.user.id
+
+        file_data = [
+            {
+                "filename": file.filename,
+                "content_type": file.content_type,
+                "mimetype": file.mimetype,
+                "mimetype_params": file.mimetype_params,
+                "stream": file.stream,
+            }
+            for file in file_data
+        ]
+        ## TODO: use the Flask secure_filename function to sanitize the file name
 
         import_result = self.service.import_records(
-            file_data,
-            community_id,
+            file_data=file_data,
+            metadata=metadata,
+            id_scheme=id_scheme,
+            alternate_id_scheme=alternate_id_scheme,
+            user_id=user_id,
+            community_id=community_id,
             review_required=review_required,
             strict_validation=strict_validation,
             all_or_none=all_or_none,
