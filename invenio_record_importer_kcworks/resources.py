@@ -3,7 +3,6 @@ from flask_resources import Resource, ResourceConfig
 from flask_resources.config import from_conf
 from flask_resources.context import resource_requestctx
 from flask_resources.parsers.decorators import request_parser
-from flask_resources.deserializers.json import JSONDeserializer
 from flask_resources.responses import ResponseHandler
 from flask_resources.resources import route
 from flask_resources.serializers.json import JSONSerializer
@@ -19,6 +18,7 @@ from werkzeug.exceptions import (
 )
 
 from .parser import RequestMultipartParser, request_body_parser
+from .types import FileData
 
 
 def bool_from_string(value: str) -> bool:
@@ -167,13 +167,13 @@ class RecordImporterResource(Resource):
         user_id = g.identity.user.id
 
         file_data = [
-            {
-                "filename": file.filename,
-                "content_type": file.content_type,
-                "mimetype": file.mimetype,
-                "mimetype_params": file.mimetype_params,
-                "stream": file.stream,
-            }
+            FileData(
+                filename=file.filename,
+                content_type=file.content_type,
+                mimetype=file.mimetype,
+                mimetype_params=file.mimetype_params,
+                stream=file.stream,
+            )
             for file in file_data
         ]
         ## TODO: use the Flask secure_filename function to sanitize the file name

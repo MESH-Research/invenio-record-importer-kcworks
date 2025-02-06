@@ -1,8 +1,8 @@
 from flask import current_app as app
 from invenio_records_resources.services.base import Service
 from pprint import pformat
-from tempfile import SpooledTemporaryFile
 from .record_loader import RecordLoader
+from .types import FileData, APIResponsePayload
 
 
 class RecordImporterService(Service):
@@ -14,7 +14,7 @@ class RecordImporterService(Service):
 
     def import_records(
         self,
-        file_data: list[dict] = [],
+        file_data: list[FileData] = [],
         metadata: list[dict] = [],
         user_id: str = "",
         community_id: str = "",
@@ -23,14 +23,16 @@ class RecordImporterService(Service):
         review_required: bool = True,
         strict_validation: bool = True,
         all_or_none: bool = True,
-    ):
+        views_field: str = "",
+        downloads_field: str = "",
+    ) -> dict:
         """Import records.
 
         Parameters
         ----------
-        file_data : list[dict]
-            The file data to import. Each dictionary in the list contains the
-            following keys:
+        file_data : list[FileData]
+            The file data to import. Each FileData object contains the following
+            following keys/properties:
             - filename: the name of the file
             - content_type: the MIME type of the file
             - mimetype: the MIME type of the file
@@ -62,6 +64,10 @@ class RecordImporterService(Service):
             Whether to import a partial set of records in the case that some of
             the records fail. If it is `True`, no records will be imported if
             any of the records fail.
+        views_field : str
+            The field to use for the views count. Defaults to ""
+        downloads_field : str
+            The field to use for the downloads count. Defaults to ""
         """
         app.logger.debug(f"Importing records with metadata: {pformat(metadata)}")
         app.logger.debug(f"Importing records with metadata: {type(metadata)}")
@@ -73,26 +79,20 @@ class RecordImporterService(Service):
             f"Importing records with strict validation: {strict_validation}"
         )
         app.logger.debug(f"Importing records with all or none: {all_or_none}")
-        import_result = RecordLoader(
+        import_result: APIResponsePayload = RecordLoader(
             user_id=user_id,
             community_id=community_id,
+            views_field=views_field,
+            downloads_field=downloads_field,
+            sourceid_schemes=[id_scheme, alternate_id_scheme],
         ).load_all(
-            file_data=file_data,
+            files=file_data,
             metadata=metadata,
             no_updates=True,
+            review_required=review_required,
+            strict_validation=strict_validation,
+            all_or_none=all_or_none,
         )
         app.logger.debug(import_result)
 
-        return {
-            "status": "success",
-            "data": [
-                {
-                    "record_id": "",
-                    "record_url": "",
-                    "files": [],
-                    "collection_id": "",
-                    "errors": [],
-                    "metadata": {},
-                },
-            ],
-        }
+        return import_result.model_dump()

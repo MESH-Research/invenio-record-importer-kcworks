@@ -16,6 +16,7 @@ from invenio_oauthclient.models import UserIdentity
 from invenio_record_importer_kcworks.services.communities import (
     CommunityRecordHelper,
 )
+import json
 import os
 import requests
 from traceback import print_exc
@@ -34,16 +35,15 @@ class UsersHelper:
         """Get all users with the role of 'admin'."""
         admin_role = current_accounts.datastore.find_role_by_id("admin")
         admin_role_holders = [
-            u
-            for u in current_accounts.datastore.find_role(
-                admin_role.name
-            ).users
+            u for u in current_accounts.datastore.find_role(admin_role.name).users
         ]
         assert len(admin_role_holders) > 0  # should be at least one admin
         return admin_role_holders
 
     @staticmethod
-    def get_user_by_source_id(source_id: str, record_source: str) -> dict:
+    def get_user_by_source_id(
+        source_id: str, record_source: str = "knowledgeCommons"
+    ) -> dict:
         """Get a user by their source id.
 
         Note that this method depends on the invenio_remote_user_data module
@@ -58,13 +58,11 @@ class UsersHelper:
 
         :returns: A dictionary containing the user data
         """
-        endpoint_config = app.config.get("REMOTE_USER_DATA_API_ENDPOINTS")[
+        endpoint_config = app.config.get("REMOTE_USER_DATA_API_ENDPOINTS", {})[
             record_source
         ]["users"]
 
-        remote_api_token = os.environ[
-            endpoint_config["token_env_variable_label"]
-        ]
+        remote_api_token = os.environ[endpoint_config["token_env_variable_label"]]
         api_url = f"{endpoint_config['remote_endpoint']}/{source_id}"
         headers = {"Authorization": f"Bearer {remote_api_token}"}
         response = requests.request(
@@ -75,21 +73,16 @@ class UsersHelper:
             timeout=10,
         )
         if response.status_code != 200:
-            app.logger.error(
-                f"Error fetching user data from remote API: {api_url}"
-            )
-            app.logger.error(
-                "Response status code: " + str(response.status_code)
-            )
+            app.logger.error(f"Error fetching user data from remote API: {api_url}")
+            app.logger.error("Response status code: " + str(response.status_code))
         try:
             app.logger.debug(response.json())
             return response.json()
         except requests.exceptions.JSONDecodeError:
             app.logger.error(
-                "JSONDecodeError: User group data API response was not"
-                " JSON:"
+                "JSONDecodeError: User group data API response was not" " JSON:"
             )
-            return None
+            return {}
 
     def create_invenio_user(
         self,
@@ -98,6 +91,8 @@ class UsersHelper:
         full_name: str = "",
         record_source: str = "",
         community_owner: list = [],
+        orcid: str = "",
+        other_user_ids: list = [],
     ) -> dict:
         """
         Create a new user account in the Invenio instance
@@ -123,6 +118,11 @@ class UsersHelper:
         community_owner : list
             The list of communities to which the user will be assigned as
             owner. These may be slug strings or community record UUIDs.
+        orcid : str
+            The ORCID for the new user account
+        other_user_ids : list
+            A list of other user ids that the new user should be linked to.
+            These may be user record UUIDs or other identifiers.
 
         Returns
         -------
@@ -158,9 +158,7 @@ class UsersHelper:
                 "default admin account as owner."
             )
 
-        existing_user = current_accounts.datastore.get_user_by_email(
-            user_email
-        )
+        existing_user = current_accounts.datastore.get_user_by_email(user_email)
         if existing_user:
             app.logger.info(f"    found existing user {existing_user.id}...")
             new_user_flag = False
@@ -185,9 +183,7 @@ class UsersHelper:
                 assert current_accounts.datastore.activate_user(new_user)
                 current_accounts.datastore.commit()
 
-            user_confirmed = current_accounts.datastore.get_user_by_email(
-                user_email
-            )
+            user_confirmed = current_accounts.datastore.get_user_by_email(user_email)
             if user_confirmed:
                 user_id = user_confirmed.id
                 new_user_flag = True
@@ -199,6 +195,17 @@ class UsersHelper:
         if full_name:
             active_user.user_profile.full_name = full_name
             current_accounts.datastore.commit()
+        if orcid:
+            active_user.user_profile.identifier_orcid = orcid
+            current_accounts.datastore.commit()
+        if other_user_ids:
+            active_user.user_profile.identifier_other = json.dumps(
+                [
+                    {"scheme": i["scheme"], "identifier": i["identifier"]}
+                    for i in other_user_ids
+                ]
+            )
+            current_accounts.datastore.commit()
         if record_source and source_username:
             existing_saml = UserIdentity.query.filter_by(
                 id_user=active_user.id,
@@ -208,9 +215,7 @@ class UsersHelper:
 
             if not existing_saml:
                 try:
-                    UserIdentity.create(
-                        active_user, record_source, source_username
-                    )
+                    UserIdentity.create(active_user, record_source, source_username)
                     db.session.commit()
                     app.logger.info(
                         f"    configured SAML login for {user_email} as"
@@ -248,9 +253,7 @@ class UsersHelper:
 
         communities_owned = []
         for c in community_owner:
-            communities_owned.append(
-                CommunityRecordHelper.add_owner(c, active_user.id)
-            )
+            communities_owned.append(CommunityRecordHelper.add_owner(c, active_user.id))
 
         return {
             "user": active_user,

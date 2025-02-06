@@ -375,12 +375,15 @@ class CommunitiesHelper:
         # Attachment to community unnecessary if the record is already
         # published or included in it, even if a new draft version
         try:
-            existing_record = (
-                records_service.search_drafts(system_identity, q=f"id:{draft_id}")
-                .to_dict()
-                .get("hits", {})
-                .get("hits", [])[0]
-            )
+            # existing_record = (
+            #     records_service.search_drafts(system_identity, q=f"id:{draft_id}")
+            #     .to_dict()
+            #     .get("hits", {})
+            #     .get("hits", [])[0]
+            # )
+            existing_record = records_service.read_draft(
+                system_identity, id_=draft_id
+            ).to_dict()
             assert existing_record
         except (IndexError, NoResultFound):
             try:
@@ -389,6 +392,7 @@ class CommunitiesHelper:
                 ).to_dict()
             except (AssertionError, PIDUnregistered):
                 existing_record = None
+        app.logger.debug(f"existing_record: {pformat(existing_record)}")
 
         if (
             existing_record
@@ -491,7 +495,6 @@ class CommunitiesHelper:
                 new_request = records_service.review.update(  # noqa: F841
                     system_identity, draft_id, review_body
                 )
-                app.logger.debug(f"new_request: {pformat(new_request.to_dict())}")
 
                 submitted_body = {
                     "payload": {
@@ -518,10 +521,9 @@ class CommunitiesHelper:
                         submitted_request.id,
                         "submit",
                     )
-                # app.logger.debug(
-                #     f"submitted_request: {pformat(new_request.to_dict())}"
-                # )
-
+                    app.logger.debug(
+                        f"submitted_request: {pformat(submitted_request.to_dict())}"
+                    )
                 app.logger.debug("submitted to community")
 
                 if submitted_request.data["status"] != "accepted":
@@ -547,7 +549,7 @@ class CommunitiesHelper:
                 app.logger.debug("review_accepted")
                 assert review_accepted.data["status"] == "accepted"
 
-                return review_accepted
+                return review_accepted.to_dict()
 
             # Catch validation errors when publishing the record
             except ValidationError as e:
@@ -558,7 +560,9 @@ class CommunitiesHelper:
 
             # If the record is already published, we need to create/retrieve
             # and accept a 'community-inclusion' request instead
-            except (NoResultFound, ReviewStateError):
+            except (NoResultFound, ReviewStateError) as e:
+                raise e
+                app.logger.debug(f"   {pformat(e)}")
                 app.logger.debug("   record is already published")
                 record_communities = current_rdm_records.record_communities_service
 
@@ -576,7 +580,7 @@ class CommunitiesHelper:
                 # FIXME: How can we tell if an inclusion request is already
                 # open and/or accepted? Without relying on this error message?
                 if errors and "already included" in errors[0]["message"]:
-                    return {submitted_request}
+                    return {submitted_request.to_dict()}
                 # If that failed look for any existing open
                 # 'community-inclusion' request and continue with it
                 if errors:

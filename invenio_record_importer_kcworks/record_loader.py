@@ -8,7 +8,6 @@
 # more details.
 
 import arrow
-from halo import Halo
 from flask import current_app as app
 from invenio_access.permissions import system_identity
 from invenio_rdm_records.proxies import (
@@ -33,12 +32,18 @@ import itertools
 import jsonlines
 from pathlib import Path
 from sqlalchemy.orm.exc import StaleDataError
-from traceback import print_exc
-from typing import Optional, Union
+from traceback import print_exc, format_exc
+from typing import Union
 from pprint import pformat
 from invenio_record_importer_kcworks.errors import (
     InvalidParametersError,
     NoAvailableRecordsError,
+)
+from invenio_record_importer_kcworks.types import (
+    APIResponsePayload,
+    LoaderResult,
+    FileData,
+    ImportedRecord,
 )
 
 
@@ -50,6 +55,8 @@ class RecordLoader:
         user_id: str = "",
         community_id: str = "",
         sourceid_schemes: list[str] = ["hclegacy-pid", "hclegacy-record-id"],
+        views_field: str = "",
+        downloads_field: str = "",
     ):
         self.user_id = user_id
         self.community_id = community_id
@@ -80,15 +87,22 @@ class RecordLoader:
             self.existing_failed_sourceids,
         ) = self._load_prior_failed_records()
 
+        if not self.user_id:
+            raise ValueError("user_id is required")
+        if not self.community_id:
+            raise ValueError("community_id is required")
+        self.views_field = views_field
+        self.downloads_field = downloads_field
+
     def load(
         self,
+        index: int = 0,
         import_data: dict = {},
-        user_id: str = "",
-        files: list = [],
+        files: list[FileData] = [],
         no_updates: bool = False,
-        record_source: Optional[str] = None,
+        user_system: str = "knowledgeCommons",
         overrides: dict = {},
-    ) -> dict:
+    ) -> LoaderResult:
         """
         Create an invenio record with file uploads, ownership, communities.
 
@@ -101,9 +115,9 @@ class RecordLoader:
             - metadata: a dictionary of standard metadata fields
             - pids: a dictionary of PID values
             - files: a dictionary of file uploads
-        files : list
-            A list of file upload dictionaries. Each dictionary should have
-            the following keys:
+        files : list[FileData]
+            A list of FileData objects. Each FileData object should have
+            the following properties:
             - filename: the name of the file
             - content_type: the MIME type of the file
             - mimetype: the MIME type of the file
@@ -111,39 +125,51 @@ class RecordLoader:
             - stream: the file stream (a file-like object)
         no_updates : bool
             If True, do not update existing records
-        record_source : str
-            The name of the source service for the record
+        user_system : str
+            The name of the system in which the user is/will be registered.
+            Defaults to "knowledgeCommons".
         overrides : dict
             A dictionary of metadata fields to override in the import data
             if manual corrections are necessary
 
         Returns
         -------
-        dict
-            A dictionary with the results of the import. It has the following
-            keys:
-            - community: the community data dictionary for the record's
+        LoaderResult
+            A LoaderResult object with the results of the import. It has the
+            following properties:
+            - primary_community: the community data dictionary for the record's
                 primary community
-            - metadata_record_created: the metadata record creation result.
+            - record_created: the metadata record creation result.
                 This is not just the metadata record, but the dictionary
                 returned by the create_invenio_record method of RecordsHelper.
                 It contains the following keys:
                 - record_data: the metadata record
                 - record_uuid: the UUID of the metadata record
                 - status: the status of the metadata record
+            - existing_record: the existing metadata record if it exists
+                (after updating)
             - uploaded_files: the file upload results
-            - community_review_accepted: the community review acceptance result
+            - community_review_result: the community review acceptance result
+                as a dictionary
             - assigned_ownership: the record ownership assignment result
             - added_to_collections: the group collection addition
         """
-        existing_record = None
-        result = {}
-
+        result = LoaderResult(
+            index=index,
+            primary_community={},
+            record_created={},
+            uploaded_files={},
+            community_review_result={},
+            assigned_owners=[],
+            added_to_collections=[],
+            existing_record={},
+            errors=[],
+        )
         for key, val in overrides.items():
             app.logger.debug(f"updating metadata key {key} with value {val}")
             import_data = replace_value_in_nested_dict(import_data, key, val)
 
-        file_data = import_data["files"]
+        submitted_files_data: dict = import_data["files"]
 
         # Build the initial metadata to be submitted
         submitted_data = {
@@ -161,78 +187,84 @@ class RecordLoader:
             }
         else:
             submitted_data["access"] = {"record": "public", "files": "public"}
-        if len(file_data.get("entries", [])) > 0:
+
+        # Keep file data separate from other metadata, but enable files if
+        # there are files in the metadata
+        if len(submitted_files_data.get("entries", [])) > 0:
             submitted_data["files"] = {"enabled": True}
         else:
             submitted_data["files"] = {"enabled": False}
 
-        # Create/find the necessary domain communities
-        app.logger.info("    finding or creating community...")
+        # Create/find the necessary primary community
+        # We aren't yet placing the record in the community, just making sure
+        # the community exists
+        app.logger.info("    finding or creating primary community...")
         if self.community_id:
-            # FIXME: allow for drawing community labels from other fields
-            # for other data sources
-            result["community"] = CommunitiesHelper().prepare_invenio_community(
-                record_source=record_source or "",
+            result.primary_community = CommunitiesHelper().prepare_invenio_community(
+                record_source=user_system,
                 community_string=self.community_id,
             )
-            community_id = result["community"]["id"]
 
         # Create the basic metadata record
+        # This tries to recover (or if necessary, delete) existing draft or
+        # published records *unless* the no_updates flag is set
         app.logger.info("    finding or creating draft metadata record...")
         app.logger.debug(f"    submitted_data: {pformat(submitted_data)}")
-        record_created = RecordsHelper().create_invenio_record(
+        result.record_created = RecordsHelper().create_invenio_record(
             submitted_data, no_updates
         )
-        result["metadata_record_created"] = record_created
-        result["status"] = record_created["status"]
-        app.logger.info(f"    record status: {record_created['status']}")
-        if record_created["status"] in [
+        result.status = result.record_created["status"]
+        app.logger.info(f"    record status: {result.record_created['status']}")
+        if result.record_created["status"] in [
             "updated_published",
             "updated_draft",
             "unchanged_existing_draft",
             "unchanged_existing_published",
         ]:
-            existing_record = result["existing_record"] = record_created["record_data"]
+            result.existing_record = result.record_created["record_data"]
+        # NOTE: this "is_draft" logic will be True for new drafts for unpublished
+        # versions of published records, but *not* for drafts editing already published
+        # versions
         is_draft = (
             False
-            if existing_record
-            and existing_record["is_published"]
-            and not existing_record["is_draft"]
+            if result.existing_record
+            and result.existing_record["is_published"]
+            and not result.existing_record["is_draft"]
             else True
         )
-        metadata_record = record_created["record_data"]
-        draft_id = metadata_record["id"]
+        draft_id = result.record_created["record_data"]["id"]
         app.logger.info(f"    metadata record id: {draft_id}")
 
         print(
-            f"import_record_to_invenio metadata_record: " f"{pformat(metadata_record)}"
+            f"import_record_to_invenio metadata_record: "
+            f"{pformat(result.record_created['record_data'])}"
         )
 
         # Upload the files
-        if len(import_data["files"].get("entries", [])) > 0:
+        if len(submitted_files_data.get("entries", [])) > 0:
             app.logger.info("    uploading files for draft...")
-            result["uploaded_files"] = FilesHelper(
-                is_draft=is_draft
-            ).handle_record_files(
-                metadata_record,
-                file_data,
-                existing_record=existing_record,
+            result.uploaded_files = FilesHelper(is_draft=is_draft).handle_record_files(
+                result.record_created["record_data"],
+                submitted_files_data["entries"],
+                files=files,
+                existing_record=result.existing_record,
             )
         else:
             app.logger.warning(
-                f"files in metadata: {pformat(metadata_record.get('files'))}"
+                f"files in metadata: "
+                f"{pformat(result.record_created['record_data'].get('files'))}"
             )
             FilesHelper(is_draft=is_draft).set_to_metadata_only(draft_id)
-            metadata_record["files"]["enabled"] = False
-            if existing_record:
-                existing_record["files"]["enabled"] = False
+            result.record_created["record_data"]["files"]["enabled"] = False
+            if result.existing_record:
+                result.existing_record["files"]["enabled"] = False
 
         # Attach the record to the communities
-        result[
-            "community_review_accepted"
-        ] = CommunitiesHelper().publish_record_to_community(
-            draft_id,
-            community_id=self.community_id,
+        result.community_review_result = (
+            CommunitiesHelper().publish_record_to_community(
+                draft_id,
+                community_id=result.primary_community["id"],
+            )
         )
         # Publishing the record happens during community acceptance
         # If the record already belongs to the community...
@@ -241,8 +273,8 @@ class RecordLoader:
         #   create and publish a new draft of the record with the new files
         # - if the metadata and/or files were changed, a new draft of the
         #   record should already exist and we publish that
-        if result["community_review_accepted"]["status"] == "already_published":
-            if result["uploaded_files"].get("status") != "skipped":
+        if result.community_review_result["status"] == "already_published":
+            if result.uploaded_files.get("status") != "skipped":
                 app.logger.info("    publishing new draft record version...")
                 app.logger.debug(
                     records_service.read(
@@ -263,46 +295,52 @@ class RecordLoader:
                 assert publish.data["status"] == "published"
 
         # Assign ownership of the record
-        result["assigned_ownership"] = RecordsHelper.assign_record_ownership(
+        result.assigned_owners = RecordsHelper.assign_record_ownership(
             draft_id=draft_id,
             submitted_data=submitted_data,
+            user_id=self.user_id,
             submitted_owners=submitted_owners,
-            record_source=record_source or "",
-            existing_record=existing_record,
+            user_system=user_system,
+            existing_record=result.existing_record,
         )
 
         # Add the record to the appropriate group collections
-        result[
-            "added_to_collections"
-        ] = CommunitiesHelper().add_record_to_group_collections(
-            metadata_record, record_source=record_source or ""
+        result.added_to_collections = (
+            CommunitiesHelper().add_record_to_group_collections(
+                result.record_created["record_data"],
+                record_source=user_system,
+            )
         )
 
+        # Retrieve final metadata record
+        final_metadata_record = records_service.read(system_identity, id_=draft_id)
+        result.record_created["record_data"] = final_metadata_record.to_dict()
+
         # Create fictional usage events to generate correct usage stats
-        events = StatsFabricator().create_stats_events(
-            draft_id,
-            downloads_field="custom_fields.hclegacy:total_downloads",
-            views_field="custom_fields.hclegacy:total_views",
-            date_field="metadata.publication_date",
-            views_count=import_data["custom_fields"].get("hclegacy:total_views"),
-            downloads_count=import_data["custom_fields"].get(
-                "hclegacy:total_downloads"
-            ),
-            publication_date=import_data["metadata"].get("publication_date"),
-            eager=True,
-            verbose=True,
-        )
-        for e in events:
-            app.logger.debug(f"    created {e[1][0]} usage events ({e[0]})...")
-            # app.logger.debug(pformat(events))
+        # FIXME: Change the stats fields or make them configurable
+        if self.views_field or self.downloads_field:
+            StatsFabricator().create_stats_events(
+                draft_id,
+                downloads_field=self.downloads_field,
+                views_field=self.views_field,
+                date_field="metadata.publication_date",
+                views_count=submitted_data["custom_fields"].get(self.views_field, 0),
+                downloads_count=submitted_data["custom_fields"].get(
+                    self.downloads_field, 0
+                ),
+                publication_date=submitted_data["metadata"].get("publication_date"),
+                eager=True,
+                verbose=True,
+            )
 
         return result
 
-    def _log_created_record(
+    def _log_success(
         self,
-        record_log_object: dict = {},
-        successful_records: list = [],
-    ) -> list:
+        rec_log_object: dict,
+        load_result: LoaderResult,
+        successful_records: list[LoaderResult],
+    ) -> list[LoaderResult]:
         """
         Log a created record to the created records log file.
 
@@ -312,48 +350,46 @@ class RecordLoader:
 
         :param index: the index of the record in the source file
         :param record_log_object: the record log object
+        :param load_result: The result object returned from the load operation
+        :param successful_records: The list of successful records (LoaderResult objects)
 
-        :returns: the updated list of created records
+        :returns: the updated list of successful records (LoaderResult objects)
         """
-        record_log_object["timestamp"] = arrow.utcnow().format()
-        record_log_line = {
-            k: v for k, v in record_log_object.items() if k != "metadata"
-        }
+        rec_log_object["timestamp"] = arrow.utcnow().format()
         existing_lines = [
             (idx, t)
             for idx, t in enumerate(self.created_records)
             if t["source_id"]
-            and t["source_id"] == record_log_object["source_id"]
+            and t["source_id"] == rec_log_object["source_id"]
             and t["invenio_id"]
-            and t["invenio_id"] == record_log_object["invenio_id"]
+            and t["invenio_id"] == rec_log_object["invenio_id"]
         ]
         if not existing_lines:
-            self.created_records.append(record_log_line)
+            self.created_records.append(rec_log_object)
             with jsonlines.open(self.created_log_path, "a") as created_writer:
-                created_writer.write(record_log_line)
+                created_writer.write(rec_log_object)
         elif (
             existing_lines
-            and existing_lines[0][1]["invenio_recid"]
-            != record_log_object["invenio_recid"]
+            and existing_lines[0][1]["invenio_recid"] != rec_log_object["invenio_recid"]
         ):
             i = existing_lines[0][0]
             self.created_records = [
                 *self.created_records[:i],
                 *self.created_records[i + 1 :],  # noqa: E203
-                record_log_line,
+                rec_log_object,
             ]
             with jsonlines.open(self.created_log_path, "w") as created_writer:
                 for t in self.created_records:
                     created_writer.write(t)
 
-        # Append the logging data *with* full metadata to the successful records
-        successful_records.append(record_log_object)
+        # Append the full result object to the successful records
+        successful_records.append(load_result)
 
         return successful_records
 
     def _log_failed_record(
         self,
-        index: int = -1,
+        result: LoaderResult,
         record_log_object: dict = {},
         failed_records: list = [],
         reason: str = "",
@@ -363,6 +399,7 @@ class RecordLoader:
         Log a failed record to the failed records log file.
         """
 
+        index = record_log_object.get("index", -1)
         failed_obj = record_log_object.copy()
         failed_obj.update(
             {
@@ -370,27 +407,55 @@ class RecordLoader:
                 "datestamp": arrow.now().format(),
             }
         )
+
         if index > -1:
-            failed_records.append(failed_obj)
+            failed_records.append(result)
         skipped_ids = []
         if len(skipped_records) > 0:
-            skipped_ids = [r["commons_id"] for r in skipped_records if r]
+            skipped_ids = [r["source_id"] for r in skipped_records if r]
         with jsonlines.open(
             self.failed_log_path,
             "w",
         ) as failed_writer:
             total_failed = [
-                r for r in failed_records if r["commons_id"] not in skipped_ids
+                r for r in failed_records if r["source_id"] not in skipped_ids
             ]
-            failed_ids = [r["commons_id"] for r in failed_records if r]
+            failed_ids = [r["source_id"] for r in failed_records if r]
             for e in self.residual_failed_records:
-                if e["commons_id"] not in failed_ids and e not in total_failed:
+                if e["source_id"] not in failed_ids and e not in total_failed:
                     total_failed.append(e)
             ordered_failed_records = sorted(total_failed, key=lambda r: r["index"])
             for o in ordered_failed_records:
                 failed_writer.write(o)
 
         return failed_records
+
+    def _log_repaired_record(
+        self,
+        rec_log_object: dict,
+        result: LoaderResult,
+        lists: dict,
+    ) -> dict[str, list[dict]]:
+        """
+        Log a repaired record.
+        """
+        app.logger.info("    repaired previously failed record...")
+        app.logger.info(
+            f"    {rec_log_object.get('doi')} {rec_log_object.get('source_id')}"
+            f" {rec_log_object.get('source_id_2')}"
+        )
+        self.residual_failed_records = [
+            d
+            for d in self.residual_failed_records
+            if d["source_id"] != rec_log_object["source_id"]
+        ]
+        lists["repaired_failed"].append(rec_log_object)
+        lists["failed_records"], self.residual_failed_records = self._log_failed_record(
+            result=result,
+            failed_records=lists["failed_records"],
+            skipped_records=lists["skipped_records"],
+        )
+        return lists
 
     def _load_prior_failed_records(self) -> tuple[list, list, list, list]:
         existing_failed_records = []
@@ -403,28 +468,29 @@ class RecordLoader:
         except FileNotFoundError:
             app.logger.info("**no existing failed records log file found...**")
         existing_failed_indices = [r["index"] for r in existing_failed_records]
-        existing_failed_hcids = [r["commons_id"] for r in existing_failed_records]
+        existing_failed_sourceids = [r["source_id"] for r in existing_failed_records]
         residual_failed_records = [*existing_failed_records]
 
         return (
             existing_failed_records,
             residual_failed_records,
             existing_failed_indices,
-            existing_failed_hcids,
+            existing_failed_sourceids,
         )
 
     def _get_record_set(
         self,
         metadata: list[dict] = [],
-        retry_failed: bool = False,
-        no_updates: bool = False,
-        use_sourceids: bool = False,
+        flags: dict[str, bool] = {},
         range_args: list[int] = [],
         nonconsecutive: list[int] = [],
     ) -> list[dict]:
         """
         Get the record set from the metadata.
         """
+        retry_failed = flags.get("retry_failed")
+        no_updates = flags.get("no_updates")
+        use_sourceids = flags.get("use_sourceids")
 
         if no_updates:
             app.logger.info(
@@ -503,13 +569,15 @@ class RecordLoader:
         if len(record_set) == 0:
             raise NoAvailableRecordsError("No records found to load.")
 
+        app.logger.debug(f"Record set: {pformat(record_set)}")
+
         return record_set
 
-    def _get_record_ids(
+    def _get_log_object(
         self,
         current_record_index: int,
         record: dict,
-    ) -> tuple[str, str, str, str]:
+    ) -> dict[str, str]:
         """
         Get the record ids from the record.
         """
@@ -528,21 +596,25 @@ class RecordLoader:
                 scheme_ids.append("")
         rec_invenioid = record.get("id", "")
         app.logger.info(f"....starting to load record {current_record_index}")
-        app.logger.info(
-            f"    DOI:{rec_doi} {rec_invenioid} {' '.join(scheme_ids)} " f"{record}"
-        )
-        return rec_doi, *scheme_ids, rec_invenioid
+
+        rec_log_object = {
+            "index": current_record_index,
+            "invenio_recid": rec_invenioid,
+            "invenio_id": rec_doi,
+            "source_id": scheme_ids[0],
+            "source_id_2": scheme_ids[1],
+        }
+
+        app.logger.info(f"    record log object: {rec_log_object}")
+        return rec_log_object
 
     def _handle_raised_exception(
         self,
         e: Exception,
-        current_index: int,
-        current_record: dict,
+        result: LoaderResult,
         record_log_object: dict,
-        failed_records: list[dict],
-        skipped_records: list[dict],
-        no_updates_records: list[dict],
-    ) -> tuple[list[dict], list[dict]]:
+        lists: dict[str, list[dict]],
+    ) -> dict[str, list[dict]]:
         """
         Handle a raised exception and log the error.
 
@@ -556,7 +628,6 @@ class RecordLoader:
 
         :returns: the updated lists of failed, and no-updates records
         """
-        ("ERROR:", e)
         print_exc()
         app.logger.error(f"ERROR: {e}")
         msg = str(e)
@@ -588,20 +659,34 @@ class RecordLoader:
             "TooManyDownloadEventsError": msg,
             "UpdateValidationError": msg,
             "NoUpdatesError": msg,
-            "ValidationError": f"There was a problem validating the record related to these fields: {msg}",
+            "ValidationError": (
+                f"There was a problem validating the record related to these "
+                f"fields: {msg}",
+            ),
         }
         if e.__class__.__name__ in error_reasons.keys():
             record_log_object.update({"reason": error_reasons[e.__class__.__name__]})
+        else:
+            app.logger.error(format_exc())
+            app.logger.error(e)
+            raise e
+
         if e.__class__.__name__ not in ["SkipRecord", "NoUpdates"]:
-            failed_records = self._log_failed_record(
+            result.errors.append(
+                {
+                    "message": error_reasons[e.__class__.__name__],
+                }
+            )
+            lists["failed_records"] = self._log_failed_record(
                 record_log_object=record_log_object,
-                failed_records=failed_records,
-                skipped_records=skipped_records,
+                result=result,
+                failed_records=lists["failed_records"],
+                skipped_records=lists["skipped_records"],
             )
         elif e.__class__.__name__ == "NoUpdates":
-            no_updates_records.append(record_log_object)
+            lists["no_updates_records"].append(record_log_object)
 
-        return failed_records, no_updates_records
+        return lists
 
     def _get_created_records(self) -> list[dict]:
         created_records = []
@@ -640,18 +725,17 @@ class RecordLoader:
             app.logger.info("**no existing metadata overrides file found...**")
         return skip, overrides
 
-    def _update_counts(self, counts: dict, result: dict) -> dict:
+    def _update_counts(self, counts: dict, result: LoaderResult) -> dict:
         """
         Update the counts based on the result of the load operation.
         """
-        counts["successful_records"] += 1
-        if not result.get("existing_record"):
+        if not result.existing_record:
             counts["new_records"] += 1
-        if "unchanged_existing" in result["status"]:
+        if "unchanged_existing" in result.status:
             counts["unchanged_existing"] += 1
-        if result["status"] == "updated_published":
+        if result.status == "updated_published":
             counts["updated_published"] += 1
-        if result["status"] == "updated_draft":
+        if result.status == "updated_draft":
             counts["updated_drafts"] += 1
 
         return counts
@@ -659,11 +743,7 @@ class RecordLoader:
     def _report_counts(
         self,
         counts: dict = {},
-        successful_records: list[dict] = [],
-        failed_records: list[dict] = [],
-        repaired_failed: list[dict] = [],
-        skipped_records: list[dict] = [],
-        no_updates_records: list[dict] = [],
+        lists: dict[str, list[dict]] = {},
         nonconsecutive: list[int] = [],
         start_index: int = 0,
     ) -> None:
@@ -679,43 +759,91 @@ class RecordLoader:
             target_string = f" to {start_index + counter - 1}" if counter > 1 else ""
             set_string = f"{start_index}{target_string}"
 
-        counts["unchanged_existing"] += len(no_updates_records)
+        counts["unchanged_existing"] += len(lists["no_updates_records"])
+        successes = len(lists["successful_records"]) + len(lists["no_updates_records"])
         message = (
             f"Processed {str(counter)} records in "
             f"InvenioRDM ({set_string})\n"
-            f"    {str(len(successful_records) + len(no_updates_records))} "
-            "successful \n"
+            f"    {str(successes)} successful \n"
             f"    {str(counts['new_records'])} new records created \n"
-            f"    {str(len(successful_records) - counts['new_records'])} already "
+            f"    {str(successes - counts['new_records'])} already "
             f"existed \n"
             f"        {str(counts['updated_published'])} updated published "
             f"records \n"
             f"        {str(counts['updated_drafts'])} updated existing draft records \n"
             f"        {str(counts['unchanged_existing'])} unchanged existing records \n"
-            f"        {str(len(repaired_failed))} previously failed records "
+            f"        {str(len(lists['repaired_failed']))} previously failed records "
             f"repaired \n"
-            f"   {str(len(failed_records))} failed \n"
-            f"   {str(len(skipped_records))} records skipped (as marked in "
+            f"   {str(len(lists['failed_records']))} failed \n"
+            f"   {str(len(lists['skipped_records']))} records skipped (as marked in "
             f"overrides)"
             f"\n"
         )
-        if len(no_updates_records) > 0:
+        if len(lists["no_updates_records"]) > 0:
             message += (
-                f"   {str(len(no_updates_records))} records not updated "
+                f"   {str(len(lists['no_updates_records']))} records not updated "
                 f"because 'no updates' flag was set \n"
             )
         app.logger.info(message)
 
-        if repaired_failed or (failed_records and not self.residual_failed_records):
+        if lists["repaired_failed"] or (
+            lists["failed_records"] and not self.residual_failed_records
+        ):
             app.logger.info("Previously failed records repaired:")
-            for r in repaired_failed:
+            for r in lists["repaired_failed"]:
                 app.logger.info(r)
 
-        if failed_records:
+        if lists["failed_records"]:
             app.logger.info("Failed records:")
-            for r in failed_records:
+            for r in lists["failed_records"]:
                 app.logger.info(r)
             app.logger.info(f"Failed records written to {self.failed_log_path}")
+
+    def _update_record_log_object(
+        self, rec_log_object: dict, result: LoaderResult
+    ) -> dict:
+        """
+        Update the record log object with the result of the load operation.
+        """
+        rec_log_object["invenio_recid"] = result.record_created.get(
+            "record_data", {}
+        ).get("id")
+        rec_log_object["doi"] = (
+            result.record_created.get("record_data", {})
+            .get("pids", {})
+            .get("doi", {})
+            .get("identifier", "")
+        )
+        return rec_log_object
+
+    def _aggregate_stats(
+        self,
+        start_date: str = "",
+        end_date: str = "",
+    ) -> Union[list[dict], None]:
+        """
+        Aggregate the stats for the load operation.
+        """
+        start_date = (
+            start_date
+            if start_date
+            else arrow.utcnow().shift(days=-1).naive.date().isoformat()
+        )
+        end_date = (
+            end_date
+            if end_date
+            else arrow.utcnow().shift(days=1).naive.date().isoformat()
+        )
+        aggregations = AggregationFabricator().create_stats_aggregations(
+            start_date=arrow.get(start_date).naive,
+            end_date=arrow.get(end_date).naive,
+            bookmark_override=arrow.get(start_date).naive,
+            eager=True,
+        )
+        app.logger.debug("    created usage aggregations...")
+        app.logger.debug(pformat(aggregations))
+
+        return aggregations
 
     def load_all(
         self,
@@ -731,9 +859,12 @@ class RecordLoader:
         clean_filenames: bool = False,
         verbose: bool = False,
         stop_on_error: bool = False,
-        file_data: list[dict] = [],
+        files: list[FileData] = [],
         metadata: list[dict] = [],
-    ) -> dict[str, Union[list[dict], str]]:
+        review_required: bool = True,
+        strict_validation: bool = True,
+        all_or_none: bool = True,
+    ) -> APIResponsePayload:
         """
         Create new InvenioRDM records and upload files for serialized deposits.
 
@@ -760,24 +891,38 @@ class RecordLoader:
             stop_on_error (bool): whether to stop the loading process if an
                 error is encountered is encountered
 
-            file_data (list[dict]): the list of files to upload
+            files (list[dict]): the list of files to upload
             metadata (list[dict]): the list of metadata objects for the records
                 to load
         returns:
             None
         """
-        counts = {
+        counts: dict[str, int] = {
             "record_counter": 0,
             "updated_drafts": 0,
             "updated_published": 0,
             "unchanged_existing": 0,
             "new_records": 0,
         }
-        successful_records: list[dict] = []
-        failed_records: list[dict] = []
-        skipped_records: list[dict] = []
-        no_updates_records: list[dict] = []
-        repaired_failed: list[dict] = []
+        lists: dict = {
+            "successful_records": [],  # type: list[LoaderResult]
+            "failed_records": [],  # type: list[LoaderResult]
+            "skipped_records": [],  # type: list[dict]
+            "no_updates_records": [],  # type: list[dict]
+            "repaired_failed": [],  # type: list[dict]
+        }
+        flags: dict[str, bool] = {
+            "no_updates": no_updates,
+            "retry_failed": retry_failed,
+            "use_sourceids": use_sourceids,
+            "aggregate": aggregate,
+            "verbose": verbose,
+            "stop_on_error": stop_on_error,
+            "clean_filenames": clean_filenames,
+            "review_required": review_required,
+            "strict_validation": strict_validation,
+            "all_or_none": all_or_none,
+        }
         range_args = [start_index - 1]
         if stop_index > -1 and stop_index >= start_index:
             range_args.append(stop_index)
@@ -794,144 +939,85 @@ class RecordLoader:
         app.logger.info("Starting to load records into Invenio...")
         record_set = self._get_record_set(
             metadata=metadata,
-            retry_failed=retry_failed,
-            no_updates=no_updates,
-            use_sourceids=use_sourceids,
+            flags=flags,
             range_args=range_args,
             nonconsecutive=nonconsecutive,
         )
-        app.logger.debug(f"Record set: {pformat(record_set)}")
 
         for record_metadata in record_set:
             current_record_index = (
                 record_metadata.get("jsonl_index")
-                or start_index + counts["record_counter"]
+                or start_index + counts["record_counter"] - 1
             )
-            spinner = Halo(
-                text=f"    Loading record {current_record_index}", spinner="dots"
-            )
-            spinner.start()
 
             skip, overrides = self._get_overrides(record_metadata)
-            doi, sourceid, sourceid2, invenioid = self._get_record_ids(
-                current_record_index, record_metadata
-            )
-            rec_log_object = {
-                "index": current_record_index,
-                "invenio_recid": invenioid,
-                "invenio_id": doi,
-                "commons_id": sourceid,
-                "core_record_id": sourceid2,
-            }
+            rec_log_object = self._get_log_object(current_record_index, record_metadata)
 
             try:
-                result = {}
+                result = LoaderResult(
+                    index=current_record_index
+                )  # initialize empty result object
                 if skip:
-                    skipped_records.append(rec_log_object)
+                    lists["skipped_records"].append(rec_log_object)
                     raise SkipRecord("Record marked for skipping in override file")
                 try:
-                    result = self.load(
+                    result: LoaderResult = self.load(
+                        index=current_record_index,
                         import_data=record_metadata,
-                        files=file_data,
-                        no_updates=no_updates,
+                        files=files,
+                        no_updates=flags["no_updates"],
                         overrides=overrides,
-                        user_id=self.user_id,
                     )
                 # FIXME: This is a hack to handle StaleDataError which
                 # is consistently resolved on a second attempt -- seems
                 # to arise when a record is being added to several
                 # communities at once
                 except StaleDataError:
-                    result = self.load(
+                    result: LoaderResult = self.load(
+                        index=current_record_index,
                         import_data=record_metadata,
-                        files=file_data,
-                        no_updates=no_updates,
+                        files=files,
+                        no_updates=flags["no_updates"],
                         overrides=overrides,
-                        user_id=self.user_id,
                     )
-                rec_log_object["invenio_recid"] = (
-                    result.get("metadata_record_created", {})
-                    .get("record_data", {})
-                    .get("id")
-                )
-                rec_log_object["doi"] = (
-                    result.get("metadata_record_created", {})
-                    .get("record_data", {})
-                    .get("pids", {})
-                    .get("doi", {})
-                    .get("identifier", "")
-                )
-                rec_log_object["metadata"] = result.get(
-                    "metadata_record_created", {}
-                ).get("record_data", {})
-                successful_records = self._log_created_record(
-                    record_log_object=rec_log_object,
-                    successful_records=successful_records,
+                rec_log_object = self._update_record_log_object(rec_log_object, result)
+                lists["successful_records"] = self._log_success(
+                    rec_log_object, result, lists["successful_records"]
                 )
                 counts = self._update_counts(counts, result)
-                if sourceid in self.existing_failed_sourceids:
-                    app.logger.info("    repaired previously failed record...")
-                    app.logger.info(f"    {doi} {sourceid} {sourceid2}")
-                    self.residual_failed_records = [
-                        d
-                        for d in self.residual_failed_records
-                        if d["source_id"] != sourceid
-                    ]
-                    repaired_failed.append(rec_log_object)
-                    failed_records, self.residual_failed_records = (
-                        self._log_failed_record(
-                            failed_records=failed_records,
-                            skipped_records=skipped_records,
-                        )
+                if rec_log_object["source_id"] in self.existing_failed_sourceids:
+                    lists = self._log_repaired_record(
+                        rec_log_object,
+                        result,
+                        lists,
                     )
-                app.logger.debug("result status: %s", result.get("status"))
+                app.logger.debug("result status: %s", result.status)
             except Exception as e:
-                failed_records, no_updates_records = self._handle_raised_exception(
+                lists = self._handle_raised_exception(
                     e,
-                    current_index=current_record_index,
-                    current_record=record_metadata,
+                    result=result,
                     record_log_object=rec_log_object,
-                    failed_records=failed_records,
-                    skipped_records=skipped_records,
-                    no_updates_records=no_updates_records,
+                    lists=lists,
                 )
-                if stop_on_error and failed_records:
+                if stop_on_error and lists["failed_records"]:
                     break
 
-            spinner.stop()
-            app.logger.info(f"....done with record {current_record_index}")
+            app.logger.info(
+                f"....done with record {current_record_index}, {rec_log_object}"
+            )
             counts["record_counter"] += 1
 
+        # Report the overall counts to the log
         self._report_counts(
             counts=counts,
-            failed_records=failed_records,
-            repaired_failed=repaired_failed,
-            skipped_records=skipped_records,
-            no_updates_records=no_updates_records,
+            lists=lists,
             nonconsecutive=nonconsecutive,
             start_index=start_index,
         )
 
-        # Aggregate the stats again now
+        # Aggregate the imported records stats if requested
         if aggregate:
-            start_date = (
-                start_date
-                if start_date
-                else arrow.utcnow().shift(days=-1).naive.date().isoformat()
-            )
-            end_date = (
-                end_date
-                if end_date
-                else arrow.utcnow().shift(days=1).naive.date().isoformat()
-            )
-            aggregations = AggregationFabricator().create_stats_aggregations(
-                start_date=arrow.get(start_date).naive,
-                end_date=arrow.get(end_date).naive,
-                bookmark_override=arrow.get(start_date).naive,
-                eager=True,
-            )
-            app.logger.debug("    created usage aggregations...")
-            app.logger.debug(pformat(aggregations))
+            self._aggregate_stats(start_date=start_date, end_date=end_date)
         else:
             app.logger.warning(
                 "    Skipping usage stats aggregation. Usage stats "
@@ -940,26 +1026,58 @@ class RecordLoader:
             )
 
         success_list = [
-            {
-                "item_index": r.get("index"),
-                "record_id": r.get("invenio_id"),
-                "record_url": r.get("metadata", {})
+            ImportedRecord(
+                item_index=r.index,
+                record_id=r.record_created.get("record_data", {}).get("id", ""),
+                record_url=r.record_created.get("record_data", {})
                 .get("links", {})
                 .get("self_html", ""),
-                "metadata": r.get("metadata", {}),
-                "files": r.get("files", {}),
-                "collection_ids": r.get("parent", {})
-                .get("communities", [])[0]
-                .get("id", ""),
-                "errors": r.get("errors", []),
-            }
-            for r in successful_records
-            if r.get("invenio_recid") is not None
+                metadata=r.record_created.get("record_data", {}),
+                files=r.uploaded_files,
+                collection_id=r.primary_community["id"],
+                errors=r.errors,
+            ).model_dump()
+            for r in lists["successful_records"]
+        ]
+        error_list = [
+            ImportedRecord(
+                item_index=r.index,
+                record_id=r.record_created.get("record_data", {}).get("id", ""),
+                record_url=r.record_created.get("record_data", {})
+                .get("links", {})
+                .get("self_html", ""),
+                metadata=r.record_created.get("record_data", {}),
+                files=r.uploaded_files,
+                collection_id=r.primary_community["id"],
+                errors=r.errors,
+            ).model_dump()
+            for r in lists["failed_records"]
         ]
 
-        return {
-            "status": "success",
-            "data": success_list,
-            "errors": failed_records,
-            "message": "",
-        }
+        # Determine the overall status of the import operation
+        if success_list and not error_list:
+            overall_status = "success"
+            message = "All records were successfully imported"
+        elif success_list and not flags["all_or_none"]:
+            overall_status = "partial_success"
+            message = "Some records were successfully imported, but some failed"
+        elif not success_list and flags["all_or_none"]:
+            overall_status = "error"
+            message = (
+                "Some records could not be imported, and the 'all_or_none' flag "
+                "was set to True, so the operation was aborted."
+            )
+        else:
+            overall_status = "error"
+            message = (
+                "No records were successfully imported. Please check the list "
+                "of failed records in the 'errors' field for more information. "
+                "Each failed item should have its own list of specific errors."
+            )
+
+        return APIResponsePayload(
+            status=overall_status,
+            data=success_list,
+            errors=error_list,
+            message=message,
+        )

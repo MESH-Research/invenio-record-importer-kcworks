@@ -7,6 +7,7 @@
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
+from tempfile import SpooledTemporaryFile
 from flask import current_app as app
 import fnmatch
 from invenio_access.permissions import system_identity
@@ -35,14 +36,17 @@ from invenio_records_resources.services.uow import (
     UnitOfWork,
     RecordCommitOp,
 )
+from io import BufferedReader
 import os
 from pprint import pformat
 from pathlib import Path
 import re
 from sqlalchemy.orm.exc import NoResultFound
-from typing import Optional
+import sys
+from typing import Optional, Union, BinaryIO
 import unicodedata
 from urllib.parse import unquote
+from invenio_record_importer_kcworks.types import FileData
 
 
 class FilesHelper:
@@ -65,9 +69,7 @@ class FilesHelper:
         return changed
 
     @unit_of_work()
-    def set_to_metadata_only(
-        self, draft_id: str, uow: Optional[UnitOfWork] = None
-    ):
+    def set_to_metadata_only(self, draft_id: str, uow: Optional[UnitOfWork] = None):
         try:
             record = records_service.read(system_identity, draft_id)._record
             if record.files.entries:
@@ -77,9 +79,7 @@ class FilesHelper:
             pass
 
         try:
-            record = records_service.read_draft(
-                system_identity, draft_id
-            )._record
+            record = records_service.read_draft(system_identity, draft_id)._record
             if record.files.entries:
                 for k in record.files.entries.keys():
                     self._delete_file(draft_id, k, records_service.draft_files)
@@ -125,9 +125,7 @@ class FilesHelper:
             )
             if record.files.entries:
                 inner_clear_manager(record, is_published)
-            app.logger.info(
-                "    deleted all files from existing " "published record"
-            )
+            app.logger.info("    deleted all files from existing " "published record")
         else:
             app.logger.info(
                 "    no files attached to existing record "
@@ -204,9 +202,7 @@ class FilesHelper:
                 app.logger.debug(pformat(removed_file))
                 return True
             except Exception as e:
-                app.logger.error(
-                    f"    failed to unlock files for record {draft_id}..."
-                )
+                app.logger.error(f"    failed to unlock files for record {draft_id}...")
                 raise e
 
         record = read_method(system_identity, draft_id)._record
@@ -243,9 +239,7 @@ class FilesHelper:
     @unit_of_work()
     def _lock_files(self, existing_record, uow: Optional[UnitOfWork] = None):
 
-        need_to_lock = (
-            existing_record.get("is_published") if existing_record else False
-        )
+        need_to_lock = existing_record.get("is_published") if existing_record else False
         record = None
 
         if need_to_lock:
@@ -269,11 +263,12 @@ class FilesHelper:
     def handle_record_files(
         self,
         metadata: dict,
-        file_data: dict,
+        file_data: Union[dict, list[dict]],
+        files: list[FileData] = [],
         existing_record: Optional[dict] = {},
         source_filepaths: Optional[dict] = {},
         uow: Optional[UnitOfWork] = None,
-    ) -> dict:
+    ) -> dict[str, list[Union[str, list[str]]]]:
         """
         Ensure that the files for a record are uploaded correctly.
 
@@ -312,10 +307,16 @@ class FilesHelper:
                 or will contain the file information for the previous draft
                 or published record if there was one. It cannot be used as
                 a source of file data for the new draft.
-            file_data (dict): the file data to be uploaded to the new draft.
+            file_data (dict): the metadata on files to be uploaded to the new draft.
                 This will be drawn directly from the import file data and is
-                the source of truth for the new draft. It is a dictionary
-                shaped like the record's `files` property.
+                the source of truth for the new draft. It is either a dictionary
+                shaped like the record's `files.entries` property OR a list of dictionaries shaped like the payload for initiating file uploads via
+                the low-level files API.
+            files (list): the files to be uploaded to the new draft. This
+                carries the files provided by the caller if we are not reading
+                them from a local folder. If this is empty we will look in
+                a folder for files to upload. It should be a list of FileData
+                objects, which are defined in the `invenio_record_importer_kcworks.types` module.
             existing_record (dict): the existing record metadata, if we are
                 updating a draft of a published record or an unpublished
                 preexisting draft. It will only be empty if we are creating a
@@ -341,20 +342,24 @@ class FilesHelper:
         that only `file_data` provides the file data for the current import.
 
         Returns:
-            dict: A dictionary with the new draft's files after any necessary
-                file uploads and deletions have been completed. The dictionary
-                is shaped like the record's `files` property (after it is
-                dumped to a dictionary in a record result object).
+            dict[str, tuple[str, list[str]]]: A dictionary with the new draft's
+            filenames as keys. The values are tuples including [0] the file's
+            status after the upload was attempted, and [1] any error messages
+            that were generated.
 
         """
-        print(f"handle_record_files metadata: {pformat(metadata)}")
-        print(f"handle_record_files file_data: {pformat(file_data)}")
-        print(
+        app.logger.debug(f"handle_record_files metadata: {pformat(metadata)}")
+        app.logger.debug(f"handle_record_files file_data: {pformat(file_data)}")
+        app.logger.debug(f"handle_record_files file_data: {files}")
+        app.logger.debug(
             f"handle_record_files existing_record.files: "
             f"{pformat(existing_record.get('files') if existing_record else None)}"  # noqa: E501
         )
         assert metadata["files"]["enabled"] is True
-        files_to_upload = {k: v for k, v in file_data["entries"].items()}
+        if isinstance(file_data, list):
+            files_to_upload = {f["key"]: f for f in file_data}
+        else:
+            files_to_upload = file_data
         uploaded_files = {}
         same_files = False
 
@@ -364,14 +369,11 @@ class FilesHelper:
                 existing_record["is_draft"],
                 existing_record["is_published"],
                 existing_record["files"]["entries"],
-                file_data["entries"],
+                files_to_upload["entries"],
             )
 
-        if same_files:
-            app.logger.info(
-                "    skipping uploading files (same already uploaded)..."
-            )
-            uploaded_files = {"count": 0, "status": "skipped"}
+        if existing_record and same_files:
+            app.logger.info("    skipping uploading files (same already uploaded)...")
 
             # Check that any published record has the correct file entries
             if existing_record["is_published"]:
@@ -387,26 +389,27 @@ class FilesHelper:
                 check_record = records_service.read_draft(
                     system_identity, id_=metadata["id"]
                 )._record
-                if check_record.files.entries != file_data["entries"]:
-                    app.logger.error(
-                        "    draft record files are missing, updating..."
-                    )
-                    check_record.files.sync(file_data["entries"])
+                if uow and check_record.files.entries != files_to_upload["entries"]:
+                    app.logger.error("    draft record files are missing, updating...")
+                    check_record.files.sync(files_to_upload["entries"])
                     uow.register(RecordCommitOp(check_record))
                 print("    draft record files are...")
                 print(pformat(check_record.files.entries))
+
+            uploaded_files = {
+                k: ("already_uploaded", []) for k in files_to_upload.keys()
+            }
+
         elif len(files_to_upload) > 0:
             app.logger.info("    uploading new files...")
             app.logger.warning("file data: %s", pformat(files_to_upload))
             # FIXME: Below is an implementation detail for the CORE
             # migration that should be removed when we use this method
             # for all imports.
-            if not source_filepaths:
+            if not source_filepaths and not files:
                 first_file = next(iter(files_to_upload))
                 source_filepaths = {
-                    first_file: metadata["custom_fields"][
-                        "hclegacy:file_location"
-                    ]
+                    first_file: metadata["custom_fields"]["hclegacy:file_location"]
                 }
 
             # If we're updating a draft of a published record, we need to
@@ -417,16 +420,16 @@ class FilesHelper:
             uploaded_files = self._upload_draft_files(
                 metadata["id"],
                 files_to_upload,
-                source_filepaths,
+                source_filepaths or {},
+                files or [],
             )
 
             # Lock the files again for a published record
             self._lock_files(existing_record)
         else:
-            app.logger.info(
-                "    no files to upload marking as " "metadata-only..."
-            )
+            app.logger.info("    no files to upload marking as " "metadata-only...")
             self.set_to_metadata_only(metadata["id"])
+            uploaded_files = {}
         print("returning uploaded_files:", pformat(uploaded_files))
 
         return uploaded_files
@@ -491,17 +494,13 @@ class FilesHelper:
         long_filename = long_filename.replace(
             "/srv/www/commons/shared/uploads/humcore/", ""
         )
-        long_filename = long_filename.replace(
-            "/app/site/web/app/uploads/humcore/", ""
-        )
+        long_filename = long_filename.replace("/app/site/web/app/uploads/humcore/", "")
         # app.logger.debug(filename)
         # app.logger.debug(source_filename)
         # app.logger.debug(normalize_string(filename))
         # app.logger.debug(normalize_string(unquote(source_filename)))
         try:
-            assert normalize_string(filename) in normalize_string(
-                unquote(filename)
-            )
+            assert normalize_string(filename) in normalize_string(unquote(filename))
         except AssertionError:
             app.logger.error(
                 f"    file key {filename} does not match source filename"
@@ -515,9 +514,7 @@ class FilesHelper:
 
     def _find_file_path(self, filename: str, key: str) -> Path:
 
-        file_path = (
-            Path(app.config["RECORD_IMPORTER_FILES_LOCATION"]) / filename
-        )
+        file_path = Path(app.config["RECORD_IMPORTER_FILES_LOCATION"]) / filename
         try:
             assert file_path.is_file()
         except AssertionError:
@@ -536,9 +533,7 @@ class FilesHelper:
                 assert file_path.is_file()
             except AssertionError:
                 try:
-                    file_path = Path(
-                        unicodedata.normalize("NFD", str(file_path))
-                    )
+                    file_path = Path(unicodedata.normalize("NFD", str(file_path)))
                     assert file_path.is_file()
                 except AssertionError:
                     raise UploadFileNotFoundError(
@@ -546,19 +541,53 @@ class FilesHelper:
                     )
         return file_path
 
+    def _check_file_size(
+        self,
+        file_object: Union[SpooledTemporaryFile, BufferedReader],
+        size: Optional[int],
+        key: str,
+    ) -> None:
+        if size:
+            try:
+                file_object.seek(0, 2)  # seek to end of file
+                assert file_object.tell() == size  # check byte position
+                file_object.seek(0)  # seek to beginning of file
+            except AssertionError:
+                raise FileUploadError(f"    file size mismatch for key {key}...")
+        else:
+            app.logger.warning(f"    file size not provided for key {key}...")
+
     @unit_of_work()
     def _upload_draft_files(
         self,
         draft_id: str,
         files_dict: dict[str, dict],
-        source_filenames: dict[str, str],
+        source_filenames: dict[str, str] = {},
+        files: list[FileData] = [],
         uow: Optional[UnitOfWork] = None,
-    ) -> dict:
+    ) -> dict[str, list[Union[str, list[str]]]]:
+        """
+        Upload files to a draft record.
+
+        :param draft_id: The ID of the draft record to upload files to.
+        :param files_dict: A dictionary of file keys and their corresponding file data.
+        :param source_filenames: A dictionary of file keys and their
+            corresponding source filenames to be used if the files are to be
+            read from a directory.
+        :param files: A list of FileData objects to be uploaded to the draft record
+            if the files are to be read from a list of FileData objects.
+        :param uow: The unit of work to register the commit operation for the
+            record if we are locking and unlocking a record
+            (provided by the unit of work decorator if not provided by the caller)
+
+        :returns: A dictionary with file keys as keys. The values are tuples
+            including [0] the file's status after the upload was attempted, and
+            [1] any error messages that were generated.
+        """
+
         output = {}
 
-        app.logger.debug(
-            f"files_dict in _upload_draft_files: {pformat(files_dict.keys())}"
-        )
+        app.logger.debug(f"files_dict in _upload_draft_files: {pformat(files_dict)}")
 
         # Ensure a draft exists for a published record
         try:
@@ -569,23 +598,13 @@ class FilesHelper:
             records_service.edit(system_identity, id_=draft_id)
 
         for k, v in files_dict.items():
-            long_filename = self._sanitize_filename(source_filenames[k])
-
-            file_path = self._find_file_path(long_filename, k)
-            app.logger.debug(f"    uploading file: {file_path}")
-
+            output[k] = ["failed", []]
             try:
                 initialization = self.files_service.init_files(
                     system_identity, draft_id, data=[{"key": k}]
                 ).to_dict()
                 assert (
-                    len(
-                        [
-                            e["key"]
-                            for e in initialization["entries"]
-                            if e["key"] == k
-                        ]
-                    )
+                    len([e["key"] for e in initialization["entries"] if e["key"] == k])
                     == 1
                 )
                 app.logger.debug(f"initialization: {pformat(initialization)}")
@@ -593,11 +612,13 @@ class FilesHelper:
                 app.logger.error(
                     f"    failed to initialize file upload for {draft_id}..."
                 )
+                output[k] = ("failed", [str(e)])
                 raise e
             except Exception as e:
                 app.logger.error(
                     f"    failed to initialize file upload for {draft_id}..."
                 )
+                output[k] = ("failed", [str(e)])
                 raise e
 
             try:
@@ -608,41 +629,59 @@ class FilesHelper:
                         system_identity, id_=draft_id
                     )._record
                     draft_files = check_record.files
-                    if draft_files.bucket is None:
+                    if uow and draft_files.bucket is None:
                         draft_files.create_bucket()
-                        app.logger.info(
-                            "    created bucket for draft files..."
-                        )
+                        app.logger.info("    created bucket for draft files...")
                         uow.register(RecordCommitOp(check_record))
                 except (NoResultFound, DraftNotCreatedError):
                     pass
                 except Exception as e:
-                    raise e
-
-                with open(
-                    file_path,
-                    "rb",
-                ) as binary_file_data:
-                    binary_file_data.seek(0)
-                    self.files_service.set_file_content(
-                        system_identity, draft_id, k, binary_file_data
+                    output[k][0] = "failed"
+                    output[k][1].append(
+                        "Something went wrong while getting the bucket for "
+                        f"draft files: {str(e)}"
                     )
 
+                if not files:
+                    long_filename = self._sanitize_filename(source_filenames[k])
+
+                    file_path = self._find_file_path(long_filename, k)
+                    app.logger.debug(f"    uploading file: {file_path}")
+
+                    with open(
+                        file_path,
+                        "rb",
+                    ) as binary_file_data:
+                        binary_file_data.seek(0)
+                        self._check_file_size(
+                            binary_file_data, files_dict[k].get("size"), k
+                        )
+                        self.files_service.set_file_content(
+                            system_identity, draft_id, k, binary_file_data
+                        )
+                else:
+                    for f in files:
+                        if f.filename.split("/")[-1] == k:
+                            self._check_file_size(
+                                f.stream, files_dict[k].get("size"), k
+                            )
+                            self.files_service.set_file_content(
+                                system_identity, draft_id, k, f.stream
+                            )
+
             except Exception as e:
-                app.logger.error(
-                    f"    failed to upload file content for {draft_id}..."
-                )
-                raise e
+                app.logger.error(f"    failed to upload file content for {draft_id}...")
+                output[k][0] = "failed"
+                output[k][1].append(f"failed to upload file content for {k}: {str(e)}")
 
             try:
                 self.files_service.commit_file(system_identity, draft_id, k)
             except Exception as e:
-                app.logger.error(
-                    f"    failed to commit file upload for {draft_id}..."
-                )
-                raise e
+                app.logger.error(f"    failed to commit file upload for {draft_id}...")
+                output[k][0] = "failed"
+                output[k][1].append(f"failed to commit file upload for {k}: {str(e)}")
 
-            output[k] = "uploaded"
+            output[k] = ["uploaded", []]
 
         # Check that the files were uploaded correctly
         result_record = self.files_service.list_files(
@@ -655,23 +694,30 @@ class FilesHelper:
                 if r["key"] in files_dict.keys()
             )
             for v in result_record["entries"]:
-                assert v["key"] == k
+                submitted_rec = files_dict[v["key"]]
                 assert v["status"] == "completed"
-                app.logger.debug(f"size: {v['size']}  {files_dict[k]['size']}")
-                if str(v["size"]) != str(files_dict[k]["size"]):
+                if submitted_rec.get("size") and str(v["size"]) != str(
+                    submitted_rec["size"]
+                ):
                     raise FileUploadError(
                         f"Uploaded file size ({v['size']}) does not match "
-                        f"expected size ({files_dict[k]['size']})"
+                        f"expected size ({submitted_rec['size']})"
                     )
                 assert valid_date(v["created"])
                 assert valid_date(v["updated"])
                 assert not v["metadata"]
+        except FileUploadError as e:
+            output[k][0] = "failed"
+            output[k][1].append(str(e.message))
         except AssertionError:
             app.logger.error(
-                "    failed to properly upload file content for"
-                f" draft {draft_id}..."
+                "    failed to properly upload file content for" f" draft {draft_id}..."
             )
             app.logger.error(f"result is {pformat(result_record['entries'])}")
+            output[k][0] = "failed"
+            output[k][1].append(
+                "failed to properly upload file content for draft" f" {draft_id}..."
+            )
 
         # Handle published records without drafts, where record needs
         # file metadata from draft files service (usually synced during
@@ -680,9 +726,7 @@ class FilesHelper:
             check_record = records_service.read(system_identity, id_=draft_id)
             if check_record.to_dict()["files"]["entries"] == {}:
                 app.logger.info("    syncing published record files...")
-                check_draft = records_service.read_draft(
-                    system_identity, id_=draft_id
-                )
+                check_draft = records_service.read_draft(system_identity, id_=draft_id)
                 app.logger.info("    draft record files are...")
                 app.logger.info(pformat(check_draft._record.files.entries))
                 check_record._record.files.sync(check_draft._record.files)
@@ -701,7 +745,7 @@ class FilesHelper:
         is_published: bool,
         old_files: dict[str, dict],
         new_entries: dict[str, dict],
-    ) -> bool:
+    ) -> tuple[bool, dict[str, dict]]:
         """
         Compare existing files to new entries.
 
@@ -784,8 +828,7 @@ class FilesHelper:
             old_wrong_files = [
                 f
                 for f in existing_files
-                if unicodedata.normalize("NFC", f["key"])
-                not in normalized_new_keys
+                if unicodedata.normalize("NFC", f["key"]) not in normalized_new_keys
             ]
             print("old_wrong_files:", old_wrong_files)
             for o in old_wrong_files:
@@ -833,9 +876,7 @@ class FilesHelper:
                 system_identity, draft_id
             ).to_dict()
             print("published files request:", published_files_request)
-            existing_published_files = published_files_request.get(
-                "entries", []
-            )
+            existing_published_files = published_files_request.get("entries", [])
         except NoResultFound:  # draft record
             pass
         except AttributeError:  # published record without files manager
@@ -867,9 +908,7 @@ class FilesHelper:
         # If the existing record has no files
         if len(existing_files) == 0 or old_files == {}:
             # Ensure that the appropriate file managers are empty
-            self._clear_managers(
-                draft_id, existing_files, is_draft, is_published
-            )
+            self._clear_managers(draft_id, existing_files, is_draft, is_published)
 
             # If there are new files to be uploaded, set same_files to False
             if len(new_entries) > 0:
@@ -909,9 +948,7 @@ class FilesHelper:
                 print("draft same_files:", same_files)
                 print("published same_files:", pub_same_files)
                 files_to_upload = pub_files_to_upload
-            if list(files_to_upload.keys()) != list(
-                pub_files_to_upload.keys()
-            ):
+            if list(files_to_upload.keys()) != list(pub_files_to_upload.keys()):
                 print("draft and published files to upload are different")
                 print("draft files to upload:", files_to_upload)
                 print("published files to upload:", pub_files_to_upload)

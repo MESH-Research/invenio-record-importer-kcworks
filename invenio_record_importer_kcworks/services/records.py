@@ -16,6 +16,7 @@ from invenio_db import db
 from invenio_i18n.proxies import current_i18n
 from invenio_pidstore.errors import PIDUnregistered, PIDDoesNotExistError
 from invenio_rdm_records.records.api import RDMRecord
+from invenio_rdm_records.records.systemfields.access.owners import Owner
 from invenio_rdm_records.resources.serializers.csl import (
     CSLJSONSerializer,
     get_citation_string,
@@ -47,6 +48,7 @@ from invenio_records_resources.services.uow import (
     RecordCommitOp,
 )
 from invenio_search.proxies import current_search_client
+from invenio_users_resources.proxies import current_users_service
 from marshmallow.exceptions import ValidationError
 from pprint import pformat
 from sqlalchemy.orm.exc import NoResultFound
@@ -68,7 +70,7 @@ class RecordsHelper:
     def change_record_ownership(
         record_id: str,
         new_owners: list[User],
-    ) -> dict:
+    ) -> Owner:
         """
         Change the owner of the specified record to a new user.
         """
@@ -77,7 +79,8 @@ class RecordsHelper:
         record = records_service.read(id_=record_id, identity=system_identity)._record
 
         parent = record.parent
-        parent.access.owned_by = new_owners
+        # FIXME: Currently ParentAccessSchema requires a single owner
+        parent.access.owned_by = new_owners[0]
         parent.commit()
         db.session.commit()
 
@@ -88,100 +91,180 @@ class RecordsHelper:
         return result.parent.access.owned_by
 
     @staticmethod
+    def _find_existing_users(
+        submitted_owners: list[dict], user_system: str = "knowledgeCommons"
+    ) -> tuple[list[User], list[dict]]:
+        """
+        Find the users in the submitted_owners list that already exist in the
+        submitted_data.
+
+        Returns a tuple of two lists:
+        - The first list contains the users that already exist in KCWorks
+        - The second list contains the supplied metadata dicts for the owners that do not exist in KCWorks
+        """
+        existing_users = []
+        missing_owners = []
+        for index, owner in enumerate(submitted_owners):
+            existing_user = None
+            user_email = owner.get("email")
+            user_username = next(
+                (
+                    i.get("identifier")
+                    for i in owner.get("identifiers", [])
+                    if i.get("scheme") == "kc_username"
+                ),
+                None,
+            )
+            other_user_ids = [
+                d.get("identifier")
+                for d in owner.get("identifiers", [])
+                if d.get("scheme") != "kc_username"
+            ]
+            try:
+                existing_user = current_accounts.datastore.get_user_by_email(user_email)
+            except NoResultFound:
+                pass
+            if not existing_user and user_username:
+                try:
+                    existing_user = current_accounts.datastore.find_user(
+                        username=f"{user_system.lower()}-{user_username}",
+                    )
+                except NoResultFound:
+                    pass
+            if not existing_user and user_username:
+                try:
+                    existing_user = current_accounts.datastore.find_user(
+                        username=user_username,
+                    )
+                except NoResultFound:
+                    pass
+            if not existing_user and other_user_ids:
+                i = len(other_user_ids)
+                while i > 0 and not existing_user:
+                    try:
+                        existing_user = current_accounts.datastore.find_user(
+                            username=other_user_ids[i - 1],
+                        )
+                    except NoResultFound:
+                        pass
+                    i -= 1
+            if not existing_user:
+                missing_owners.append(owner)
+
+        return existing_users, missing_owners
+
+    @staticmethod
     def assign_record_ownership(
         draft_id: str = "",
         submitted_data: dict = {},
+        user_id: str = "",
         submitted_owners: list[dict] = [],
-        record_source: str = "",
+        user_system: str = "knowledgeCommons",
         existing_record: Optional[dict] = None,
-    ) -> User:
+    ) -> list[User]:
+        """
+        Assign the ownership of the record.
+
+        Assigns ownership to the users specified in the submitted_owners list.
+        If no users are specified, assigns ownership to the user specified by
+        the user_id parameter. (Generally, this will be the user initiating
+        the import.)
+
+        Params:
+            draft_id: the ID of the draft record to assign ownership to
+            submitted_data: the submitted metadata for the record
+            user_id: the ID of the user to assign ownership to if no
+                submitted_owners are provided
+            submitted_owners: a list of users to assign ownership to
+            user_system: the source system of the user
+            existing_record: the existing record to assign ownership to
+
+        Returns:
+            A list of users that were assigned ownership to the record.
+        """
         # Create/find the necessary user account
         app.logger.info("    creating or finding the user (submitter)...")
-        # TODO: Make sure this will be the same email used for SAML login
-        for owner in submitted_owners:
-            new_owner_email = owner.get("email")
-            new_owner_username = owner.get("username")
-        if not new_owner_email and not new_owner_username:
+        app.logger.debug(f"user_id: {user_id}")
+        new_owners = []
+        if not submitted_owners:
+            new_owners = [current_accounts.datastore.get_user(user_id)]
+            app.logger.debug(f"new_owners: {new_owners}")
             app.logger.warning(
                 "    no submitter email or username found in source metadata. "
-                "Assigning ownership to configured admin user..."
+                "Assigning ownership to the currently active user..."
             )
-            new_owner_email = app.config["RECORD_IMPORTER_ADMIN_EMAIL"]
-            new_owner_username = None
-            existing_user = current_accounts.datastore.get_user_by_email(
-                new_owner_email
-            )
-            if not existing_user:
-                # handle case where user has multiple emails
-                try:
-                    existing_user = current_accounts.datastore.find_user(
-                        username=f"{record_source.lower()}-{new_owner_username}",
-                    )
-                    app.logger.warning(
-                        f"    finding existing user {new_owner_username} "
-                        f"({new_owner_email})...{existing_user}"
-                    )
-                    print(
-                        f"    finding existing user {new_owner_username} "
-                        f"({new_owner_email})...{existing_user}"
-                    )
-                    assert existing_user
-                    idp_slug = (
-                        "kc" if record_source == "knowledgeCommons" else record_source
-                    )
-                    existing_user.user_profile[f"identifier_{idp_slug}_username"] = (
-                        new_owner_username
-                    )
-                    existing_user.user_profile["identifier_email"] = new_owner_email
-                    current_accounts.datastore.commit()
-                except (NoResultFound, AssertionError):
-                    pass
-        if existing_user:
-            new_owner = existing_user
-            app.logger.debug(
-                f"    assigning ownership to existing user: "
-                f"{pformat(existing_user)} {existing_user.email}"
-            )
-        else:
-            new_owner_result = UsersHelper().create_invenio_user(
-                new_owner_email, new_owner_username, full_name, record_source
-            )
-            new_owner = new_owner_result["user"]
-            app.logger.info(f"    new user created: {pformat(new_owner)}")
+        app.logger.debug(f"new_owners: {new_owners}")
 
-        # if existing_record:
-        #     app.logger.debug("existing record data")
-        # app.logger.debug(
-        #     existing_record["custom_fields"]["kcr:submitter_email"]
-        # )
-        # app.logger.debug(existing_record["parent"])
-        if (
-            existing_record
-            and existing_record["custom_fields"].get("kcr:submitter_email")
-            == new_owner_email
-            and existing_record["parent"]["access"].get("owned_by")
-            and str(existing_record["parent"]["access"]["owned_by"]["user"])
-            == str(new_owner.id)
-        ):
-            app.logger.info("    skipping re-assigning ownership of the record ")
-            app.logger.info(
-                f"    (already belongs to {new_owner_email}, "
-                f"user {new_owner.id})..."
+        # Find existing users and owners without accounts
+        owners_with_accounts, missing_owners = RecordsHelper._find_existing_users(
+            submitted_owners
+        )
+        new_owners.extend(owners_with_accounts)
+        app.logger.debug(f"new_owners: {new_owners}")
+
+        for missing_owner in missing_owners:
+            missing_owner_kcid = next(
+                (
+                    i.get("identifier")
+                    for i in missing_owner.get("identifiers", [])
+                    if i.get("scheme") == "kc_username"
+                ),
+                "",
             )
-        else:
-            # Change the ownership of the record
-            app.logger.info(
-                "    re-assigning ownership of the record to the "
-                f"submitter ({new_owner_email}, "
-                f"{new_owner.id})..."
+            missing_owner_orcid = next(
+                (
+                    i.get("identifier")
+                    for i in missing_owner.get("identifiers", [])
+                    if i.get("scheme") == "orcid"
+                ),
+                "",
             )
-            changed_ownership = RecordsHelper.change_record_ownership(
-                draft_id, new_owners
+            other_user_ids = [
+                d.get("identifier")
+                for d in missing_owner.get("identifiers", [])
+                if d.get("scheme") != "kc_username"
+            ]
+            new_owner_result = UsersHelper().create_invenio_user(
+                user_email=missing_owner["email"],
+                source_username=missing_owner_kcid,
+                full_name=missing_owner["full_name"],
+                record_source=user_system,
+                orcid=missing_owner_orcid,
+                other_user_ids=other_user_ids,
             )
-            # Remember: changed_ownership is an Owner systemfield object,
-            # not User
-            assert changed_ownership.owner_id == new_owner.id
-        return new_owner
+            new_owners.append(new_owner_result["user"])
+
+        # Check to make sure the record is not already owned by the new owners
+        if existing_record:
+            existing_record_owners = []
+            new_owner_ids = [o.id for o in new_owners]
+            try:
+                existing_record_owners = [
+                    o.user for o in existing_record["parent"]["access"].get("owned_by")
+                ]
+            except AttributeError:
+                existing_record_owners = [
+                    existing_record["parent"]["access"].get("owned_by").get("user")
+                ]
+            if all([e for e in existing_record_owners if e in new_owner_ids]):
+                app.logger.info("    skipping re-assigning ownership of the record ")
+                app.logger.info(f"    (already belongs to owners: {new_owner_ids})")
+                return new_owners
+
+        # Change the ownership of the record
+        changed_ownership = RecordsHelper.change_record_ownership(draft_id, new_owners)
+        # Remember: changed_ownership is a list of Owner systemfield objects,
+        # not User objects
+        # FIXME: The ParentAccessSchema requires a single owner, but we are
+        # passing in a list of users.
+        assert changed_ownership.owner_id == new_owners[0].id
+        assert len(new_owners) == 1
+
+        return {
+            "owner_id": changed_ownership.owner_id,
+            "owner_type": changed_ownership.owner_type,
+            "access_grants": [],
+        }
 
     @staticmethod
     def _coerce_types(metadata: dict) -> dict:
