@@ -42,8 +42,7 @@ from pprint import pformat
 from pathlib import Path
 import re
 from sqlalchemy.orm.exc import NoResultFound
-import sys
-from typing import Optional, Union, BinaryIO
+from typing import Optional, Union
 import unicodedata
 from urllib.parse import unquote
 from invenio_record_importer_kcworks.types import FileData
@@ -70,24 +69,27 @@ class FilesHelper:
 
     @unit_of_work()
     def set_to_metadata_only(self, draft_id: str, uow: Optional[UnitOfWork] = None):
-        try:
-            record = records_service.read(system_identity, draft_id)._record
-            if record.files.entries:
-                for k in record.files.entries.keys():
-                    self._delete_file(draft_id, k, records_service.files)
-        except PIDUnregistered:
-            pass
+        if uow:
+            try:
+                record = records_service.read(system_identity, draft_id)._record
+                if record.files.entries:
+                    for k in record.files.entries.keys():
+                        self._delete_file(draft_id, k, records_service.files)
+            except PIDUnregistered:
+                pass
 
-        try:
-            record = records_service.read_draft(system_identity, draft_id)._record
-            if record.files.entries:
-                for k in record.files.entries.keys():
-                    self._delete_file(draft_id, k, records_service.draft_files)
-        except NoResultFound:
-            pass
-        record.files.enabled = False
-        record["access"]["status"] = "metadata-only"
-        uow.register(RecordCommitOp(record))
+            try:
+                record = records_service.read_draft(system_identity, draft_id)._record
+                if record.files.entries:
+                    for k in record.files.entries.keys():
+                        self._delete_file(draft_id, k, records_service.draft_files)
+            except NoResultFound:
+                pass
+            record.files.enabled = False
+            record["access"]["status"] = "metadata-only"
+            uow.register(RecordCommitOp(record))
+        else:
+            raise RuntimeError("uow is required")
 
     @unit_of_work()
     def _clear_managers(
@@ -192,6 +194,7 @@ class FilesHelper:
                     removed_file,
                     uow=uow,
                 )
+                assert uow
                 uow.register(RecordCommitOp(record))
                 assert key not in record.files.entries.keys()
 
@@ -224,7 +227,10 @@ class FilesHelper:
                 system_identity, existing_record["id"]
             )._record
             record.files.unlock()
-            uow.register(RecordCommitOp(record))
+            if uow:
+                uow.register(RecordCommitOp(record))
+            else:
+                raise RuntimeError("uow is required")
 
             try:
                 app.logger.warning("    unlocking draft record files...")
@@ -247,7 +253,10 @@ class FilesHelper:
                 system_identity, id_=existing_record["id"]
             )._record
             record.files.lock()
-            uow.register(RecordCommitOp(record))
+            if uow:
+                uow.register(RecordCommitOp(record))
+            else:
+                raise RuntimeError("uow is required")
 
             try:
                 app.logger.warning("    locking draft record files...")
@@ -310,13 +319,15 @@ class FilesHelper:
             file_data (dict): the metadata on files to be uploaded to the new draft.
                 This will be drawn directly from the import file data and is
                 the source of truth for the new draft. It is either a dictionary
-                shaped like the record's `files.entries` property OR a list of dictionaries shaped like the payload for initiating file uploads via
+                shaped like the record's `files.entries` property OR a list of
+                dictionaries shaped like the payload for initiating file uploads via
                 the low-level files API.
             files (list): the files to be uploaded to the new draft. This
                 carries the files provided by the caller if we are not reading
                 them from a local folder. If this is empty we will look in
                 a folder for files to upload. It should be a list of FileData
-                objects, which are defined in the `invenio_record_importer_kcworks.types` module.
+                objects, which are defined in the
+                `invenio_record_importer_kcworks.types` module.
             existing_record (dict): the existing record metadata, if we are
                 updating a draft of a published record or an unpublished
                 preexisting draft. It will only be empty if we are creating a
@@ -348,7 +359,6 @@ class FilesHelper:
             that were generated.
 
         """
-        app.logger.debug(f"handle_record_files metadata: {pformat(metadata)}")
         app.logger.debug(f"handle_record_files file_data: {pformat(file_data)}")
         app.logger.debug(f"handle_record_files file_data: {files}")
         app.logger.debug(
@@ -397,7 +407,7 @@ class FilesHelper:
                 print(pformat(check_record.files.entries))
 
             uploaded_files = {
-                k: ("already_uploaded", []) for k in files_to_upload.keys()
+                k: ["already_uploaded", []] for k in files_to_upload.keys()
             }
 
         elif len(files_to_upload) > 0:
@@ -465,7 +475,10 @@ class FilesHelper:
                 removed_file,
                 uow=uow,
             )
-            uow.register(RecordCommitOp(existing_record))
+            if uow:
+                uow.register(RecordCommitOp(existing_record))
+            else:
+                raise RuntimeError("uow is required")
             assert k not in existing_record.files.entries.keys()
 
             app.logger.debug(

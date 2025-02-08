@@ -39,7 +39,7 @@ def bool_from_string(value: str) -> bool:
 
 request_form_data = request_body_parser(
     parsers=from_conf("request_body_parsers"),
-    default_content_type=from_conf("default_content_type"),
+    default_content_type=str(from_conf("default_content_type")),
 )
 
 request_parsed_view_args = request_parser(
@@ -176,7 +176,7 @@ class RecordImporterResource(Resource):
             )
             for file in file_data
         ]
-        ## TODO: use the Flask secure_filename function to sanitize the file name
+        #  TODO: use the Flask secure_filename function to sanitize the file name
 
         import_result = self.service.import_records(
             file_data=file_data,

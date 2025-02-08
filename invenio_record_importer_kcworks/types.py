@@ -1,7 +1,7 @@
 from typing import Any, Union
 from pydantic import BaseModel, field_validator
 from tempfile import SpooledTemporaryFile
-from io import BufferedReader, TextIOWrapper
+from io import BufferedReader
 
 
 class FileData(BaseModel):
@@ -44,9 +44,9 @@ class ImportedRecord(BaseModel):
     item_index: int
     record_id: str
     record_url: str
-    files: dict[str, tuple[str, list[str]]]
+    files: dict[str, list[Union[str, list[str]]]]
     collection_id: str
-    errors: list[str]
+    errors: list[dict]
     metadata: dict
 
 

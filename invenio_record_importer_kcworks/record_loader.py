@@ -820,7 +820,7 @@ class RecordLoader:
         self,
         start_date: str = "",
         end_date: str = "",
-    ) -> Union[list[dict], None]:
+    ) -> Union[list, bool]:
         """
         Aggregate the stats for the load operation.
         """
