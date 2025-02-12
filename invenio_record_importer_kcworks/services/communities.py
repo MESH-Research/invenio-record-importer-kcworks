@@ -13,6 +13,7 @@ from invenio_communities.errors import CommunityDeletedError
 from invenio_communities.members.records.api import Member
 from invenio_communities.proxies import current_communities
 from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
+from invenio_drafts_resources.resources.records.errors import DraftNotCreatedError
 from invenio_group_collections_kcworks.errors import (
     CollectionNotFoundError,
     CommonsGroupNotFoundError,
@@ -385,7 +386,7 @@ class CommunitiesHelper:
                 system_identity, id_=draft_id
             ).to_dict()
             assert existing_record
-        except (IndexError, NoResultFound):
+        except (IndexError, NoResultFound, DraftNotCreatedError):
             try:
                 existing_record = records_service.read(
                     system_identity, id_=draft_id
@@ -561,10 +562,13 @@ class CommunitiesHelper:
             # If the record is already published, we need to create/retrieve
             # and accept a 'community-inclusion' request instead
             except (NoResultFound, ReviewStateError) as e:
-                raise e
                 app.logger.debug(f"   {pformat(e)}")
                 app.logger.debug("   record is already published")
                 record_communities = current_rdm_records.record_communities_service
+
+                app.logger.debug(
+                    f"record before inclusion: {pformat(records_service.read(system_identity, id_=draft_id).id)}"
+                )
 
                 # Try to create and submit a 'community-inclusion' request
                 requests, errors = record_communities.add(
@@ -580,7 +584,12 @@ class CommunitiesHelper:
                 # FIXME: How can we tell if an inclusion request is already
                 # open and/or accepted? Without relying on this error message?
                 if errors and "already included" in errors[0]["message"]:
-                    return {submitted_request.to_dict()}
+                    return {
+                        "status": "already_included",
+                        "submitted_request": (
+                            submitted_request.to_dict() if submitted_request else None
+                        ),
+                    }
                 # If that failed look for any existing open
                 # 'community-inclusion' request and continue with it
                 if errors:
@@ -695,9 +704,15 @@ class CommunitiesHelper:
                 app.logger.debug(f"    linking to group_name: {group['group_name']}")
                 group_name = group["group_name"]
                 coll_record = None
+                # TODO: This is a hack to get the index name
+                prefix = app.config.get("SEARCH_INDEX_PREFIX")
+                if prefix:
+                    index = f"{prefix}-communities"
+                else:
+                    index = "communities"
                 try:
                     coll_search = current_search_client.search(
-                        index="kcworks-communities",
+                        index=index,
                         q=f'custom_fields.kcr\:commons_group_id:"{group_id}"',
                     )
                     coll_record_hits = coll_search["hits"]["hits"]

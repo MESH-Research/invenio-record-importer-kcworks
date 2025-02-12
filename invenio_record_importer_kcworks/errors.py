@@ -100,6 +100,15 @@ class NoAvailableRecordsError(Exception):
         self.message = message
 
 
+class OwnershipChangeFailedError(Exception):
+    """Ownership change failed error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(OwnershipChangeFailedError, self).__init__(message)
+        self.message = message
+
+
 class PublicationValidationError(Exception):
     """Publication validation error."""
 

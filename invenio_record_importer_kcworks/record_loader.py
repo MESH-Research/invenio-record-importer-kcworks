@@ -8,12 +8,15 @@
 # more details.
 
 import arrow
+import copy
 from flask import current_app as app
 from invenio_access.permissions import system_identity
+from invenio_pidstore.errors import PIDDoesNotExistError
 from invenio_rdm_records.proxies import (
     current_rdm_records_service as records_service,
 )
 from invenio_record_importer_kcworks.errors import (
+    PublicationValidationError,
     SkipRecord,
 )
 from invenio_record_importer_kcworks.services.communities import (
@@ -32,6 +35,7 @@ import itertools
 import jsonlines
 from pathlib import Path
 from sqlalchemy.orm.exc import StaleDataError
+from sqlalchemy.exc import NoResultFound
 from traceback import print_exc, format_exc
 from typing import Union
 from pprint import pformat
@@ -106,6 +110,14 @@ class RecordLoader:
         """
         Create an invenio record with file uploads, ownership, communities.
 
+        Note that the owners list identified in the submitted data's
+        parent.access.owned_by list will not be included in the record metadata
+        during record creation. It will be removed and the record ownership
+        updated after record creation.
+
+        Likewise, any file data in the submitted data's files.entries list will be
+        removed and the files will be uploaded after record creation.
+
         Parameters
         ----------
         import_data : dict
@@ -137,6 +149,7 @@ class RecordLoader:
         LoaderResult
             A LoaderResult object with the results of the import. It has the
             following properties:
+            - index: the index of the record in the source file
             - primary_community: the community data dictionary for the record's
                 primary community
             - record_created: the metadata record creation result.
@@ -153,6 +166,10 @@ class RecordLoader:
                 as a dictionary
             - assigned_ownership: the record ownership assignment result
             - added_to_collections: the group collection addition
+            - submitted: the submitted data
+                - data: the submitted data
+                - files: the submitted files
+                - owners: the submitted owners
         """
         result = LoaderResult(
             index=index,
@@ -160,178 +177,227 @@ class RecordLoader:
             record_created={},
             uploaded_files={},
             community_review_result={},
-            assigned_owners=[],
+            assigned_owners={},
             added_to_collections=[],
             existing_record={},
             errors=[],
+            submitted={},
         )
         for key, val in overrides.items():
             app.logger.debug(f"updating metadata key {key} with value {val}")
-            import_data = replace_value_in_nested_dict(import_data, key, val)
-
-        submitted_files_data: dict = import_data["files"]
+            updated_data = replace_value_in_nested_dict(import_data, key, val)
+            if isinstance(updated_data, dict):
+                import_data = updated_data
+            else:
+                app.logger.error(
+                    f"failed to update metadata key {key} with value {val}"
+                )
+                raise ValueError(
+                    f"failed to update metadata key {key} with value {val}"
+                )
 
         # Build the initial metadata to be submitted
+        result.submitted["files"] = copy.deepcopy(import_data["files"])
+
         submitted_data = {
+            "access": import_data.get("access", {}),
             "custom_fields": import_data.get("custom_fields", {}),
             "metadata": import_data["metadata"],
             "pids": import_data.get("pids", {}),
+            "parent": import_data.get("parent", {}),
         }
+        result.submitted["data"] = submitted_data
 
         # Remove the owned_by field from the access dictionary because we
         # will be adding it back in later
-        submitted_owners = submitted_data.get("access", {}).get("owned_by", [])
-        if "access" in submitted_data.keys():
-            submitted_data["access"] = {
-                k: v for k, v in submitted_data["access"].items() if k != "owned_by"
+        result.submitted["owners"] = copy.deepcopy(
+            submitted_data["parent"].get("access", {}).get("owned_by", [])
+        )
+        if "access" in result.submitted["data"]["parent"].keys():
+            result.submitted["data"]["parent"]["access"] = {
+                k: v
+                for k, v in result.submitted["data"]["parent"]["access"].items()
+                if k != "owned_by"
             }
-        else:
-            submitted_data["access"] = {"record": "public", "files": "public"}
+        # else:
+        #     result.submitted["data"]["access"] = {"record": "public",
+        # "files": "public"}
 
         # Keep file data separate from other metadata, but enable files if
         # there are files in the metadata
-        if len(submitted_files_data.get("entries", [])) > 0:
-            submitted_data["files"] = {"enabled": True}
+        if len(result.submitted["files"].get("entries", [])) > 0:
+            result.submitted["data"]["files"] = {"enabled": True}
         else:
-            submitted_data["files"] = {"enabled": False}
+            result.submitted["data"]["files"] = {"enabled": False}
 
-        # Create/find the necessary primary community
-        # We aren't yet placing the record in the community, just making sure
-        # the community exists
-        app.logger.info("    finding or creating primary community...")
-        if self.community_id:
-            result.primary_community = CommunitiesHelper().prepare_invenio_community(
-                record_source=user_system,
-                community_string=self.community_id,
+        try:
+            # Create/find the necessary primary community
+            # We aren't yet placing the record in the community, just making sure
+            # the community exists
+            app.logger.info("    finding or creating primary community...")
+            if self.community_id:
+                result.primary_community = (
+                    CommunitiesHelper().prepare_invenio_community(
+                        record_source=user_system,
+                        community_string=self.community_id,
+                    )
+                )
+
+            # Create the basic metadata record
+            # This tries to recover (or if necessary, delete) existing draft or
+            # published records *unless* the no_updates flag is set
+            app.logger.info("    finding or creating draft metadata record...")
+            app.logger.debug(f"    submitted_data: {pformat(submitted_data)}")
+            result.record_created = RecordsHelper().create_invenio_record(
+                submitted_data, no_updates
+            )
+            result.status = result.record_created["status"]
+            app.logger.info(f"    record status: {result.record_created['status']}")
+            if result.record_created["status"] in [
+                "updated_published",
+                "updated_draft",
+                "unchanged_existing_draft",
+                "unchanged_existing_published",
+            ]:
+                result.existing_record = result.record_created["record_data"]
+            # NOTE: this "is_draft" logic will be True for new drafts for unpublished
+            # versions of published records, but *not* for drafts editing
+            # already published versions
+            is_draft = (
+                False
+                if result.existing_record
+                and result.existing_record["is_published"]
+                and not result.existing_record["is_draft"]
+                else True
+            )
+            draft_id = result.record_created["record_data"]["id"]
+            app.logger.info(f"    metadata record id: {draft_id}")
+
+            print(
+                f"import_record_to_invenio metadata_record: "
+                f"{pformat(result.record_created['record_data'])}"
             )
 
-        # Create the basic metadata record
-        # This tries to recover (or if necessary, delete) existing draft or
-        # published records *unless* the no_updates flag is set
-        app.logger.info("    finding or creating draft metadata record...")
-        app.logger.debug(f"    submitted_data: {pformat(submitted_data)}")
-        result.record_created = RecordsHelper().create_invenio_record(
-            submitted_data, no_updates
-        )
-        result.status = result.record_created["status"]
-        app.logger.info(f"    record status: {result.record_created['status']}")
-        if result.record_created["status"] in [
-            "updated_published",
-            "updated_draft",
-            "unchanged_existing_draft",
-            "unchanged_existing_published",
-        ]:
-            result.existing_record = result.record_created["record_data"]
-        # NOTE: this "is_draft" logic will be True for new drafts for unpublished
-        # versions of published records, but *not* for drafts editing already published
-        # versions
-        is_draft = (
-            False
-            if result.existing_record
-            and result.existing_record["is_published"]
-            and not result.existing_record["is_draft"]
-            else True
-        )
-        draft_id = result.record_created["record_data"]["id"]
-        app.logger.info(f"    metadata record id: {draft_id}")
+            # Upload the files
+            if len(result.submitted["files"].get("entries", [])) > 0:
+                app.logger.info("    uploading files for draft...")
+                result.uploaded_files = FilesHelper(
+                    is_draft=is_draft
+                ).handle_record_files(
+                    result.record_created["record_data"],
+                    result.submitted["files"]["entries"],
+                    files=files,
+                    existing_record=result.existing_record,
+                )
+            else:
+                app.logger.warning(
+                    f"files in metadata: "
+                    f"{pformat(result.record_created['record_data'].get('files'))}"
+                )
+                FilesHelper(is_draft=is_draft).set_to_metadata_only(draft_id)
+                result.record_created["record_data"]["files"]["enabled"] = False
+                if result.existing_record:
+                    result.existing_record["files"]["enabled"] = False
 
-        print(
-            f"import_record_to_invenio metadata_record: "
-            f"{pformat(result.record_created['record_data'])}"
-        )
+            # Attach the record to the communities
+            result.community_review_result = (
+                CommunitiesHelper().publish_record_to_community(
+                    draft_id,
+                    community_id=result.primary_community["id"],
+                )
+            )
+            # Publishing the record happens during community acceptance
+            # If the record already belongs to the community...
+            # - if the record has no changes, we do nothing
+            # - if the metadata was not changed, but there are new files, we
+            #   create and publish a new draft of the record with the new files
+            # - if the metadata and/or files were changed, a new draft of the
+            #   record should already exist and we publish that
+            if result.community_review_result["status"] == "already_published":
+                if result.uploaded_files.get("status") != "skipped":
+                    app.logger.info("    publishing new draft record version...")
+                    app.logger.debug(
+                        records_service.read(
+                            system_identity, id_=draft_id
+                        )._record.files.entries
+                    )
+                    try:
+                        check_rec = records_service.read_draft(
+                            system_identity, id_=draft_id
+                        )._record
+                        print(check_rec.files.bucket)
+                        print(check_rec.files.entries)
+                    except Exception:
+                        # edit method creates a new draft of the published record
+                        # if one doesn't already exist
+                        records_service.edit(system_identity, id_=draft_id)
+                    publish = records_service.publish(system_identity, id_=draft_id)
+                    assert publish.data["status"] == "published"
 
-        # Upload the files
-        if len(submitted_files_data.get("entries", [])) > 0:
-            app.logger.info("    uploading files for draft...")
-            result.uploaded_files = FilesHelper(is_draft=is_draft).handle_record_files(
-                result.record_created["record_data"],
-                submitted_files_data["entries"],
-                files=files,
+            # Assign ownership of the record
+            result.assigned_owners = RecordsHelper.assign_record_ownership(
+                draft_id=draft_id,
+                submitted_data=result.submitted["data"],
+                user_id=self.user_id,
+                submitted_owners=result.submitted["owners"],
+                user_system=user_system,
                 existing_record=result.existing_record,
             )
-        else:
-            app.logger.warning(
-                f"files in metadata: "
-                f"{pformat(result.record_created['record_data'].get('files'))}"
-            )
-            FilesHelper(is_draft=is_draft).set_to_metadata_only(draft_id)
-            result.record_created["record_data"]["files"]["enabled"] = False
-            if result.existing_record:
-                result.existing_record["files"]["enabled"] = False
 
-        # Attach the record to the communities
-        result.community_review_result = (
-            CommunitiesHelper().publish_record_to_community(
-                draft_id,
-                community_id=result.primary_community["id"],
-            )
-        )
-        # Publishing the record happens during community acceptance
-        # If the record already belongs to the community...
-        # - if the record has no changes, we do nothing
-        # - if the metadata was not changed, but there are new files, we
-        #   create and publish a new draft of the record with the new files
-        # - if the metadata and/or files were changed, a new draft of the
-        #   record should already exist and we publish that
-        if result.community_review_result["status"] == "already_published":
-            if result.uploaded_files.get("status") != "skipped":
-                app.logger.info("    publishing new draft record version...")
-                app.logger.debug(
-                    records_service.read(
-                        system_identity, id_=draft_id
-                    )._record.files.entries
+            # Add the record to the appropriate group collections
+            result.added_to_collections = (
+                CommunitiesHelper().add_record_to_group_collections(
+                    result.record_created["record_data"],
+                    record_source=user_system,
                 )
+            )
+
+            # Retrieve final metadata record
+            final_metadata_record = records_service.read(system_identity, id_=draft_id)
+            result.record_created["record_data"] = final_metadata_record.to_dict()
+
+            # Create fictional usage events to generate correct usage stats
+            # FIXME: Change the stats fields or make them configurable
+            if self.views_field or self.downloads_field:
+                StatsFabricator().create_stats_events(
+                    draft_id,
+                    downloads_field=self.downloads_field,
+                    views_field=self.views_field,
+                    date_field="metadata.publication_date",
+                    views_count=result.submitted["data"]["custom_fields"].get(
+                        self.views_field, 0
+                    ),
+                    downloads_count=result.submitted["data"]["custom_fields"].get(
+                        self.downloads_field, 0
+                    ),
+                    publication_date=result.submitted["data"]["metadata"].get(
+                        "publication_date"
+                    ),
+                    eager=True,
+                    verbose=True,
+                )
+        except PublicationValidationError as e:
+            app.logger.error(f"PublicationValidationError: {e}")
+            result.errors.append({"validation_error": e.message})
+            result.status = "error"
+
+            # Try to delete any draft records that were created
+            # FIXME: Why are some draft records no longer found when we try
+            # to delete them?
+            if result.record_created:
                 try:
-                    check_rec = records_service.read_draft(
-                        system_identity, id_=draft_id
-                    )._record
-                    print(check_rec.files.bucket)
-                    print(check_rec.files.entries)
-                except Exception:
-                    # edit method creates a new draft of the published record
-                    # if one doesn't already exist
-                    records_service.edit(system_identity, id_=draft_id)
-                publish = records_service.publish(system_identity, id_=draft_id)
-                assert publish.data["status"] == "published"
-
-        # Assign ownership of the record
-        result.assigned_owners = RecordsHelper.assign_record_ownership(
-            draft_id=draft_id,
-            submitted_data=submitted_data,
-            user_id=self.user_id,
-            submitted_owners=submitted_owners,
-            user_system=user_system,
-            existing_record=result.existing_record,
-        )
-
-        # Add the record to the appropriate group collections
-        result.added_to_collections = (
-            CommunitiesHelper().add_record_to_group_collections(
-                result.record_created["record_data"],
-                record_source=user_system,
-            )
-        )
-
-        # Retrieve final metadata record
-        final_metadata_record = records_service.read(system_identity, id_=draft_id)
-        result.record_created["record_data"] = final_metadata_record.to_dict()
-
-        # Create fictional usage events to generate correct usage stats
-        # FIXME: Change the stats fields or make them configurable
-        if self.views_field or self.downloads_field:
-            StatsFabricator().create_stats_events(
-                draft_id,
-                downloads_field=self.downloads_field,
-                views_field=self.views_field,
-                date_field="metadata.publication_date",
-                views_count=submitted_data["custom_fields"].get(self.views_field, 0),
-                downloads_count=submitted_data["custom_fields"].get(
-                    self.downloads_field, 0
-                ),
-                publication_date=submitted_data["metadata"].get("publication_date"),
-                eager=True,
-                verbose=True,
-            )
+                    record_id = result.record_created["record_data"]["id"]
+                    RecordsHelper().delete_invenio_record(record_id)
+                    app.logger.error(f"Deleted draft record {record_id}")
+                except (NoResultFound, PIDDoesNotExistError):
+                    app.logger.error(f"No draft record found to delete: {record_id}")
+                result.record_created["record_data"] = {}
+                result.record_created["record_uuid"] = (
+                    ""  # FIXME: Can we search by UUID?
+                )
+                result.record_created["status"] = "deleted"
+            else:
+                result.record_created["status"] = "not_created"
 
         return result
 

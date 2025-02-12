@@ -35,6 +35,7 @@ from invenio_record_importer_kcworks.errors import (
     DraftDeletionFailedError,
     ExistingRecordNotUpdatedError,
     NoUpdates,
+    OwnershipChangeFailedError,
     PublicationValidationError,
     UpdateValidationError,
 )
@@ -48,11 +49,9 @@ from invenio_records_resources.services.uow import (
     RecordCommitOp,
 )
 from invenio_search.proxies import current_search_client
-from invenio_users_resources.proxies import current_users_service
-from marshmallow.exceptions import ValidationError
 from pprint import pformat
 from sqlalchemy.orm.exc import NoResultFound
-from typing import Optional
+from typing import Optional, Any
 
 
 class RecordsHelper:
@@ -105,6 +104,7 @@ class RecordsHelper:
         existing_users = []
         missing_owners = []
         for index, owner in enumerate(submitted_owners):
+            app.logger.debug(f"finding account for owner: {pformat(owner)}")
             existing_user = None
             user_email = owner.get("email")
             user_username = next(
@@ -122,7 +122,9 @@ class RecordsHelper:
             ]
             try:
                 existing_user = current_accounts.datastore.get_user_by_email(user_email)
+                app.logger.debug(f"found user for email: {existing_user}")
             except NoResultFound:
+                app.logger.debug(f"no user found for email: {user_email}")
                 pass
             if not existing_user and user_username:
                 try:
@@ -150,6 +152,7 @@ class RecordsHelper:
                     i -= 1
             if not existing_user:
                 missing_owners.append(owner)
+            existing_users.append(existing_user)
 
         return existing_users, missing_owners
 
@@ -161,7 +164,7 @@ class RecordsHelper:
         submitted_owners: list[dict] = [],
         user_system: str = "knowledgeCommons",
         existing_record: Optional[dict] = None,
-    ) -> list[User]:
+    ) -> dict[str, Any]:
         """
         Assign the ownership of the record.
 
@@ -170,22 +173,36 @@ class RecordsHelper:
         the user_id parameter. (Generally, this will be the user initiating
         the import.)
 
+        Note that only one user can be assigned ownership of a record. If
+        more than one owner is specified, only the first will be assigned
+        ownership. Additional users listed will be added as access grants.
+
         Params:
             draft_id: the ID of the draft record to assign ownership to
             submitted_data: the submitted metadata for the record
             user_id: the ID of the user to assign ownership to if no
                 submitted_owners are provided
-            submitted_owners: a list of users to assign ownership to
+            submitted_owners: a list of users to assign ownership to. Each
+                user is a dict with the following keys:
+                - email: the email address of the user
+                - full_name: the full name of the user
+                - identifiers: a list of identifiers for the user
+                    - scheme: the scheme of the identifier
+                    - identifier: the identifier
             user_system: the source system of the user
             existing_record: the existing record to assign ownership to
 
         Returns:
-            A list of users that were assigned ownership to the record.
+            A dict with the following keys:
+            - owner_id: the ID of the user that was assigned ownership to the record
+            - owner_type: the type of the user that was assigned ownership to the record
+            - access_grants: a list of access grants for the record
         """
         # Create/find the necessary user account
         app.logger.info("    creating or finding the user (submitter)...")
         app.logger.debug(f"user_id: {user_id}")
         new_owners = []
+        new_grants = []
         if not submitted_owners:
             new_owners = [current_accounts.datastore.get_user(user_id)]
             app.logger.debug(f"new_owners: {new_owners}")
@@ -234,36 +251,73 @@ class RecordsHelper:
             )
             new_owners.append(new_owner_result["user"])
 
+        new_owner = new_owners[0]
+        new_grant_holders = new_owners[1:]
+
         # Check to make sure the record is not already owned by the new owners
         if existing_record:
-            existing_record_owners = []
-            new_owner_ids = [o.id for o in new_owners]
-            try:
-                existing_record_owners = [
-                    o.user for o in existing_record["parent"]["access"].get("owned_by")
-                ]
-            except AttributeError:
-                existing_record_owners = [
-                    existing_record["parent"]["access"].get("owned_by").get("user")
-                ]
-            if all([e for e in existing_record_owners if e in new_owner_ids]):
+            if new_owner.id == existing_record["parent"]["access"].get("owned_by").get(
+                "user"
+            ):
                 app.logger.info("    skipping re-assigning ownership of the record ")
-                app.logger.info(f"    (already belongs to owners: {new_owner_ids})")
-                return new_owners
+                app.logger.info(f"    (already belongs to owner {new_owner.id})")
+        else:
+            # Change the ownership of the record
+            try:
+                changed_ownership = RecordsHelper.change_record_ownership(
+                    draft_id, [new_owner]
+                )
+                # Remember: changed_ownership is a list of Owner systemfield objects,
+                # not User objects
+                # FIXME: The ParentAccessSchema requires a single owner, but we are
+                # passing in a list of users as if multiple owners are allowed.
+                assert changed_ownership.owner_id == new_owner.id
+                assert changed_ownership.owner_type == "user"
+            except AttributeError:
+                raise OwnershipChangeFailedError(
+                    f"Error changing ownership of the record. Could not "
+                    f"assign ownership to {new_owner}"
+                )
 
-        # Change the ownership of the record
-        changed_ownership = RecordsHelper.change_record_ownership(draft_id, new_owners)
-        # Remember: changed_ownership is a list of Owner systemfield objects,
-        # not User objects
-        # FIXME: The ParentAccessSchema requires a single owner, but we are
-        # passing in a list of users.
-        assert changed_ownership.owner_id == new_owners[0].id
-        assert len(new_owners) == 1
+        if new_grant_holders:
+            new_grants_result = records_service.access.bulk_create_grants(
+                system_identity,
+                draft_id,
+                {
+                    "grants": [
+                        {
+                            "subject": {"id": str(grant_holder.id), "type": "user"},
+                            "permission": "manage",
+                        }
+                        for grant_holder in new_grant_holders
+                    ]
+                },
+            )
+            app.logger.debug(f"created {len(new_grant_holders)} access grants")
+            app.logger.debug(f"new_grants: {pformat(new_grants_result)}")
+            assert len(new_grants_result) == len(new_grant_holders)
+            for grant in new_grants_result:
+                app.logger.debug(f"grant: {pformat(grant)}")
+                app.logger.debug(f"new_grant_holders: {pformat(new_grant_holders)}")
+                grant_holder = [
+                    g for g in new_grant_holders if str(g.id) == grant["subject"]["id"]
+                ][0]
+                new_grants.append(
+                    {
+                        "subject": {
+                            "id": str(grant_holder.id),
+                            "type": "user",
+                            "email": grant_holder.email,
+                        },
+                        "permission": "manage",
+                    }
+                )
 
         return {
             "owner_id": changed_ownership.owner_id,
+            "owner_email": new_owner.email,
             "owner_type": changed_ownership.owner_type,
-            "access_grants": [],
+            "access_grants": new_grants,
         }
 
     @staticmethod
@@ -344,8 +398,13 @@ class RecordsHelper:
                     f"{doi_for_query[1]}'"
                 )
 
+                prefix = app.config.get("SEARCH_INDEX_PREFIX", "")
+                if prefix:
+                    index = f"{prefix}-rdmrecords"
+                else:
+                    index = "rdmrecords"
                 same_doi = current_search_client.search(
-                    index="kcworks-rdmrecords",
+                    index=index,
                     q=f'pids.doi.identifier:"{doi_for_query[0]}/'
                     f'{doi_for_query[1]}"',
                 )

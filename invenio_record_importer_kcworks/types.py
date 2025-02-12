@@ -72,7 +72,8 @@ class LoaderResult(BaseModel):
     existing_record: dict = {}
     uploaded_files: dict[str, list[Union[str, list[str]]]] = {}
     community_review_result: dict = {}
-    assigned_owners: list = []
+    assigned_owners: dict = {}
     added_to_collections: list = []
     status: str = ""
     errors: list[dict] = []
+    submitted: dict = {}
