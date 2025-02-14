@@ -49,6 +49,7 @@ from invenio_records_resources.services.uow import (
     RecordCommitOp,
 )
 from invenio_search.proxies import current_search_client
+from marshmallow.exceptions import ValidationError
 from pprint import pformat
 from sqlalchemy.orm.exc import NoResultFound
 from typing import Optional, Any
@@ -786,8 +787,6 @@ class RecordsHelper:
         Since drafts cannot be deleted if they have an associated review
         request, this function first deletes any existing review request for
         the draft record.
-
-        Note: This function only works for draft (unpublished) records.
 
         returns:
             bool: True if the record was deleted, False otherwise

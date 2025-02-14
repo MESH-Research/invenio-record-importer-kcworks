@@ -28,6 +28,7 @@ from invenio_record_importer_kcworks.services.stats.stats import (
     StatsFabricator,
     AggregationFabricator,
 )
+from invenio_record_importer_kcworks.errors import FileUploadError
 from invenio_record_importer_kcworks.utils.utils import (
     replace_value_in_nested_dict,
 )
@@ -59,7 +60,7 @@ class RecordLoader:
         self,
         user_id: str = "",
         community_id: str = "",
-        sourceid_schemes: list[str] = ["neh-recid", "import-recid"],
+        sourceid_schemes: list[str] = ["import-recid", "neh-recid"],
         views_field: str = "",
         downloads_field: str = "",
     ):
@@ -192,7 +193,7 @@ class RecordLoader:
         result.source_id = next(
             (
                 i.get("identifier")
-                for i in import_data.get("pids", {}).get("entries", [])
+                for i in import_data.get("metadata", {}).get("identifiers", [])
                 if i.get("scheme") == self.sourceid_scheme
             ),
             "",
@@ -286,6 +287,7 @@ class RecordLoader:
             )
             draft_id = result.record_created["record_data"]["id"]
             app.logger.info(f"    metadata record id: {draft_id}")
+            app.logger.info(f"    is_draft: {is_draft}")
 
             print(
                 f"import_record_to_invenio metadata_record: "
@@ -312,6 +314,19 @@ class RecordLoader:
                 result.record_created["record_data"]["files"]["enabled"] = False
                 if result.existing_record:
                     result.existing_record["files"]["enabled"] = False
+            failed_files = [
+                k for k, f in result.uploaded_files.items() if f[0] == "failed"
+            ]
+            if any(failed_files):
+                app.logger.error(f"failed files: {pformat(result.uploaded_files)}")
+                raise FileUploadError(
+                    {
+                        "file upload failures": {
+                            k: result.uploaded_files[k] for k in failed_files
+                        }
+                    }
+                )
+            app.logger.info(f"uploaded files result: {pformat(result.uploaded_files)}")
 
             # Attach the record to the communities
             result.community_review_result = (
@@ -412,6 +427,22 @@ class RecordLoader:
                 result.record_created["status"] = "deleted"
             else:
                 result.record_created["status"] = "not_created"
+        except FileUploadError as e:
+            app.logger.error(f"FileUploadError: {e}")
+            result.errors.append(e.message)
+            result.status = "error"
+            if result.record_created:
+                try:
+                    record_id = result.record_created["record_data"]["id"]
+                    RecordsHelper().delete_invenio_record(record_id)
+                    app.logger.error(f"Deleted draft record {record_id}")
+                except (NoResultFound, PIDDoesNotExistError):
+                    app.logger.error(f"No draft record found to delete: {record_id}")
+                result.record_created["record_data"] = {}
+                result.record_created["record_uuid"] = (
+                    ""  # FIXME: Can we search by UUID?
+                )
+                result.record_created["status"] = "deleted"
 
         result.log_object = self._update_record_log_object(result)
 
@@ -893,6 +924,18 @@ class RecordLoader:
         )
         return result.log_object
 
+    def _roll_back_created_records(self, records: list[LoaderResult]) -> None:
+        """
+        Roll back the created records.
+        """
+        for record in records:
+            record_id = record.record_created.get("record_data", {}).get("id")
+            record_status = record.record_created.get("record_data", {}).get("status")
+            if record_id:
+                assert RecordsHelper().delete_invenio_record(
+                    record_id, record_type=record_status
+                )
+
     def _aggregate_stats(
         self,
         start_date: str = "",
@@ -1076,9 +1119,17 @@ class RecordLoader:
                 else:
                     reason = "|".join(json.dumps(e) for e in result.errors)
                     lists = self._log_failed_record(result, lists, reason)
+                    if flags["all_or_none"]:
+                        self._roll_back_created_records(lists["successful_records"])
+                        break
+                    elif stop_on_error:
+                        break
             except Exception as e:
                 lists = self._handle_raised_exception(e, result, lists)
-                if stop_on_error and lists["failed_records"]:
+                if flags["all_or_none"] and lists["failed_records"]:
+                    self._roll_back_created_records(lists["successful_records"])
+                    break
+                elif stop_on_error and lists["failed_records"]:
                     break
 
             app.logger.info(
@@ -1140,11 +1191,11 @@ class RecordLoader:
         elif success_list and not flags["all_or_none"]:
             overall_status = "partial_success"
             message = "Some records were successfully imported, but some failed"
-        elif not success_list and flags["all_or_none"]:
+        elif error_list and flags["all_or_none"]:
             overall_status = "error"
             message = (
                 "Some records could not be imported, and the 'all_or_none' flag "
-                "was set to True, so the operation was aborted."
+                "was set to True, so the import was aborted."
             )
         else:
             overall_status = "error"
