@@ -97,14 +97,21 @@ class RecordsHelper:
         Find the users in the submitted_owners list that already exist in the
         submitted_data.
 
+        Tries to find the user by email, then by kcworks username (username with
+        'kcworks' idp string), then by simple kc username.
+
+        TODO: Add support for finding by NEH user ID and ORCID.
+
         Returns a tuple of two lists:
         - The first list contains the users that already exist in KCWorks
-        - The second list contains the supplied metadata dicts for the owners that do not exist in KCWorks
+        - The second list contains the supplied metadata dicts for the owners
+            that do not exist in KCWorks
         """
         existing_users = []
         missing_owners = []
         for index, owner in enumerate(submitted_owners):
             app.logger.debug(f"finding account for owner: {pformat(owner)}")
+            app.logger.debug(f"owner: {pformat(owner.get('identifiers'))}")
             existing_user = None
             user_email = owner.get("email")
             user_username = next(
@@ -128,6 +135,9 @@ class RecordsHelper:
                 pass
             if not existing_user and user_username:
                 try:
+                    app.logger.debug(
+                        f"finding user for username with idp: {user_username}"
+                    )
                     existing_user = current_accounts.datastore.find_user(
                         username=f"{user_system.lower()}-{user_username}",
                     )
@@ -135,24 +145,18 @@ class RecordsHelper:
                     pass
             if not existing_user and user_username:
                 try:
+                    app.logger.debug(
+                        f"finding user for simple username: {user_username}"
+                    )
                     existing_user = current_accounts.datastore.find_user(
                         username=user_username,
                     )
                 except NoResultFound:
                     pass
-            if not existing_user and other_user_ids:
-                i = len(other_user_ids)
-                while i > 0 and not existing_user:
-                    try:
-                        existing_user = current_accounts.datastore.find_user(
-                            username=other_user_ids[i - 1],
-                        )
-                    except NoResultFound:
-                        pass
-                    i -= 1
             if not existing_user:
                 missing_owners.append(owner)
-            existing_users.append(existing_user)
+            else:
+                existing_users.append(existing_user)
 
         return existing_users, missing_owners
 
@@ -237,15 +241,15 @@ class RecordsHelper:
                 "",
             )
             other_user_ids = [
-                d.get("identifier")
+                d
                 for d in missing_owner.get("identifiers", [])
-                if d.get("scheme") != "kc_username"
+                if d.get("scheme") not in ["kc_username", "orcid"]
             ]
             new_owner_result = UsersHelper().create_invenio_user(
                 user_email=missing_owner["email"],
-                source_username=missing_owner_kcid,
-                full_name=missing_owner["full_name"],
-                record_source=user_system,
+                idp_username=missing_owner_kcid,
+                full_name=missing_owner.get("full_name", ""),
+                idp=user_system,
                 orcid=missing_owner_orcid,
                 other_user_ids=other_user_ids,
             )
@@ -280,6 +284,7 @@ class RecordsHelper:
                 )
 
         if new_grant_holders:
+            app.logger.debug(f"new_grant_holders: {pformat(new_grant_holders)}")
             new_grants_result = records_service.access.bulk_create_grants(
                 system_identity,
                 draft_id,

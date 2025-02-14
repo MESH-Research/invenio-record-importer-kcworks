@@ -32,6 +32,7 @@ from invenio_record_importer_kcworks.utils.utils import (
     replace_value_in_nested_dict,
 )
 import itertools
+import json
 import jsonlines
 from pathlib import Path
 from sqlalchemy.orm.exc import StaleDataError
@@ -58,7 +59,7 @@ class RecordLoader:
         self,
         user_id: str = "",
         community_id: str = "",
-        sourceid_schemes: list[str] = ["hclegacy-pid", "hclegacy-record-id"],
+        sourceid_schemes: list[str] = ["neh-recid", "import-recid"],
         views_field: str = "",
         downloads_field: str = "",
     ):
@@ -101,6 +102,7 @@ class RecordLoader:
     def load(
         self,
         index: int = 0,
+        log_object: dict = {},
         import_data: dict = {},
         files: list[FileData] = [],
         no_updates: bool = False,
@@ -150,6 +152,8 @@ class RecordLoader:
             A LoaderResult object with the results of the import. It has the
             following properties:
             - index: the index of the record in the source file
+            - source_id: the ID of the record in the source system, using the
+                first sourceid_scheme specified in the RecordLoader constructor
             - primary_community: the community data dictionary for the record's
                 primary community
             - record_created: the metadata record creation result.
@@ -173,6 +177,8 @@ class RecordLoader:
         """
         result = LoaderResult(
             index=index,
+            source_id="",
+            log_object=log_object,
             primary_community={},
             record_created={},
             uploaded_files={},
@@ -182,6 +188,14 @@ class RecordLoader:
             existing_record={},
             errors=[],
             submitted={},
+        )
+        result.source_id = next(
+            (
+                i.get("identifier")
+                for i in import_data.get("pids", {}).get("entries", [])
+                if i.get("scheme") == self.sourceid_scheme
+            ),
+            "",
         )
         for key, val in overrides.items():
             app.logger.debug(f"updating metadata key {key} with value {val}")
@@ -399,14 +413,15 @@ class RecordLoader:
             else:
                 result.record_created["status"] = "not_created"
 
+        result.log_object = self._update_record_log_object(result)
+
         return result
 
     def _log_success(
         self,
-        rec_log_object: dict,
         load_result: LoaderResult,
-        successful_records: list[LoaderResult],
-    ) -> list[LoaderResult]:
+        lists: dict[str, list[LoaderResult]],
+    ) -> dict[str, list[LoaderResult]]:
         """
         Log a created record to the created records log file.
 
@@ -421,6 +436,8 @@ class RecordLoader:
 
         :returns: the updated list of successful records (LoaderResult objects)
         """
+        success_list = lists["successful_records"]
+        rec_log_object = load_result.log_object
         rec_log_object["timestamp"] = arrow.utcnow().format()
         existing_lines = [
             (idx, t)
@@ -449,24 +466,23 @@ class RecordLoader:
                     created_writer.write(t)
 
         # Append the full result object to the successful records
-        successful_records.append(load_result)
+        success_list.append(load_result)
+        lists["successful_records"] = success_list
 
-        return successful_records
+        return lists
 
     def _log_failed_record(
         self,
         result: LoaderResult,
-        record_log_object: dict = {},
-        failed_records: list = [],
+        lists: dict,
         reason: str = "",
-        skipped_records: list = [],
-    ) -> list:
+    ) -> dict[str, list[Union[LoaderResult, dict]]]:
         """
         Log a failed record to the failed records log file.
         """
-
-        index = record_log_object.get("index", -1)
-        failed_obj = record_log_object.copy()
+        failed_list = lists["failed_records"]
+        index = result.log_object.get("index", -1)
+        failed_obj = result.log_object.copy()
         failed_obj.update(
             {
                 "reason": reason,
@@ -475,18 +491,18 @@ class RecordLoader:
         )
 
         if index > -1:
-            failed_records.append(result)
+            failed_list.append(result)
         skipped_ids = []
-        if len(skipped_records) > 0:
-            skipped_ids = [r["source_id"] for r in skipped_records if r]
+        if len(lists["skipped_records"]) > 0:
+            skipped_ids = [r["source_id"] for r in lists["skipped_records"] if r]
         with jsonlines.open(
             self.failed_log_path,
             "w",
         ) as failed_writer:
             total_failed = [
-                r for r in failed_records if r["source_id"] not in skipped_ids
+                r.log_object for r in failed_list if r.source_id not in skipped_ids
             ]
-            failed_ids = [r["source_id"] for r in failed_records if r]
+            failed_ids = [r.source_id for r in failed_list if r]
             for e in self.residual_failed_records:
                 if e["source_id"] not in failed_ids and e not in total_failed:
                     total_failed.append(e)
@@ -494,11 +510,12 @@ class RecordLoader:
             for o in ordered_failed_records:
                 failed_writer.write(o)
 
-        return failed_records
+        lists["failed_records"] = failed_list
+
+        return lists
 
     def _log_repaired_record(
         self,
-        rec_log_object: dict,
         result: LoaderResult,
         lists: dict,
     ) -> dict[str, list[dict]]:
@@ -507,19 +524,18 @@ class RecordLoader:
         """
         app.logger.info("    repaired previously failed record...")
         app.logger.info(
-            f"    {rec_log_object.get('doi')} {rec_log_object.get('source_id')}"
-            f" {rec_log_object.get('source_id_2')}"
+            f"    {result.log_object.get('doi')} {result.log_object.get('source_id')}"
+            f" {result.log_object.get('source_id_2')}"
         )
         self.residual_failed_records = [
             d
             for d in self.residual_failed_records
-            if d["source_id"] != rec_log_object["source_id"]
+            if d["source_id"] != result.log_object["source_id"]
         ]
-        lists["repaired_failed"].append(rec_log_object)
+        lists["repaired_failed"].append(result.log_object)
         lists["failed_records"], self.residual_failed_records = self._log_failed_record(
-            result=result,
-            failed_records=lists["failed_records"],
-            skipped_records=lists["skipped_records"],
+            result,
+            lists,
         )
         return lists
 
@@ -557,6 +573,9 @@ class RecordLoader:
         retry_failed = flags.get("retry_failed")
         no_updates = flags.get("no_updates")
         use_sourceids = flags.get("use_sourceids")
+
+        if range_args[1] == -1:
+            range_args[1] = len(metadata)
 
         if no_updates:
             app.logger.info(
@@ -678,9 +697,8 @@ class RecordLoader:
         self,
         e: Exception,
         result: LoaderResult,
-        record_log_object: dict,
-        lists: dict[str, list[dict]],
-    ) -> dict[str, list[dict]]:
+        lists: dict[str, list[Union[LoaderResult, dict]]],
+    ) -> dict[str, list[Union[LoaderResult, dict]]]:
         """
         Handle a raised exception and log the error.
 
@@ -731,7 +749,7 @@ class RecordLoader:
             ),
         }
         if e.__class__.__name__ in error_reasons.keys():
-            record_log_object.update({"reason": error_reasons[e.__class__.__name__]})
+            result.log_object.update({"reason": error_reasons[e.__class__.__name__]})
         else:
             app.logger.error(format_exc())
             app.logger.error(e)
@@ -743,14 +761,9 @@ class RecordLoader:
                     "message": error_reasons[e.__class__.__name__],
                 }
             )
-            lists["failed_records"] = self._log_failed_record(
-                record_log_object=record_log_object,
-                result=result,
-                failed_records=lists["failed_records"],
-                skipped_records=lists["skipped_records"],
-            )
+            lists = self._log_failed_record(result=result, lists=lists)
         elif e.__class__.__name__ == "NoUpdates":
-            lists["no_updates_records"].append(record_log_object)
+            lists["no_updates_records"].append(result.log_object)
 
         return lists
 
@@ -865,22 +878,20 @@ class RecordLoader:
                 app.logger.info(r)
             app.logger.info(f"Failed records written to {self.failed_log_path}")
 
-    def _update_record_log_object(
-        self, rec_log_object: dict, result: LoaderResult
-    ) -> dict:
+    def _update_record_log_object(self, result: LoaderResult) -> dict:
         """
         Update the record log object with the result of the load operation.
         """
-        rec_log_object["invenio_recid"] = result.record_created.get(
+        result.log_object["invenio_recid"] = result.record_created.get(
             "record_data", {}
         ).get("id")
-        rec_log_object["doi"] = (
+        result.log_object["doi"] = (
             result.record_created.get("record_data", {})
             .get("pids", {})
             .get("doi", {})
             .get("identifier", "")
         )
-        return rec_log_object
+        return result.log_object
 
     def _aggregate_stats(
         self,
@@ -913,7 +924,7 @@ class RecordLoader:
 
     def load_all(
         self,
-        start_index: int = 1,
+        start_index: int = 0,
         stop_index: int = -1,
         nonconsecutive: list = [],
         no_updates: bool = False,
@@ -989,11 +1000,6 @@ class RecordLoader:
             "strict_validation": strict_validation,
             "all_or_none": all_or_none,
         }
-        range_args = [start_index - 1]
-        if stop_index > -1 and stop_index >= start_index:
-            range_args.append(stop_index)
-        else:
-            range_args.append(start_index)
 
         # sanitize the names of files before upload to avoid
         # issues with special characters
@@ -1006,18 +1012,31 @@ class RecordLoader:
         record_set = self._get_record_set(
             metadata=metadata,
             flags=flags,
-            range_args=range_args,
+            range_args=[start_index, stop_index],
             nonconsecutive=nonconsecutive,
         )
 
         for record_metadata in record_set:
             current_record_index = (
                 record_metadata.get("jsonl_index")
-                or start_index + counts["record_counter"] - 1
+                or start_index + counts["record_counter"]
             )
 
             skip, overrides = self._get_overrides(record_metadata)
             rec_log_object = self._get_log_object(current_record_index, record_metadata)
+            current_files = [
+                f
+                for f in files
+                if f.filename.split("/")[-1]
+                in record_metadata.get("files", {}).get("entries", {}).keys()
+            ]
+            app.logger.debug(
+                f"current files for record {current_record_index}: {pformat(current_files)}"
+            )
+            app.logger.debug(f"all files: {pformat(files)}")
+            app.logger.debug(
+                f"entries: {pformat(record_metadata.get('files', {}).get('entries', {}))}"
+            )
 
             try:
                 result = LoaderResult(
@@ -1029,8 +1048,9 @@ class RecordLoader:
                 try:
                     result: LoaderResult = self.load(
                         index=current_record_index,
+                        log_object=rec_log_object,
                         import_data=record_metadata,
-                        files=files,
+                        files=current_files,
                         no_updates=flags["no_updates"],
                         overrides=overrides,
                     )
@@ -1041,30 +1061,23 @@ class RecordLoader:
                 except StaleDataError:
                     result: LoaderResult = self.load(
                         index=current_record_index,
+                        log_object=rec_log_object,
                         import_data=record_metadata,
                         files=files,
                         no_updates=flags["no_updates"],
                         overrides=overrides,
                     )
-                rec_log_object = self._update_record_log_object(rec_log_object, result)
-                lists["successful_records"] = self._log_success(
-                    rec_log_object, result, lists["successful_records"]
-                )
-                counts = self._update_counts(counts, result)
-                if rec_log_object["source_id"] in self.existing_failed_sourceids:
-                    lists = self._log_repaired_record(
-                        rec_log_object,
-                        result,
-                        lists,
-                    )
                 app.logger.debug("result status: %s", result.status)
+                if result.status == "new_record":
+                    lists = self._log_success(result, lists)
+                    counts = self._update_counts(counts, result)
+                    if result.source_id in self.existing_failed_sourceids:
+                        lists = self._log_repaired_record(result, lists)
+                else:
+                    reason = "|".join(json.dumps(e) for e in result.errors)
+                    lists = self._log_failed_record(result, lists, reason)
             except Exception as e:
-                lists = self._handle_raised_exception(
-                    e,
-                    result=result,
-                    record_log_object=rec_log_object,
-                    lists=lists,
-                )
+                lists = self._handle_raised_exception(e, result, lists)
                 if stop_on_error and lists["failed_records"]:
                     break
 

@@ -601,6 +601,7 @@ class FilesHelper:
         output = {}
 
         app.logger.debug(f"files_dict in _upload_draft_files: {pformat(files_dict)}")
+        app.logger.debug(f"files in _upload_draft_files: {pformat(files)}")
 
         # Ensure a draft exists for a published record
         try:
@@ -610,7 +611,13 @@ class FilesHelper:
         except (NoResultFound, DraftNotCreatedError):
             records_service.edit(system_identity, id_=draft_id)
 
+        app.logger.debug(f"uploading for record: {draft_id}")
+        app.logger.debug(
+            pformat(records_service.read_draft(system_identity, id_=draft_id))
+        )
+
         for k, v in files_dict.items():
+            app.logger.debug(f"uploading file: {k}")
             output[k] = ["failed", []]
             try:
                 initialization = self.files_service.init_files(
@@ -656,6 +663,7 @@ class FilesHelper:
                     )
 
                 if not files:
+                    app.logger.debug(f"    uploading file from source filename")
                     long_filename = self._sanitize_filename(source_filenames[k])
 
                     file_path = self._find_file_path(long_filename, k)
@@ -673,11 +681,15 @@ class FilesHelper:
                             system_identity, draft_id, k, binary_file_data
                         )
                 else:
+                    app.logger.debug(f"    uploading files from list")
                     for f in files:
+                        app.logger.debug(f"    uploading file: {f.filename}")
                         if f.filename.split("/")[-1] == k:
+                            app.logger.debug(f"    found file: {f.filename}")
                             self._check_file_size(
                                 f.stream, files_dict[k].get("size"), k
                             )
+                            app.logger.debug(f"    setting file content for {k}")
                             self.files_service.set_file_content(
                                 system_identity, draft_id, k, f.stream
                             )

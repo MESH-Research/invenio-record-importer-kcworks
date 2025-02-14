@@ -67,6 +67,8 @@ class LoaderResult(BaseModel):
     """
 
     index: int
+    source_id: str = ""
+    log_object: dict = {}
     primary_community: dict = {}
     record_created: dict = {}
     existing_record: dict = {}

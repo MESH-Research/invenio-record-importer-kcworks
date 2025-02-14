@@ -532,8 +532,8 @@ def create_user(
 
     create_response = UsersHelper().create_invenio_user(
         email,
-        record_source=origin,
-        source_username=source_username,
+        idp=origin,
+        idp_username=source_username,
         full_name=full_name,
         community_owner=community_owner,
     )

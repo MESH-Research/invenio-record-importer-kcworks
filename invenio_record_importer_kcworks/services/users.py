@@ -87,9 +87,9 @@ class UsersHelper:
     def create_invenio_user(
         self,
         user_email: str,
-        source_username: str = "",
+        idp_username: str = "",
         full_name: str = "",
-        record_source: str = "",
+        idp: str = "",
         community_owner: list = [],
         orcid: str = "",
         other_user_ids: list = [],
@@ -139,22 +139,20 @@ class UsersHelper:
         new_user_flag = True
         active_user = None
         idps = app.config.get("SSO_SAML_IDPS")
-        if not idps or record_source not in idps.keys():
-            raise RuntimeError(
-                f"record_source {record_source} not found in SSO_SAML_IDPS"
-            )
+        if not idps or idp not in idps.keys():
+            raise RuntimeError(f"record_source {idp} not found in SSO_SAML_IDPS")
 
-        if source_username and record_source and not user_email:
-            user_email = UsersHelper.get_user_by_source_id(
-                source_username, record_source
-            ).get("email")
+        if idp_username and idp and not user_email:
+            user_email = UsersHelper.get_user_by_source_id(idp_username, idp).get(
+                "email"
+            )
 
         if not user_email:
             user_email = app.config.get("RECORD_IMPORTER_ADMIN_EMAIL")
-            source_username = None
+            idp_username = None
             app.logger.warning(
                 "No email address provided in source cata for uploader of "
-                f"record ({source_username} from {record_source}). Using "
+                f"record ({idp_username} from {idp}). Using "
                 "default admin account as owner."
             )
 
@@ -173,7 +171,7 @@ class UsersHelper:
                 active=True,
                 confirmed_at=arrow.utcnow().datetime,
                 user_profile=profile,
-                username=f"{record_source}-{source_username}",
+                username=f"{idp}-{idp_username}",
             )
             current_accounts.datastore.commit()
             assert new_user.id
@@ -192,39 +190,36 @@ class UsersHelper:
                 app.logger.error(f"    failed to create user {user_email}...")
                 print_exc()
             active_user = user_confirmed
+
+        new_profile = active_user.user_profile
         if full_name:
-            active_user.user_profile.full_name = full_name
-            current_accounts.datastore.commit()
+            new_profile["full_name"] = full_name
         if orcid:
-            active_user.user_profile.identifier_orcid = orcid
-            current_accounts.datastore.commit()
+            new_profile["identifier_orcid"] = orcid
         if other_user_ids:
-            active_user.user_profile.identifier_other = json.dumps(
-                [
-                    {"scheme": i["scheme"], "identifier": i["identifier"]}
-                    for i in other_user_ids
-                ]
-            )
-            current_accounts.datastore.commit()
-        if record_source and source_username:
+            new_profile["identifier_other"] = json.dumps(other_user_ids)
+        active_user.user_profile = new_profile
+        current_accounts.datastore.commit()
+
+        if idp and idp_username:
             existing_saml = UserIdentity.query.filter_by(
                 id_user=active_user.id,
-                method=record_source,
-                id=source_username,
+                method=idp,
+                id=idp_username,
             ).one_or_none()
 
             if not existing_saml:
                 try:
-                    UserIdentity.create(active_user, record_source, source_username)
+                    UserIdentity.create(active_user, idp, idp_username)
                     db.session.commit()
                     app.logger.info(
                         f"    configured SAML login for {user_email} as"
-                        f" {source_username} on {record_source}..."
+                        f" {idp_username} on {idp}..."
                     )
                     assert UserIdentity.query.filter_by(
                         id_user=active_user.id,
-                        method=record_source,
-                        id=source_username,
+                        method=idp,
+                        id=idp_username,
                     ).one_or_none()
 
                     app.logger.info(active_user.external_identifiers)
@@ -232,16 +227,16 @@ class UsersHelper:
                         [
                             a
                             for a in active_user.external_identifiers
-                            if a.method == record_source
-                            and a.id == source_username
+                            if a.method == idp
+                            and a.id == idp_username
                             and a.id_user == active_user.id
                         ]
                     )
                 except AlreadyLinkedError as e:
-                    if source_username in str(e):
+                    if idp_username in str(e):
                         app.logger.warning(
                             f"    SAML login already configured for"
-                            f" {source_username} on {record_source}..."
+                            f" {idp_username} on {idp}..."
                         )
                     else:
                         raise e

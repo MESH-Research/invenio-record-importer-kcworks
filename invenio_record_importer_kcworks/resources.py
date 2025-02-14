@@ -150,7 +150,7 @@ class RecordImporterResource(Resource):
         if not isinstance(metadata, list):
             raise BadRequest("Invalid metadata")
 
-        id_scheme = resource_requestctx.data["form"].get("id_scheme", "neh_id")
+        id_scheme = resource_requestctx.data["form"].get("id_scheme", "neh-recid")
         alternate_id_scheme = resource_requestctx.data["form"].get(
             "alternate_id_scheme", ""
         )
