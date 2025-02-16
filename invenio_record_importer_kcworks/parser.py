@@ -59,6 +59,8 @@ class RequestMultipartParser:
         """Parse the request multipart data."""
         app.logger.debug(f"form type: {type(request.form)}")
         app.logger.debug(f"Request form: {request.form}")
+        app.logger.debug(f"files type: {type(request.files)}")
+        app.logger.debug(f"Request files: {request.files}")
         return {
             "form": request.form,
             "files": request.files,

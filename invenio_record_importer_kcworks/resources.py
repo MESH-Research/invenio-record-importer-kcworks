@@ -142,6 +142,7 @@ class RecordImporterResource(Resource):
         """
         community_id = resource_requestctx.view_args.get("community")
         file_data = resource_requestctx.data["files"]
+        app.logger.debug(f"in resource file_data type: {file_data}")
         if isinstance(file_data, ImmutableMultiDict):
             file_data = file_data.getlist("files")
 
@@ -189,6 +190,7 @@ class RecordImporterResource(Resource):
             strict_validation=strict_validation,
             all_or_none=all_or_none,
         )
+        app.logger.debug(f"in resource import_result: {import_result.get('status')}")
         if import_result.get("status") == "success":
             return jsonify(import_result), 201
         elif import_result.get("status") == "multi_status" and not all_or_none:
