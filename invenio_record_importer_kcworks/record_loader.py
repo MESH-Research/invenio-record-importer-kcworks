@@ -1159,6 +1159,7 @@ class RecordLoader:
             ImportedRecord(
                 item_index=r.index,
                 record_id=r.record_created.get("record_data", {}).get("id", ""),
+                source_id=r.source_id,
                 record_url=r.record_created.get("record_data", {})
                 .get("links", {})
                 .get("self_html", ""),
@@ -1173,6 +1174,7 @@ class RecordLoader:
             ImportedRecord(
                 item_index=r.index,
                 record_id=r.record_created.get("record_data", {}).get("id", ""),
+                source_id=r.source_id,
                 record_url=r.record_created.get("record_data", {})
                 .get("links", {})
                 .get("self_html", ""),
@@ -1195,7 +1197,10 @@ class RecordLoader:
             overall_status = "error"
             message = (
                 "Some records could not be imported, and the 'all_or_none' flag "
-                "was set to True, so the import was aborted."
+                "was set to True, so the import was aborted and no records "
+                "were created. Please check the list of failed records in the "
+                "'errors' field for more information. Each failed item should have "
+                "its own list of specific errors."
             )
         else:
             overall_status = "error"

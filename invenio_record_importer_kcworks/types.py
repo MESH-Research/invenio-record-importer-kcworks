@@ -43,6 +43,7 @@ class ImportedRecord(BaseModel):
 
     item_index: int
     record_id: str
+    source_id: str
     record_url: str
     files: dict[str, list[Union[str, list[str]]]]
     collection_id: str
