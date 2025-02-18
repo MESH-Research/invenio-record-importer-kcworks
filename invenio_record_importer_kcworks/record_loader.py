@@ -91,6 +91,7 @@ class RecordLoader:
             self.residual_failed_records,
             self.existing_failed_indices,
             self.existing_failed_sourceids,
+            self.existing_failed_invenioids,
         ) = self._load_prior_failed_records()
 
         if not self.user_id:
@@ -198,6 +199,8 @@ class RecordLoader:
             ),
             "",
         )
+        app.logger.debug(f"result.source_id: {result.source_id}")
+        app.logger.debug(f"scheme: {self.sourceid_scheme}")
         for key, val in overrides.items():
             app.logger.debug(f"updating metadata key {key} with value {val}")
             updated_data = replace_value_in_nested_dict(import_data, key, val)
@@ -570,7 +573,17 @@ class RecordLoader:
         )
         return lists
 
-    def _load_prior_failed_records(self) -> tuple[list, list, list, list]:
+    def _load_prior_failed_records(self) -> tuple[list, list, list, list, list]:
+        """
+        Load the prior failed records.
+
+        :returns: a tuple of lists which contain:
+            - the existing failed records
+            - the residual failed records (these will be removed as repaired)
+            - the existing failed indices
+            - the existing failed source ids (using the import identifier scheme)
+            - the existing failed invenio ids (using the InvenioRDM record ID scheme)
+        """
         existing_failed_records = []
         try:
             with jsonlines.open(
@@ -582,6 +595,9 @@ class RecordLoader:
             app.logger.info("**no existing failed records log file found...**")
         existing_failed_indices = [r["index"] for r in existing_failed_records]
         existing_failed_sourceids = [r["source_id"] for r in existing_failed_records]
+        existing_failed_invenioids = [
+            r["invenio_recid"] for r in existing_failed_records
+        ]
         residual_failed_records = [*existing_failed_records]
 
         return (
@@ -589,6 +605,7 @@ class RecordLoader:
             residual_failed_records,
             existing_failed_indices,
             existing_failed_sourceids,
+            existing_failed_invenioids,
         )
 
     def _get_record_set(
@@ -1114,7 +1131,10 @@ class RecordLoader:
                 if result.status == "new_record":
                     lists = self._log_success(result, lists)
                     counts = self._update_counts(counts, result)
-                    if result.source_id in self.existing_failed_sourceids:
+                    if (
+                        result.record_created.get("record_data", {}).get("id")
+                        in self.existing_failed_invenioids
+                    ):
                         lists = self._log_repaired_record(result, lists)
                 else:
                     reason = "|".join(json.dumps(e) for e in result.errors)

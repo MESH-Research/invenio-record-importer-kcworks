@@ -18,7 +18,7 @@ class RecordImporterService(Service):
         metadata: list[dict] = [],
         user_id: str = "",
         community_id: str = "",
-        id_scheme: str = "import_id",
+        id_scheme: str = "import-recid",
         alternate_id_scheme: str = "",
         review_required: bool = True,
         strict_validation: bool = True,
