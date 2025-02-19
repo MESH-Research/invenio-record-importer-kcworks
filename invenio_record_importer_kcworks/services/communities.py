@@ -7,8 +7,10 @@
 # and/or modify it under the terms of the MIT License; see
 # LICENSE file for more details.
 
+from typing import Optional
 from flask import current_app as app
 from invenio_access.permissions import system_identity
+from invenio_communities.communities.services.results import CommunityItem
 from invenio_communities.errors import CommunityDeletedError
 from invenio_communities.members.records.api import Member
 from invenio_communities.proxies import current_communities
@@ -265,13 +267,13 @@ class CommunitiesHelper:
 
     def look_up_community(
         self, community_string: str, record_source: str = "knowledgeCommons"
-    ) -> dict:
+    ) -> CommunityItem:
         """Look up a community by its string or UUID.
 
         The community string may be a slug or a label.
         """
         if not community_string:
-            return {}
+            raise ValueError("Community string is required")
         community_check = current_communities.service.read(
             system_identity, id_=community_string
         )
@@ -292,7 +294,12 @@ class CommunitiesHelper:
             else:
                 community_check = community_check.to_dict()["hits"]["hits"][0]
         else:
-            community_check = community_check.to_dict()
+            community_check = community_check
+
+        if isinstance(community_check, dict):
+            community_check = current_communities.service.read(
+                system_identity, id_=community_check["id"]
+            )
 
         return community_check
 
@@ -325,8 +332,9 @@ class CommunitiesHelper:
             community_label = "kcommons"
 
         community_check = self.look_up_community(community_label, record_source)
+        assert community_check is not None
 
-        return community_check
+        return community_check.to_dict()
 
     def create_invenio_community(
         self, record_source: str, community_label: str

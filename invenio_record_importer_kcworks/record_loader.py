@@ -537,7 +537,7 @@ class RecordLoader:
                 r.log_object for r in failed_list if r.source_id not in skipped_ids
             ]
             failed_ids = [r.source_id for r in failed_list if r]
-            for e in self.residual_failed_records:
+            for e in [r for r in self.residual_failed_records if isinstance(r, dict)]:
                 if e["source_id"] not in failed_ids and e not in total_failed:
                     total_failed.append(e)
             ordered_failed_records = sorted(total_failed, key=lambda r: r["index"])
@@ -564,7 +564,7 @@ class RecordLoader:
         self.residual_failed_records = [
             d
             for d in self.residual_failed_records
-            if d["source_id"] != result.log_object["source_id"]
+            if isinstance(d, dict) and d["source_id"] != result.log_object["source_id"]
         ]
         lists["repaired_failed"].append(result.log_object)
         lists["failed_records"], self.residual_failed_records = self._log_failed_record(
@@ -573,7 +573,9 @@ class RecordLoader:
         )
         return lists
 
-    def _load_prior_failed_records(self) -> tuple[list, list, list, list, list]:
+    def _load_prior_failed_records(
+        self,
+    ) -> tuple[list[dict], list[dict], list[int], list[str], list[str]]:
         """
         Load the prior failed records.
 
@@ -584,7 +586,7 @@ class RecordLoader:
             - the existing failed source ids (using the import identifier scheme)
             - the existing failed invenio ids (using the InvenioRDM record ID scheme)
         """
-        existing_failed_records = []
+        existing_failed_records: list[dict] = []
         try:
             with jsonlines.open(
                 self.failed_log_path,
@@ -1091,11 +1093,12 @@ class RecordLoader:
                 in record_metadata.get("files", {}).get("entries", {}).keys()
             ]
             app.logger.debug(
-                f"current files for record {current_record_index}: {pformat(current_files)}"
+                f"current files for record {current_record_index}: "
+                f"{pformat(current_files)}"
             )
             app.logger.debug(f"all files: {pformat(files)}")
             app.logger.debug(
-                f"entries: {pformat(record_metadata.get('files', {}).get('entries', {}))}"
+                f"entries: {pformat(record_metadata.get('files', {}).get('entries', {}))}"  # noqa: E501
             )
 
             try:

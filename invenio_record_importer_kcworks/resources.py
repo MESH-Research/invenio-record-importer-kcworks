@@ -65,7 +65,10 @@ class RecordImporterResourceConfig(ResourceConfig):
         ),
         PermissionDeniedError: lambda e: (
             {
-                "message": f"Permission denied: You do not have sufficient privileges to import records via this endpoint. {str(e)}",
+                "message": (
+                    "The user does not have the necessary permissions to "
+                    "import records via this endpoint."
+                ),
                 "status": 403,
             },
             403,

@@ -1,8 +1,5 @@
 from flask import current_app as app
 from flask_principal import Identity
-from invenio_access.utils import get_identity
-from invenio_accounts.proxies import current_accounts
-from invenio_communities.utils import load_community_needs
 from invenio_records_resources.services.base import Service
 from pprint import pformat
 from .record_loader import RecordLoader
@@ -76,15 +73,13 @@ class RecordImporterService(Service):
         """
         # load_community_needs(identity)
 
-        community = CommunitiesHelper().look_up_community(community_id)
-        app.logger.debug(
-            f"Importing records with community: {pformat(community['id'])}"
-        )
+        community = CommunitiesHelper().look_up_community(community_id)._record
+        app.logger.debug(f"Importing records with community: {pformat(community.id)}")
 
         self.require_permission(
             identity,
             "import_records",
-            community_id=community["id"],
+            record=community,
         )
         app.logger.debug(f"Importing records with metadata: {pformat(metadata)}")
         app.logger.debug(f"Importing records with metadata: {type(metadata)}")
@@ -97,7 +92,7 @@ class RecordImporterService(Service):
         )
         app.logger.debug(f"Importing records with all or none: {all_or_none}")
         import_result: APIResponsePayload = RecordLoader(
-            user_id=identity.user.id,
+            user_id=identity.user.id,  # type: ignore  (user added by flask_security)
             community_id=community_id,
             views_field=views_field,
             downloads_field=downloads_field,
