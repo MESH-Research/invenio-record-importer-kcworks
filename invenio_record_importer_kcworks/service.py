@@ -1,8 +1,13 @@
 from flask import current_app as app
+from flask_principal import Identity
+from invenio_access.utils import get_identity
+from invenio_accounts.proxies import current_accounts
+from invenio_communities.utils import load_community_needs
 from invenio_records_resources.services.base import Service
 from pprint import pformat
 from .record_loader import RecordLoader
 from .types import FileData, APIResponsePayload
+from .services.communities import CommunitiesHelper
 
 
 class RecordImporterService(Service):
@@ -14,9 +19,9 @@ class RecordImporterService(Service):
 
     def import_records(
         self,
+        identity: Identity,
         file_data: list[FileData] = [],
         metadata: list[dict] = [],
-        user_id: str = "",
         community_id: str = "",
         id_scheme: str = "import-recid",
         alternate_id_scheme: str = "",
@@ -69,6 +74,18 @@ class RecordImporterService(Service):
         downloads_field : str
             The field to use for the downloads count. Defaults to ""
         """
+        # load_community_needs(identity)
+
+        community = CommunitiesHelper().look_up_community(community_id)
+        app.logger.debug(
+            f"Importing records with community: {pformat(community['id'])}"
+        )
+
+        self.require_permission(
+            identity,
+            "import_records",
+            community_id=community["id"],
+        )
         app.logger.debug(f"Importing records with metadata: {pformat(metadata)}")
         app.logger.debug(f"Importing records with metadata: {type(metadata)}")
         app.logger.debug(f"Importing records with form: {pformat(type(file_data))}")
@@ -80,7 +97,7 @@ class RecordImporterService(Service):
         )
         app.logger.debug(f"Importing records with all or none: {all_or_none}")
         import_result: APIResponsePayload = RecordLoader(
-            user_id=user_id,
+            user_id=identity.user.id,
             community_id=community_id,
             views_field=views_field,
             downloads_field=downloads_field,

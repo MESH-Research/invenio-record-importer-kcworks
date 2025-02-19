@@ -263,6 +263,39 @@ class CommunitiesHelper:
     def __init__(self):
         pass
 
+    def look_up_community(
+        self, community_string: str, record_source: str = "knowledgeCommons"
+    ) -> dict:
+        """Look up a community by its string or UUID.
+
+        The community string may be a slug or a label.
+        """
+        if not community_string:
+            return {}
+        community_check = current_communities.service.read(
+            system_identity, id_=community_string
+        )
+        app.logger.debug(f"community_check: {pformat(community_check)}")
+        if not community_check:
+            community_check = current_communities.service.search(
+                system_identity, q=f"slug:{community_string}"
+            )
+            if community_check.total == 0:
+                app.logger.debug(
+                    "Community", community_string, "does not exist. Creating..."
+                )
+                # FIXME: use group-collections to create the community
+                # so that we import community metadata
+                community_check = self.create_invenio_community(
+                    record_source, community_string
+                )
+            else:
+                community_check = community_check.to_dict()["hits"]["hits"][0]
+        else:
+            community_check = community_check.to_dict()
+
+        return community_check
+
     def prepare_invenio_community(
         self, record_source: str = "", community_string: str = ""
     ) -> dict:
@@ -291,31 +324,7 @@ class CommunitiesHelper:
         if community_label == "hcommons":
             community_label = "kcommons"
 
-        app.logger.debug(f"checking for community {community_label}")
-
-        if not community_label:
-            return {}
-        community_check = current_communities.service.read(
-            system_identity, id_=community_label
-        )
-        app.logger.debug(f"community_check: {pformat(community_check)}")
-        if not community_check:
-            community_check = current_communities.service.search(
-                system_identity, q=f"slug:{community_label}"
-            )
-            if community_check.total == 0:
-                app.logger.debug(
-                    "Community", community_label, "does not exist. Creating..."
-                )
-                # FIXME: use group-collections to create the community
-                # so that we import community metadata
-                community_check = self.create_invenio_community(
-                    record_source, community_label
-                )
-            else:
-                community_check = community_check.to_dict()["hits"]["hits"][0]
-        else:
-            community_check = community_check.to_dict()
+        community_check = self.look_up_community(community_label, record_source)
 
         return community_check
 

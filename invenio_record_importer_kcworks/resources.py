@@ -6,6 +6,7 @@ from flask_resources.parsers.decorators import request_parser
 from flask_resources.responses import ResponseHandler
 from flask_resources.resources import route
 from flask_resources.serializers.json import JSONSerializer
+from invenio_records_resources.services.errors import PermissionDeniedError
 import json
 import marshmallow as ma
 from werkzeug.datastructures import ImmutableMultiDict
@@ -60,6 +61,13 @@ class RecordImporterResourceConfig(ResourceConfig):
     error_handlers = {
         Forbidden: lambda e: (
             {"message": str(e), "status": 403},
+            403,
+        ),
+        PermissionDeniedError: lambda e: (
+            {
+                "message": f"Permission denied: You do not have sufficient privileges to import records via this endpoint. {str(e)}",
+                "status": 403,
+            },
             403,
         ),
         MethodNotAllowed: lambda e: (
@@ -149,7 +157,10 @@ class RecordImporterResource(Resource):
         metadata = json.loads(resource_requestctx.data["form"].get("metadata"))
         app.logger.debug(f"metadata type: {type(metadata)}")
         if not isinstance(metadata, list):
-            raise BadRequest("Invalid metadata")
+            raise BadRequest(
+                "Invalid metadata. 'Metadata' must be an array of metadata objects. "
+                "Did you submit a single metadata object not enclosed in an array?"
+            )
 
         id_scheme = resource_requestctx.data["form"].get("id_scheme", "neh-recid")
         alternate_id_scheme = resource_requestctx.data["form"].get(
@@ -165,8 +176,6 @@ class RecordImporterResource(Resource):
             resource_requestctx.data["form"].get("all_or_none", True)
         )
 
-        user_id = g.identity.user.id
-
         file_data = [
             FileData(
                 filename=file.filename,
@@ -180,11 +189,11 @@ class RecordImporterResource(Resource):
         #  TODO: use the Flask secure_filename function to sanitize the file name
 
         import_result = self.service.import_records(
+            identity=g.identity,
             file_data=file_data,
             metadata=metadata,
             id_scheme=id_scheme,
             alternate_id_scheme=alternate_id_scheme,
-            user_id=user_id,
             community_id=community_id,
             review_required=review_required,
             strict_validation=strict_validation,
