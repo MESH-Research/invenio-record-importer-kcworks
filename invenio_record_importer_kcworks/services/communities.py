@@ -35,6 +35,7 @@ from invenio_rdm_records.services.errors import (
     InvalidAccessRestrictions,
 )
 from invenio_record_importer_kcworks.errors import (
+    CollectionDoesNotExistError,
     CommonsGroupServiceError,
     MissingParentMetadataError,
     MultipleActiveCollectionsError,
@@ -206,7 +207,70 @@ class CommunityRecordHelper:
         return True
 
     @staticmethod
-    def add_owner(community_id: str, owner_id: int):
+    def add_member(community_id: str, member_id: int, role: str) -> dict:
+        """Add a member to a community.
+
+        params:
+            community_id: str: The id of the community to update. This
+                must be a UUID, not the community's slug.
+            member_id: int: The id of the user to add as a member
+            role: str: The role of the user to add to the community
+
+        raises:
+            CollectionDoesNotExistError: If the community does not exist
+            AssertionError: If the member was not added successfully
+            ValueError: If the role is invalid
+
+        returns:
+            dict: The member that was added
+        """
+        try:
+            record_data = current_communities.service.read(
+                system_identity, community_id
+            ).to_dict()
+        except Exception:
+            raise CollectionDoesNotExistError(
+                f"Community {community_id} does not exist. Cannot add "
+                f"member {member_id}."
+            )
+
+        role_order = ["reader", "curator", "manager", "owner"]
+        if role not in role_order:
+            raise ValueError(f"Invalid role: {role}. Must be one of: {role_order}")
+
+        community_members = Member.get_members(record_data["id"])
+        existing_member = next(
+            (m for m in community_members if m.user_id == member_id), None
+        )
+        if existing_member is None or role_order.index(role) > role_order.index(
+            existing_member.role  # type: ignore
+        ):
+            current_communities.service.members.add(
+                system_identity,
+                record_data["id"],
+                data={
+                    "members": [{"type": "user", "id": str(member_id)}],
+                    "role": role,
+                },
+            )
+
+        community_members_after = Member.get_members(record_data["id"])
+
+        matching_members = [
+            {
+                "user_id": m.user_id,
+                "role": m.role,
+                "community_id": m.community_id,
+                "community_slug": record_data["slug"],
+            }
+            for m in community_members_after
+            if m.role == role and m.user_id == member_id
+        ]
+        assert len(matching_members) == 1
+        return matching_members[0]
+
+    @staticmethod
+    def add_owner(community_id: str, owner_id: int) -> dict:
         """Add an owner to a community.
 
         params:
@@ -214,49 +278,13 @@ class CommunityRecordHelper:
             owner_id: int: The id of the user to add as an owner
 
         raises:
+            CollectionDoesNotExistError: If the community does not exist
             AssertionError: If the owner was not added successfully
 
         returns:
-            bool: True if the owner was added successfully
+            dict: The owner that was added
         """
-        try:
-            record_data = current_communities.service.read(
-                system_identity, community_id
-            ).to_dict()
-        except Exception as e:
-            raise e
-            community_list = current_communities.service.search(
-                identity=system_identity, q=f"slug:{community_id}"
-            )
-            assert community_list.total == 1
-            record_data = next(community_list.hits).to_dict()
-
-        community_members = Member.get_members(record_data["id"])
-        owners = [o.user_id for o in community_members if o.role == "owner"]
-        if owner_id not in owners:
-            owner = current_communities.service.members.add(
-                system_identity,
-                record_data["id"],
-                data={
-                    "members": [{"type": "user", "id": str(owner_id)}],
-                    "role": "owner",
-                },
-            )
-
-        community_members_b = Member.get_members(record_data["id"])
-
-        owner = [
-            {
-                "user_id": o.user_id,
-                "role": o.role,
-                "community_id": o.community_id,
-                "community_slug": record_data["slug"],
-            }
-            for o in community_members_b
-            if o.role == "owner" and o.user_id == owner_id
-        ][0]
-
-        return owner
+        return CommunityRecordHelper.add_member(community_id, owner_id, "owner")
 
 
 class CommunitiesHelper:
@@ -410,7 +438,6 @@ class CommunitiesHelper:
                 ).to_dict()
             except (AssertionError, PIDUnregistered):
                 existing_record = None
-        app.logger.debug(f"existing_record: {pformat(existing_record)}")
 
         if (
             existing_record
@@ -432,7 +459,6 @@ class CommunitiesHelper:
             # is restricted (see datacite provider `validate_restriction_level`
             # method called in pid component's `publish` method)
             if existing_record and existing_record["access"]["record"] == "restricted":
-                app.logger.error(pformat(existing_record))
                 raise RestrictedRecordPublicationError(
                     "Record is restricted and cannot be published to "
                     "the community because its DOI cannot be registered"

@@ -28,7 +28,10 @@ from invenio_record_importer_kcworks.services.stats.stats import (
     StatsFabricator,
     AggregationFabricator,
 )
-from invenio_record_importer_kcworks.errors import FileUploadError
+from invenio_record_importer_kcworks.errors import (
+    FileUploadError,
+    DraftValidationError,
+)
 from invenio_record_importer_kcworks.utils.utils import (
     replace_value_in_nested_dict,
 )
@@ -110,6 +113,7 @@ class RecordLoader:
         no_updates: bool = False,
         user_system: str = "knowledgeCommons",
         overrides: dict = {},
+        strict_validation: bool = True,
     ) -> LoaderResult:
         """
         Create an invenio record with file uploads, ownership, communities.
@@ -121,6 +125,21 @@ class RecordLoader:
 
         Likewise, any file data in the submitted data's files.entries list will be
         removed and the files will be uploaded after record creation.
+
+        Note that if an owner does not already have a Knowledge Commons account,
+        KCWorks will create an internal KCWorks account for them. This KCWorks
+        account is distinct from the Knowledge Commons account they will need
+        to create in order to manage their works on Knowledge Commons. The accounts
+        will be automatically linked after the owner creates their Knowledge Commons
+        account, provided that the owner provides an identifier in their Knowledge
+        Commons account that matches an identifier provided for them in the
+        `owned_by` property of the work's metadata object.
+
+        Owners will also be added to the collection's membership with the "reader"
+        role, which allows them access to any records restricted to the collection's
+        membership, but does not afford them any additional permissions. What it does
+        mean is that collection managers will be able to see all of the work owners
+        in the list of collection members on the collection's landing page.
 
         Parameters
         ----------
@@ -147,6 +166,10 @@ class RecordLoader:
         overrides : dict
             A dictionary of metadata fields to override in the import data
             if manual corrections are necessary
+        strict_validation : bool
+            If True, raise a DraftValidationError if there are validation
+            errors in the record metadata, even if they do not prevent record creation.
+            If False, add the errors to the errors list and continue with the import.
 
         Returns
         -------
@@ -269,6 +292,17 @@ class RecordLoader:
             result.record_created = RecordsHelper().create_invenio_record(
                 submitted_data, no_updates
             )
+            validation_errors = (
+                result.record_created["record_data"]
+                .get("metadata", {})
+                .get("errors", [])
+            )
+            if strict_validation and len(validation_errors) > 0:
+                raise DraftValidationError(validation_errors)
+            else:
+                result.errors.extend(
+                    [{"validation_error": e} for e in validation_errors]
+                )
             result.status = result.record_created["status"]
             app.logger.info(f"    record status: {result.record_created['status']}")
             if result.record_created["status"] in [
@@ -408,7 +442,7 @@ class RecordLoader:
                     eager=True,
                     verbose=True,
                 )
-        except PublicationValidationError as e:
+        except (PublicationValidationError, DraftValidationError) as e:
             app.logger.error(f"PublicationValidationError: {e}")
             result.errors.append({"validation_error": e.message})
             result.status = "error"
@@ -1116,6 +1150,7 @@ class RecordLoader:
                         files=current_files,
                         no_updates=flags["no_updates"],
                         overrides=overrides,
+                        strict_validation=flags["strict_validation"],
                     )
                 # FIXME: This is a hack to handle StaleDataError which
                 # is consistently resolved on a second attempt -- seems
@@ -1129,6 +1164,7 @@ class RecordLoader:
                         files=files,
                         no_updates=flags["no_updates"],
                         overrides=overrides,
+                        strict_validation=flags["strict_validation"],
                     )
                 app.logger.debug("result status: %s", result.status)
                 if result.status == "new_record":

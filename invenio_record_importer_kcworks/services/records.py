@@ -30,6 +30,9 @@ from invenio_rdm_records.proxies import (
     current_rdm_records,
     current_rdm_records_service as records_service,
 )
+from invenio_record_importer_kcworks.services.communities import (
+    CommunityRecordHelper,
+)
 from invenio_record_importer_kcworks.services.users import UsersHelper
 from invenio_record_importer_kcworks.errors import (
     DraftDeletionFailedError,
@@ -168,6 +171,7 @@ class RecordsHelper:
         user_id: str = "",
         submitted_owners: list[dict] = [],
         user_system: str = "knowledgeCommons",
+        collection_id: str = "",
         existing_record: Optional[dict] = None,
     ) -> dict[str, Any]:
         """
@@ -196,7 +200,9 @@ class RecordsHelper:
                     - identifier: the identifier
             user_system: the source system of the user
             existing_record: the existing record to assign ownership to
-
+            collection_id: the ID of the collection to add the owner to as a member.
+                This must be a UUID, not the collection's slug. If not provided,
+                the owner will not be added to any collection.
         Returns:
             A dict with the following keys:
             - owner_id: the ID of the user that was assigned ownership to the record
@@ -278,6 +284,14 @@ class RecordsHelper:
                 # passing in a list of users as if multiple owners are allowed.
                 assert changed_ownership.owner_id == new_owner.id
                 assert changed_ownership.owner_type == "user"
+
+                # Add the member to the appropriate group collection
+                if collection_id:
+                    CommunityRecordHelper.add_member(
+                        community_id=collection_id,
+                        member_id=new_owner.id,
+                        role="reader",
+                    )
             except AttributeError:
                 raise OwnershipChangeFailedError(
                     f"Error changing ownership of the record. Could not "

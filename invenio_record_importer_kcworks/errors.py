@@ -1,6 +1,15 @@
 """Custom exceptions for invenio-record-importer-kcworks."""
 
 
+class CollectionDoesNotExistError(Exception):
+    """Collection does not exist error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(CollectionDoesNotExistError, self).__init__(message)
+        self.message = message
+
+
 class CommonsGroupServiceError(Exception):
     """Commons group service error."""
 
@@ -16,6 +25,15 @@ class DraftDeletionFailedError(Exception):
     def __init__(self, message):
         """Initialize the exception."""
         super(DraftDeletionFailedError, self).__init__(message)
+        self.message = message
+
+
+class DraftValidationError(Exception):
+    """Draft validation error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(DraftValidationError, self).__init__(message)
         self.message = message
 
 
