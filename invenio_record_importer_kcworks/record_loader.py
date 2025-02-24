@@ -61,7 +61,7 @@ class RecordLoader:
 
     def __init__(
         self,
-        user_id: str = "",
+        user_id: int,
         community_id: str = "",
         sourceid_schemes: list[str] = ["import-recid", "neh-recid"],
         views_field: str = "",
@@ -251,6 +251,9 @@ class RecordLoader:
 
         # Remove the owned_by field from the access dictionary because we
         # will be adding it back in later
+        app.logger.debug(
+            f"submitted owned_by: {pformat(submitted_data['parent'].get('access', {}).get('owned_by', []))}"
+        )
         result.submitted["owners"] = copy.deepcopy(
             submitted_data["parent"].get("access", {}).get("owned_by", [])
         )
@@ -407,6 +410,7 @@ class RecordLoader:
                 user_id=self.user_id,
                 submitted_owners=result.submitted["owners"],
                 user_system=user_system,
+                collection_id=self.community_id,
                 existing_record=result.existing_record,
             )
 

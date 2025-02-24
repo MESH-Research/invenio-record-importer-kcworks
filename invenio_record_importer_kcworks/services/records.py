@@ -166,9 +166,9 @@ class RecordsHelper:
 
     @staticmethod
     def assign_record_ownership(
-        draft_id: str = "",
-        submitted_data: dict = {},
-        user_id: str = "",
+        draft_id: str,
+        submitted_data: dict,
+        user_id: int,
         submitted_owners: list[dict] = [],
         user_system: str = "knowledgeCommons",
         collection_id: str = "",
@@ -212,6 +212,8 @@ class RecordsHelper:
         # Create/find the necessary user account
         app.logger.info("    creating or finding the user (submitter)...")
         app.logger.debug(f"user_id: {user_id}")
+        app.logger.debug(f"submitted_owners: {pformat(submitted_owners)}")
+        app.logger.debug(f"collection_id: {collection_id}")
         new_owners = []
         new_grants = []
         if not submitted_owners:
@@ -332,6 +334,14 @@ class RecordsHelper:
                         "permission": "manage",
                     }
                 )
+
+                # Add the member to the appropriate group collection
+                if collection_id:
+                    CommunityRecordHelper.add_member(
+                        community_id=collection_id,
+                        member_id=grant_holder.id,
+                        role="reader",
+                    )
 
         return {
             "owner_id": changed_ownership.owner_id,

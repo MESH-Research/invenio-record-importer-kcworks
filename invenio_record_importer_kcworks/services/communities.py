@@ -10,6 +10,7 @@
 from typing import Optional
 from flask import current_app as app
 from invenio_access.permissions import system_identity
+from invenio_communities.communities.records.api import Community
 from invenio_communities.communities.services.results import CommunityItem
 from invenio_communities.errors import CommunityDeletedError
 from invenio_communities.members.records.api import Member
@@ -239,11 +240,14 @@ class CommunityRecordHelper:
             raise ValueError(f"Invalid role: {role}. Must be one of: {role_order}")
 
         community_members = Member.get_members(record_data["id"])
-        existing_member = next(
-            (m for m in community_members if m.user_id == member_id), None
-        )
-        if existing_member is None or role_order.index(role) > role_order.index(
-            existing_member.role  # type: ignore
+        # existing_member = next(
+        #     (m for m in community_members if m.user_id == member_id), None
+        # )
+        existing_members = [m for m in community_members if m.user_id == member_id]
+        existing_member = existing_members[0] if existing_members else None
+        if existing_member is None or (
+            role_order.index(role)
+            > role_order.index(existing_member.role)  # type: ignore
         ):
             current_communities.service.members.add(
                 system_identity,
@@ -264,7 +268,7 @@ class CommunityRecordHelper:
                 "community_slug": record_data["slug"],
             }
             for m in community_members_after
-            if m.role == role and m.user_id == member_id
+            if m.user_id == member_id
         ]
         assert len(matching_members) == 1
         return matching_members[0]
