@@ -1,6 +1,15 @@
 """Custom exceptions for invenio-record-importer-kcworks."""
 
 
+class CollectionDoesNotExistError(Exception):
+    """Collection does not exist error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(CollectionDoesNotExistError, self).__init__(message)
+        self.message = message
+
+
 class CommonsGroupServiceError(Exception):
     """Commons group service error."""
 
@@ -16,6 +25,15 @@ class DraftDeletionFailedError(Exception):
     def __init__(self, message):
         """Initialize the exception."""
         super(DraftDeletionFailedError, self).__init__(message)
+        self.message = message
+
+
+class DraftValidationError(Exception):
+    """Draft validation error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(DraftValidationError, self).__init__(message)
         self.message = message
 
 
@@ -43,6 +61,15 @@ class FileUploadError(Exception):
     def __init__(self, message):
         """Initialize the exception."""
         super(FileUploadError, self).__init__(message)
+        self.message = message
+
+
+class InvalidParametersError(Exception):
+    """Invalid parameters error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(InvalidParametersError, self).__init__(message)
         self.message = message
 
 
@@ -79,6 +106,24 @@ class NoUpdates(Exception):
     def __init__(self, message):
         """Initialize the exception."""
         super(NoUpdates, self).__init__(message)
+        self.message = message
+
+
+class NoAvailableRecordsError(Exception):
+    """No available records error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(NoAvailableRecordsError, self).__init__(message)
+        self.message = message
+
+
+class OwnershipChangeFailedError(Exception):
+    """Ownership change failed error."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super(OwnershipChangeFailedError, self).__init__(message)
         self.message = message
 
 

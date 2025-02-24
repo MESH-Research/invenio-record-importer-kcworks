@@ -7,8 +7,9 @@
 # and/or modify it under the terms of the MIT License; see
 # LICENSE file for more details.
 
-import logging
-from .config import ImporterConfig
+from .config import ConfigVariables, RecordImporterServiceConfig
+from .service import RecordImporterService
+from .resources import RecordImporterResource, RecordImporterResourceConfig
 
 
 class InvenioRecordImporter(object):
@@ -18,12 +19,12 @@ class InvenioRecordImporter(object):
         object (_type_): _description_
     """
 
-    def __init__(self, app=None) -> None:
+    def __init__(self, app=None, **kwargs) -> None:
         """Extention initialization."""
         if app:
-            self.init_app(app)
+            self._state = self.init_app(app, **kwargs)
 
-    def init_app(self, app) -> None:
+    def init_app(self, app, **kwargs) -> None:
         """Registers the Flask extension during app initialization.
 
         Args:
@@ -31,6 +32,8 @@ class InvenioRecordImporter(object):
                 the extension
         """
         self.init_config(app)
+        self.init_service(app)
+        self.init_resources(app)
         app.extensions["invenio-record-importer-kcworks"] = self
 
     def init_config(self, app) -> None:
@@ -40,19 +43,17 @@ class InvenioRecordImporter(object):
             app (Flask): the Flask application object on which to initialize
                 the extension
         """
-        self.config = ImporterConfig(app)
-        for k in dir(self.config):
+        config_vars = ConfigVariables(app)
+        for k in dir(config_vars):
             if k.startswith("RECORD_IMPORTER_"):
-                app.config.setdefault(k, getattr(self.config, k))
+                app.config.setdefault(k, getattr(config_vars, k))
 
-        # print("init_config")
-        # print(app.logger)
-        # print(app.logger.handlers)
-        # print(app.logger.handlers[0])
-        # app.logger.handlers[0].setFormatter(
-        #     logging.Formatter(
-        #         "[%(asctime)s] %(levelname)s - %(message)s "
-        #         "{%(filename)s:%(lineno)d}",
-        #         "%m-%d %H:%M:%S",
-        #     )
-        # )
+    def init_service(self, app) -> None:
+        """Initialize service."""
+        self.service = RecordImporterService(RecordImporterServiceConfig.build(app))
+
+    def init_resources(self, app) -> None:
+        """Initialize resources."""
+        self.resource = RecordImporterResource(
+            RecordImporterResourceConfig(), service=self.service
+        )

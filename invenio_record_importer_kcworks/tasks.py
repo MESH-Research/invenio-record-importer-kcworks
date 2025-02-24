@@ -1,16 +1,15 @@
 from celery import shared_task
 from flask import current_app as app
 from invenio_stats.proxies import current_stats
-from pprint import pformat
 
 
 @shared_task(ignore_result=False)
 def aggregate_events(
     aggregations: list,
-    start_date: str = None,
-    end_date: str = None,
+    start_date: str = "",
+    end_date: str = "",
     update_bookmark: bool = True,
-    bookmark_override: str = None,
+    bookmark_override: str = "",
 ) -> list:
     """Aggregate indexed events.
 
@@ -26,9 +25,7 @@ def aggregate_events(
     for aggr_name in aggregations:
         aggr_cfg = current_stats.aggregations[aggr_name]
         aggregator = aggr_cfg.cls(name=aggr_cfg.name, **aggr_cfg.params)
-        app.logger.warning(
-            f"Aggregator task running: {start_date} - {end_date}"
-        )
+        app.logger.warning(f"Aggregator task running: {start_date} - {end_date}")
         results.append(
             aggregator.run(
                 start_date,

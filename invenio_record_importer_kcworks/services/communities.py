@@ -7,12 +7,16 @@
 # and/or modify it under the terms of the MIT License; see
 # LICENSE file for more details.
 
+from typing import Optional
 from flask import current_app as app
 from invenio_access.permissions import system_identity
+from invenio_communities.communities.records.api import Community
+from invenio_communities.communities.services.results import CommunityItem
 from invenio_communities.errors import CommunityDeletedError
 from invenio_communities.members.records.api import Member
 from invenio_communities.proxies import current_communities
 from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
+from invenio_drafts_resources.resources.records.errors import DraftNotCreatedError
 from invenio_group_collections_kcworks.errors import (
     CollectionNotFoundError,
     CommonsGroupNotFoundError,
@@ -32,6 +36,7 @@ from invenio_rdm_records.services.errors import (
     InvalidAccessRestrictions,
 )
 from invenio_record_importer_kcworks.errors import (
+    CollectionDoesNotExistError,
     CommonsGroupServiceError,
     MissingParentMetadataError,
     MultipleActiveCollectionsError,
@@ -203,7 +208,73 @@ class CommunityRecordHelper:
         return True
 
     @staticmethod
-    def add_owner(community_id: str, owner_id: int):
+    def add_member(community_id: str, member_id: int, role: str) -> dict:
+        """Add a member to a community.
+
+        params:
+            community_id: str: The id of the community to update. This
+                must be a UUID, not the community's slug.
+            member_id: int: The id of the user to add as a member
+            role: str: The role of the user to add to the community
+
+        raises:
+            CollectionDoesNotExistError: If the community does not exist
+            AssertionError: If the member was not added successfully
+            ValueError: If the role is invalid
+
+        returns:
+            dict: The member that was added
+        """
+        try:
+            record_data = current_communities.service.read(
+                system_identity, community_id
+            ).to_dict()
+        except Exception:
+            raise CollectionDoesNotExistError(
+                f"Community {community_id} does not exist. Cannot add "
+                f"member {member_id}."
+            )
+
+        role_order = ["reader", "curator", "manager", "owner"]
+        if role not in role_order:
+            raise ValueError(f"Invalid role: {role}. Must be one of: {role_order}")
+
+        community_members = Member.get_members(record_data["id"])
+        # existing_member = next(
+        #     (m for m in community_members if m.user_id == member_id), None
+        # )
+        existing_members = [m for m in community_members if m.user_id == member_id]
+        existing_member = existing_members[0] if existing_members else None
+        if existing_member is None or (
+            role_order.index(role)
+            > role_order.index(existing_member.role)  # type: ignore
+        ):
+            current_communities.service.members.add(
+                system_identity,
+                record_data["id"],
+                data={
+                    "members": [{"type": "user", "id": str(member_id)}],
+                    "role": role,
+                },
+            )
+
+        community_members_after = Member.get_members(record_data["id"])
+
+        matching_members = [
+            {
+                "user_id": m.user_id,
+                "role": m.role,
+                "community_id": m.community_id,
+                "community_slug": record_data["slug"],
+            }
+            for m in community_members_after
+            if m.user_id == member_id
+        ]
+        assert len(matching_members) == 1
+        return matching_members[0]
+
+    @staticmethod
+    def add_owner(community_id: str, owner_id: int) -> dict:
         """Add an owner to a community.
 
         params:
@@ -211,49 +282,13 @@ class CommunityRecordHelper:
             owner_id: int: The id of the user to add as an owner
 
         raises:
+            CollectionDoesNotExistError: If the community does not exist
             AssertionError: If the owner was not added successfully
 
         returns:
-            bool: True if the owner was added successfully
+            dict: The owner that was added
         """
-        try:
-            record_data = current_communities.service.read(
-                system_identity, community_id
-            ).to_dict()
-        except Exception as e:
-            raise e
-            community_list = current_communities.service.search(
-                identity=system_identity, q=f"slug:{community_id}"
-            )
-            assert community_list.total == 1
-            record_data = next(community_list.hits).to_dict()
-
-        community_members = Member.get_members(record_data["id"])
-        owners = [o.user_id for o in community_members if o.role == "owner"]
-        if owner_id not in owners:
-            owner = current_communities.service.members.add(
-                system_identity,
-                record_data["id"],
-                data={
-                    "members": [{"type": "user", "id": str(owner_id)}],
-                    "role": "owner",
-                },
-            )
-
-        community_members_b = Member.get_members(record_data["id"])
-
-        owner = [
-            {
-                "user_id": o.user_id,
-                "role": o.role,
-                "community_id": o.community_id,
-                "community_slug": record_data["slug"],
-            }
-            for o in community_members_b
-            if o.role == "owner" and o.user_id == owner_id
-        ][0]
-
-        return owner
+        return CommunityRecordHelper.add_member(community_id, owner_id, "owner")
 
 
 class CommunitiesHelper:
@@ -262,8 +297,46 @@ class CommunitiesHelper:
     def __init__(self):
         pass
 
+    def look_up_community(
+        self, community_string: str, record_source: str = "knowledgeCommons"
+    ) -> CommunityItem:
+        """Look up a community by its string or UUID.
+
+        The community string may be a slug or a label.
+        """
+        if not community_string:
+            raise ValueError("Community string is required")
+        community_check = current_communities.service.read(
+            system_identity, id_=community_string
+        )
+        app.logger.debug(f"community_check: {pformat(community_check)}")
+        if not community_check:
+            community_check = current_communities.service.search(
+                system_identity, q=f"slug:{community_string}"
+            )
+            if community_check.total == 0:
+                app.logger.debug(
+                    "Community", community_string, "does not exist. Creating..."
+                )
+                # FIXME: use group-collections to create the community
+                # so that we import community metadata
+                community_check = self.create_invenio_community(
+                    record_source, community_string
+                )
+            else:
+                community_check = community_check.to_dict()["hits"]["hits"][0]
+        else:
+            community_check = community_check
+
+        if isinstance(community_check, dict):
+            community_check = current_communities.service.read(
+                system_identity, id_=community_check["id"]
+            )
+
+        return community_check
+
     def prepare_invenio_community(
-        self, record_source: str, community_string: str
+        self, record_source: str = "", community_string: str = ""
     ) -> dict:
         """Ensure that the community exists in Invenio.
 
@@ -279,35 +352,21 @@ class CommunitiesHelper:
         Return the community data as a dict. (The result
         of the CommunityItem.to_dict() method.)
         """
-        # FIXME: idiosyncratic implementation detail
+        # FIXME: idiosyncratic implementation detail from CORE migration
         community_label = community_string.split(".")
-        if community_label[1] == "msu":
+        if len(community_label) > 1 and community_label[1] == "msu":
             community_label = community_label[1]
         else:
             community_label = community_label[0]
 
-        # FIXME: remnant of name change
+        # FIXME: remnant of name change from CORE migration
         if community_label == "hcommons":
             community_label = "kcommons"
 
-        app.logger.debug(f"checking for community {community_label}")
-        community_check = current_communities.service.search(
-            system_identity, q=f"slug:{community_label}"
-        ).to_dict()
+        community_check = self.look_up_community(community_label, record_source)
+        assert community_check is not None
 
-        if community_check["hits"]["total"] == 0:
-            app.logger.debug(
-                "Community", community_label, "does not exist. Creating..."
-            )
-            # FIXME: use group-collections to create the community
-            # so that we import community metadata
-            community_check = self.create_invenio_community(
-                record_source, community_label
-            )
-        else:
-            community_check = community_check["hits"]["hits"][0]
-
-        return community_check
+        return community_check.to_dict()
 
     def create_invenio_community(
         self, record_source: str, community_label: str
@@ -366,16 +425,17 @@ class CommunitiesHelper:
         # Attachment to community unnecessary if the record is already
         # published or included in it, even if a new draft version
         try:
-            existing_record = (
-                records_service.search_drafts(
-                    system_identity, q=f"id:{draft_id}"
-                )
-                .to_dict()
-                .get("hits", {})
-                .get("hits", [])[0]
-            )
+            # existing_record = (
+            #     records_service.search_drafts(system_identity, q=f"id:{draft_id}")
+            #     .to_dict()
+            #     .get("hits", {})
+            #     .get("hits", [])[0]
+            # )
+            existing_record = records_service.read_draft(
+                system_identity, id_=draft_id
+            ).to_dict()
             assert existing_record
-        except (IndexError, NoResultFound):
+        except (IndexError, NoResultFound, DraftNotCreatedError):
             try:
                 existing_record = records_service.read(
                     system_identity, id_=draft_id
@@ -385,13 +445,10 @@ class CommunitiesHelper:
 
         if (
             existing_record
-            and (
-                existing_record["status"] not in ["draft", "draft_with_review"]
-            )
+            and (existing_record["status"] not in ["draft", "draft_with_review"])
             and (
                 existing_record["parent"]["communities"]
-                and community_id
-                in existing_record["parent"]["communities"]["ids"]
+                and community_id in existing_record["parent"]["communities"]["ids"]
             )
         ):
             app.logger.info(
@@ -405,11 +462,7 @@ class CommunitiesHelper:
             # DOIs cannot be registered at publication if the record
             # is restricted (see datacite provider `validate_restriction_level`
             # method called in pid component's `publish` method)
-            if (
-                existing_record
-                and existing_record["access"]["record"] == "restricted"
-            ):
-                app.logger.error(pformat(existing_record))
+            if existing_record and existing_record["access"]["record"] == "restricted":
                 raise RestrictedRecordPublicationError(
                     "Record is restricted and cannot be published to "
                     "the community because its DOI cannot be registered"
@@ -438,13 +491,9 @@ class CommunitiesHelper:
                 #         " (already for the community)..."
                 #     )
                 if not existing_review.data["is_open"]:
-                    app.logger.debug(
-                        "   existing review request is not open, deleting"
-                    )
+                    app.logger.debug("   existing review request is not open, deleting")
                     try:
-                        records_service.review.delete(
-                            system_identity, id_=draft_id
-                        )
+                        records_service.review.delete(system_identity, id_=draft_id)
                         app.logger.debug("   existing review request deleted")
                     except (
                         NotFoundError,
@@ -464,12 +513,10 @@ class CommunitiesHelper:
                         )
                 else:
                     request_id = existing_review.id
-                    cancel_existing_request = (
-                        current_requests_service.execute_action(
-                            system_identity,
-                            request_id,
-                            "cancel",
-                        )
+                    cancel_existing_request = current_requests_service.execute_action(
+                        system_identity,
+                        request_id,
+                        "cancel",
                     )
                     app.logger.debug(
                         f"cancel_existing_request: "
@@ -496,9 +543,6 @@ class CommunitiesHelper:
                 new_request = records_service.review.update(  # noqa: F841
                     system_identity, draft_id, review_body
                 )
-                app.logger.debug(
-                    f"new_request: {pformat(new_request.to_dict())}"
-                )
 
                 submitted_body = {
                     "payload": {
@@ -520,27 +564,22 @@ class CommunitiesHelper:
                         f"    initially failed to submit review request: "
                         f"{submitted_request.to_dict()}"
                     )
-                    submitted_request = (
-                        current_requests_service.execute_action(
-                            system_identity,
-                            submitted_request.id,
-                            "submit",
-                        )
+                    submitted_request = current_requests_service.execute_action(
+                        system_identity,
+                        submitted_request.id,
+                        "submit",
                     )
-                # app.logger.debug(
-                #     f"submitted_request: {pformat(new_request.to_dict())}"
-                # )
-
+                    app.logger.debug(
+                        f"submitted_request: {pformat(submitted_request.to_dict())}"
+                    )
                 app.logger.debug("submitted to community")
 
                 if submitted_request.data["status"] != "accepted":
                     try:
-                        review_accepted = (
-                            current_requests_service.execute_action(
-                                system_identity,
-                                submitted_request.id,
-                                "accept",
-                            )
+                        review_accepted = current_requests_service.execute_action(
+                            system_identity,
+                            submitted_request.id,
+                            "accept",
                         )
                     except StaleDataError as e:
                         if (
@@ -558,22 +597,24 @@ class CommunitiesHelper:
                 app.logger.debug("review_accepted")
                 assert review_accepted.data["status"] == "accepted"
 
-                return review_accepted
+                return review_accepted.to_dict()
 
             # Catch validation errors when publishing the record
             except ValidationError as e:
                 app.logger.error(
-                    f"    failed to validate record for publication: "
-                    f"{e.messages}"
+                    f"    failed to validate record for publication: " f"{e.messages}"
                 )
                 raise PublicationValidationError(e.messages)
 
             # If the record is already published, we need to create/retrieve
             # and accept a 'community-inclusion' request instead
-            except (NoResultFound, ReviewStateError):
+            except (NoResultFound, ReviewStateError) as e:
+                app.logger.debug(f"   {pformat(e)}")
                 app.logger.debug("   record is already published")
-                record_communities = (
-                    current_rdm_records.record_communities_service
+                record_communities = current_rdm_records.record_communities_service
+
+                app.logger.debug(
+                    f"record before inclusion: {pformat(records_service.read(system_identity, id_=draft_id).id)}"
                 )
 
                 # Try to create and submit a 'community-inclusion' request
@@ -590,7 +631,12 @@ class CommunitiesHelper:
                 # FIXME: How can we tell if an inclusion request is already
                 # open and/or accepted? Without relying on this error message?
                 if errors and "already included" in errors[0]["message"]:
-                    return {submitted_request}
+                    return {
+                        "status": "already_included",
+                        "submitted_request": (
+                            submitted_request.to_dict() if submitted_request else None
+                        ),
+                    }
                 # If that failed look for any existing open
                 # 'community-inclusion' request and continue with it
                 if errors:
@@ -598,12 +644,8 @@ class CommunitiesHelper:
                         f"    inclusion request already open for {draft_id}"
                     )
                     app.logger.debug(pformat(errors))
-                    record = record_communities.record_cls.pid.resolve(
-                        draft_id
-                    )
-                    request_id = record_communities._exists(
-                        community_id, record
-                    )
+                    record = record_communities.record_cls.pid.resolve(draft_id)
+                    request_id = record_communities._exists(community_id, record)
                     app.logger.debug(
                         f"submitted inclusion request: {pformat(request_id)}"
                     )
@@ -706,14 +748,18 @@ class CommunitiesHelper:
             for group in group_list:
                 group_id = group["group_identifier"]
                 app.logger.debug(f"    linking to group_id: {group_id}")
-                app.logger.debug(
-                    f"    linking to group_name: {group['group_name']}"
-                )
+                app.logger.debug(f"    linking to group_name: {group['group_name']}")
                 group_name = group["group_name"]
                 coll_record = None
+                # TODO: This is a hack to get the index name
+                prefix = app.config.get("SEARCH_INDEX_PREFIX")
+                if prefix:
+                    index = f"{prefix}-communities"
+                else:
+                    index = "communities"
                 try:
                     coll_search = current_search_client.search(
-                        index="kcworks-communities",
+                        index=index,
                         q=f'custom_fields.kcr\:commons_group_id:"{group_id}"',
                     )
                     coll_record_hits = coll_search["hits"]["hits"]
@@ -727,8 +773,7 @@ class CommunitiesHelper:
                             )
                         except NotFoundError:
                             app.logger.warning(
-                                f"    collection {h['_source']['id']} not "
-                                "found"
+                                f"    collection {h['_source']['id']} not " "found"
                             )
                         except CommunityDeletedError:
                             app.logger.warning(
@@ -758,13 +803,10 @@ class CommunitiesHelper:
                             )
                         else:
                             raise CollectionNotFoundError(
-                                f"    no active collections found for "
-                                f'"{group_id}"'
+                                f"    no active collections found for " f'"{group_id}"'
                             )
                     coll_record = coll_records[0]
-                    app.logger.debug(
-                        f"    found group collection {coll_record['id']}"
-                    )
+                    app.logger.debug(f"    found group collection {coll_record['id']}")
                 except CollectionNotFoundError:
                     try:
                         app.logger.debug("    creating group collection...")
@@ -775,10 +817,7 @@ class CommunitiesHelper:
                         )
                         app.logger.debug("   created group collection...")
                     except UnprocessableEntity as e:
-                        if (
-                            "Something went wrong requesting group"
-                            in e.description
-                        ):
+                        if "Something went wrong requesting group" in e.description:
                             app.logger.warning(
                                 f"Failed requesting group collection from API "
                                 f"{e.description}"
@@ -811,9 +850,7 @@ class CommunitiesHelper:
                     # app.logger.debug(f"    add_result: "
                     #     f"{pformat(add_result)}")
             if added_to_collections:
-                self._remove_from_extraneous_collections(
-                    metadata_record, group_list
-                )
+                self._remove_from_extraneous_collections(metadata_record, group_list)
                 app.logger.info(
                     f"    record {metadata_record['id']} successfully added "
                     f"to group collections {added_to_collections}..."
@@ -839,19 +876,14 @@ class CommunitiesHelper:
         app.logger.debug(f"group_ids: {pformat(group_ids)}")
         parent_communities = [
             c.get("custom_fields", {}).get("kcr:commons_group_id")
-            for c in metadata_record["parent"]["communities"].get(
-                "entries", []
-            )
+            for c in metadata_record["parent"]["communities"].get("entries", [])
         ]
         app.logger.debug(f"parent_communities: {pformat(parent_communities)}")
         extraneous_collections = [
             c
-            for c in metadata_record["parent"]["communities"].get(
-                "entries", []
-            )
+            for c in metadata_record["parent"]["communities"].get("entries", [])
             if c.get("custom_fields", {}).get("kcr:commons_group_id")
-            and c.get("custom_fields", {}).get("kcr:commons_group_id")
-            not in group_ids
+            and c.get("custom_fields", {}).get("kcr:commons_group_id") not in group_ids
         ]
         if extraneous_collections:
             app.logger.debug(

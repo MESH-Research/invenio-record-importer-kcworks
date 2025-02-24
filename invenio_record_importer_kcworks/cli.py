@@ -335,13 +335,10 @@ def load_records(
         if use_sourceids:
             print("Error: Cannot use source ids with ranges.")
             app.logger.error(
-                "Ranges can only be specified using record indices, not source"
-                " ids."
+                "Ranges can only be specified using record indices, not source" " ids."
             )
             return
-        named_params["start_index"], named_params["stop_index"] = records[
-            0
-        ].split("-")
+        named_params["start_index"], named_params["stop_index"] = records[0].split("-")
         named_params["start_index"] = int(named_params["start_index"])
         if named_params["stop_index"] == "":
             named_params["stop_index"] = -1
@@ -354,7 +351,7 @@ def load_records(
             records = [arg.replace("\-", "-") for arg in records]  # noqa
             named_params["nonconsecutive"] = records
 
-    RecordLoader().load_records_into_invenio(**named_params)
+    RecordLoader().load_all(**named_params)
 
     # Make alert sound to signal end of loading process
     print("\a")
@@ -396,9 +393,7 @@ def load_records(
     ),
 )
 @with_appcontext
-def read_records(
-    records, scheme, raw_input, use_sourceids, field_path
-) -> None:
+def read_records(records, scheme, raw_input, use_sourceids, field_path) -> None:
     """
     Read serialized records or raw input from the source file or original data.
 
@@ -454,8 +449,7 @@ def read_records(
     "-e",
     "--email",
     help=(
-        "The email address of the user to create. This must be the same "
-        "Required."
+        "The email address of the user to create. This must be the same " "Required."
     ),
 )
 @click.option(
@@ -538,8 +532,8 @@ def create_user(
 
     create_response = UsersHelper().create_invenio_user(
         email,
-        record_source=origin,
-        source_username=source_username,
+        idp=origin,
+        idp_username=source_username,
         full_name=full_name,
         community_owner=community_owner,
     )
@@ -550,22 +544,17 @@ def create_user(
         print(f"email: {pformat(user_data.email)}")
         print(f"profile: {pformat(user_data.user_profile)}")
         print(f"remote accounts: {pformat(user_data.remote_accounts)}")
-        print(
-            f"external identifiers: {pformat(user_data.external_identifiers)}"
-        )
+        print(f"external identifiers: {pformat(user_data.external_identifiers)}")
         print(f"domain: {pformat(user_data.domain)}")
         print(f"authenticated: {pformat(user_data.is_authenticated)}")
         print(f"preferences: {pformat(user_data.preferences)}")
         print(f"active: {pformat(user_data.active)}")
         if community_owner:
-            print_community_owner(
-                community_owner, create_response["communities_owned"]
-            )
+            print_community_owner(community_owner, create_response["communities_owned"])
 
     def print_community_owner(community_owner, communities_owned):
         print(
-            f"User {email} has been assigned as owner of the "
-            "following communities:"
+            f"User {email} has been assigned as owner of the " "following communities:"
         )
         for community_id in community_owner:
             matches = [
@@ -653,9 +642,7 @@ def delete_records(records, visible, reason, note):
 @click.option(
     "-r",
     "--record-ids",
-    help=(
-        "A comma-separated list of record ids to create usage statistics for."
-    ),
+    help=("A comma-separated list of record ids to create usage statistics for."),
 )
 @click.option(
     "-s",

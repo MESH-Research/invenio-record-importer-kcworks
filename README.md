@@ -1,8 +1,10 @@
 # INVENIO RECORD IMPORTER for Knowledge Commons Works
 
-Version 0.2.21-alpha0
+Version 0.3.0-alpha1
 
 *ALPHA QUALITY SOFTWARE - USE AT OWN RISK*
+
+**This documentation is out of date.**
 
 This is a command line utility to perform a bulk import of records into Knowledge Commons Works, an InvenioRDM instance. The utility could be adapted to work with other InvenioRDM installations, but in its current form it assumes the customized metadata schema, database structures, and other configuration employed in Knowledge Commons Works.
 
