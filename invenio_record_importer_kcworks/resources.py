@@ -178,6 +178,9 @@ class RecordImporterResource(Resource):
         all_or_none = bool_from_string(
             resource_requestctx.data["form"].get("all_or_none", True)
         )
+        notify_record_owners = bool_from_string(
+            resource_requestctx.data["form"].get("notify_record_owners", True)
+        )
 
         file_data = [
             FileData(
@@ -201,6 +204,7 @@ class RecordImporterResource(Resource):
             review_required=review_required,
             strict_validation=strict_validation,
             all_or_none=all_or_none,
+            notify_record_owners=notify_record_owners,
         )
         app.logger.debug(f"in resource import_result: {import_result.get('status')}")
         if import_result.get("status") == "success":

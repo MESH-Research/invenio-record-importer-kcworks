@@ -114,6 +114,7 @@ class RecordLoader:
         user_system: str = "knowledgeCommons",
         overrides: dict = {},
         strict_validation: bool = True,
+        notify_record_owners: bool = True,
     ) -> LoaderResult:
         """
         Create an invenio record with file uploads, ownership, communities.
@@ -170,6 +171,10 @@ class RecordLoader:
             If True, raise a DraftValidationError if there are validation
             errors in the record metadata, even if they do not prevent record creation.
             If False, add the errors to the errors list and continue with the import.
+        notify_record_owners : bool
+            If True, notify the owners of the records by email when their records
+            are created. If False, do not notify the owners of the records.
+            Defaults to True.
 
         Returns
         -------
@@ -412,6 +417,7 @@ class RecordLoader:
                 user_system=user_system,
                 collection_id=self.community_id,
                 existing_record=result.existing_record,
+                notify_record_owners=notify_record_owners,
             )
 
             # Add the record to the appropriate group collections
@@ -1041,6 +1047,7 @@ class RecordLoader:
         review_required: bool = True,
         strict_validation: bool = True,
         all_or_none: bool = True,
+        notify_record_owners: bool = True,
     ) -> APIResponsePayload:
         """
         Create new InvenioRDM records and upload files for serialized deposits.
@@ -1063,10 +1070,23 @@ class RecordLoader:
                 aggregate is True
             end_date (str): the ending date of usage events to aggregate if
                 aggregate is True
+            clean_filenames (bool): whether to sanitize the filenames of the
+                files to upload
             verbose (bool): whether to print and log verbose output during the
                 loading process
             stop_on_error (bool): whether to stop the loading process if an
                 error is encountered is encountered
+            files (list[dict]): the list of files to upload
+            metadata (list[dict]): the list of metadata objects for the records
+                to load
+            review_required (bool): whether to require review of the records
+                before they are published
+            strict_validation (bool): whether to strictly validate the records
+                against the InvenioRDM metadata schema
+            all_or_none (bool): whether to stop the loading process if an
+                error is encountered
+            notify_record_owners (bool): whether to notify the owners of the records
+                by email when their records are created
 
             files (list[dict]): the list of files to upload
             metadata (list[dict]): the list of metadata objects for the records
@@ -1099,6 +1119,7 @@ class RecordLoader:
             "review_required": review_required,
             "strict_validation": strict_validation,
             "all_or_none": all_or_none,
+            "notify_record_owners": notify_record_owners,
         }
 
         # sanitize the names of files before upload to avoid
@@ -1155,6 +1176,7 @@ class RecordLoader:
                         no_updates=flags["no_updates"],
                         overrides=overrides,
                         strict_validation=flags["strict_validation"],
+                        notify_record_owners=flags["notify_record_owners"],
                     )
                 # FIXME: This is a hack to handle StaleDataError which
                 # is consistently resolved on a second attempt -- seems
@@ -1169,6 +1191,7 @@ class RecordLoader:
                         no_updates=flags["no_updates"],
                         overrides=overrides,
                         strict_validation=flags["strict_validation"],
+                        notify_record_owners=flags["notify_record_owners"],
                     )
                 app.logger.debug("result status: %s", result.status)
                 if result.status == "new_record":

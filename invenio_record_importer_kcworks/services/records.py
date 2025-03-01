@@ -173,6 +173,7 @@ class RecordsHelper:
         user_system: str = "knowledgeCommons",
         collection_id: str = "",
         existing_record: Optional[dict] = None,
+        notify_record_owners: bool = True,
     ) -> dict[str, Any]:
         """
         Assign the ownership of the record.
@@ -203,6 +204,8 @@ class RecordsHelper:
             collection_id: the ID of the collection to add the owner to as a member.
                 This must be a UUID, not the collection's slug. If not provided,
                 the owner will not be added to any collection.
+            notify_record_owners: whether to notify the owners of the record of
+                the work's creation. Defaults to True.
         Returns:
             A dict with the following keys:
             - owner_id: the ID of the user that was assigned ownership to the record
@@ -294,6 +297,18 @@ class RecordsHelper:
                         member_id=new_owner.id,
                         role="reader",
                     )
+
+                    if notify_record_owners:
+                        app.logger.debug(
+                            f"Sending welcome email to {new_owner.email}..."
+                        )
+                        UsersHelper().send_welcome_email(
+                            new_owner.email,
+                            new_owner,
+                            collection_id,
+                            draft_id,
+                        )
+
             except AttributeError:
                 raise OwnershipChangeFailedError(
                     f"Error changing ownership of the record. Could not "
@@ -342,6 +357,17 @@ class RecordsHelper:
                         member_id=grant_holder.id,
                         role="reader",
                     )
+
+                    if notify_record_owners:
+                        app.logger.debug(
+                            f"Sending welcome email to {grant_holder.email}..."
+                        )
+                        UsersHelper().send_welcome_email(
+                            grant_holder.email,
+                            grant_holder,
+                            collection_id,
+                            draft_id,
+                        )
 
         return {
             "owner_id": changed_ownership.owner_id,

@@ -8,14 +8,17 @@
 # more details.
 
 import arrow
+from pprint import pformat
 from flask import current_app as app
+from invenio_access.permissions import system_identity
 from invenio_accounts.errors import AlreadyLinkedError
+from invenio_accounts.models import User, UserIdentity
 from invenio_accounts.proxies import current_accounts
+from invenio_communities.proxies import current_communities
 from invenio_db import db
-from invenio_oauthclient.models import UserIdentity
-from invenio_record_importer_kcworks.services.communities import (
-    CommunityRecordHelper,
-)
+from invenio_rdm_records.proxies import current_rdm_records_service as records_service
+from invenio_record_importer_kcworks.tasks import send_security_email
+from invenio_record_importer_kcworks.services.communities import CommunityRecordHelper
 import json
 import os
 import requests
@@ -43,7 +46,7 @@ class UsersHelper:
     @staticmethod
     def get_user_by_source_id(
         source_id: str, record_source: str = "knowledgeCommons"
-    ) -> dict:
+    ) -> dict[str, str]:
         """Get a user by their source id.
 
         Note that this method depends on the invenio_remote_user_data module
@@ -83,6 +86,46 @@ class UsersHelper:
                 "JSONDecodeError: User group data API response was not" " JSON:"
             )
             return {}
+
+    def send_welcome_email(
+        self,
+        user_email: str,
+        user: User,
+        community_id: str,
+        record_id: str,
+    ):
+        app.logger.debug(f"Sending welcome email to {user_email}...")
+        app.logger.debug(f"community_id: {community_id}")
+        record_data = records_service.read(system_identity, id_=record_id).to_dict()
+        import_config = app.config.get("RECORD_IMPORTER_COMMUNITIES", {})
+        community_record = current_communities.service.read(
+            system_identity, id_=community_id
+        )
+        app.logger.debug(f"community_record: {pformat(community_record.to_dict())}")
+        collection_config = import_config.get(
+            community_record.to_dict().get("slug"), None
+        )
+        if not collection_config:
+            raise RuntimeError(
+                f"No collection config found for community "
+                f"{community_id}. Cannot send welcome "
+                f"email to {user_email}."
+            )
+        else:
+            user_dict = {
+                "email": user.email,
+                "username": user.username,
+                "user_profile": user.user_profile,
+            }
+            app.logger.debug(f"sending welcome email to {user_email}...")
+            send_security_email(
+                subject=collection_config.get("email_subject_register"),
+                recipients=[user_email],
+                user=user_dict,
+                community_url=community_record.links["self_html"],
+                record_data=record_data,
+                collection_config=collection_config,
+            )  # type: ignore
 
     def create_invenio_user(
         self,
@@ -140,21 +183,18 @@ class UsersHelper:
         active_user = None
         idps = app.config.get("SSO_SAML_IDPS")
         if not idps or idp not in idps.keys():
-            raise RuntimeError(f"record_source {idp} not found in SSO_SAML_IDPS")
+            app.logger.warning(
+                f"During user creation, record_source {idp} not found in SSO_SAML_IDPS"
+            )
 
         if idp_username and idp and not user_email:
-            user_email = UsersHelper.get_user_by_source_id(idp_username, idp).get(
-                "email"
-            )
-
-        if not user_email:
-            user_email = app.config.get("RECORD_IMPORTER_ADMIN_EMAIL")
-            idp_username = None
-            app.logger.warning(
-                "No email address provided in source cata for uploader of "
-                f"record ({idp_username} from {idp}). Using "
-                "default admin account as owner."
-            )
+            email = UsersHelper.get_user_by_source_id(idp_username, idp).get("email")
+            if not email:
+                raise RuntimeError(
+                    "No email address found in source data for user. Cannot "
+                    "create user."
+                )
+            user_email = email
 
         existing_user = current_accounts.datastore.get_user_by_email(user_email)
         if existing_user:
@@ -165,14 +205,15 @@ class UsersHelper:
             # FIXME: make proper password here
             app.logger.debug(f"creating new user for email {user_email}...")
             profile = {} if not full_name else {"full_name": full_name}
-            new_user = current_accounts.datastore.create_user(
-                email=user_email,
-                # password=generate_password(16),
-                active=True,
-                confirmed_at=arrow.utcnow().datetime,
-                user_profile=profile,
-                username=f"{idp}-{idp_username}",
-            )
+            info_args = {
+                "email": user_email,
+                "active": True,
+                "confirmed_at": arrow.utcnow().datetime,
+                "user_profile": profile,
+            }
+            if idp and idp_username:
+                info_args["username"] = f"{idp}-{idp_username}"
+            new_user = current_accounts.datastore.create_user(**info_args)
             current_accounts.datastore.commit()
             assert new_user.id
             app.logger.info(f"    created new user {user_email}...")
@@ -211,7 +252,7 @@ class UsersHelper:
             if not existing_saml:
                 try:
                     UserIdentity.create(active_user, idp, idp_username)
-                    db.session.commit()
+                    db.session.commit()  # type: ignore
                     app.logger.info(
                         f"    configured SAML login for {user_email} as"
                         f" {idp_username} on {idp}..."

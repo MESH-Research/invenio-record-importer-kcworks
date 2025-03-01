@@ -25,6 +25,7 @@ class RecordImporterService(Service):
         review_required: bool = True,
         strict_validation: bool = True,
         all_or_none: bool = True,
+        notify_record_owners: bool = True,
         views_field: str = "",
         downloads_field: str = "",
     ) -> dict:
@@ -66,6 +67,9 @@ class RecordImporterService(Service):
             Whether to import a partial set of records in the case that some of
             the records fail. If it is `True`, no records will be imported if
             any of the records fail.
+        notify_record_owners : bool
+            Whether to notify the owners of the records of the work's creation.
+            Defaults to `True`.
         views_field : str
             The field to use for the views count. Defaults to ""
         downloads_field : str
@@ -104,6 +108,7 @@ class RecordImporterService(Service):
             review_required=review_required,
             strict_validation=strict_validation,
             all_or_none=all_or_none,
+            notify_record_owners=notify_record_owners,
         )
         app.logger.debug(import_result)
 
