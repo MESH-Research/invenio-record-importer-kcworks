@@ -167,9 +167,7 @@ def generate_random_string(length):
     """
     Generate a random string of lowercase letters and integer numbers.
     """
-    res = "".join(
-        random.choices(string.ascii_lowercase + string.digits, k=length)
-    )
+    res = "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
     return res
 
 
@@ -263,9 +261,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
             a[list_name] = []
         if list_name not in b.keys():
             b[list_name] = []
-        existing_items = [
-            _normalize_punctuation(i.get(key)) for i in a[list_name]
-        ]
+        existing_items = [_normalize_punctuation(i.get(key)) for i in a[list_name]]
         for i in b[list_name]:
             if _normalize_punctuation(i[key]) not in existing_items:
                 out.setdefault("A", []).append({})
@@ -275,8 +271,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
                 i_2 = [
                     i2
                     for i2 in a[list_name]
-                    if _normalize_punctuation(i2[key])
-                    == _normalize_punctuation(i[key])
+                    if _normalize_punctuation(i2[key]) == _normalize_punctuation(i[key])
                 ][0]
                 for k in comparators:
                     if not (
@@ -332,18 +327,11 @@ def compare_metadata(A: dict, B: dict) -> dict:
                     ):
                         same = False
                 else:
-                    if k not in c_2[
-                        "person_or_org"
-                    ].keys() or _normalize_punctuation(
+                    if k not in c_2["person_or_org"].keys() or _normalize_punctuation(
                         c["person_or_org"][k]
-                    ) != _normalize_punctuation(
-                        c_2["person_or_org"][k]
-                    ):
+                    ) != _normalize_punctuation(c_2["person_or_org"][k]):
                         same = False
-            if (
-                "role" not in c_2.keys()
-                or c["role"]["id"] != c_2["role"]["id"]
-            ):
+            if "role" not in c_2.keys() or c["role"]["id"] != c_2["role"]["id"]:
                 same = False
             if not same:
                 people_diff.setdefault("A", []).append(c_2)
@@ -389,9 +377,9 @@ def compare_metadata(A: dict, B: dict) -> dict:
                 app.logger.debug(meta_a.get(s))
             if s in meta_a.keys():
                 if s in meta_b.keys():
-                    if _normalize_punctuation(
-                        meta_b[s]
-                    ) != _normalize_punctuation(meta_a[s]):
+                    if _normalize_punctuation(meta_b[s]) != _normalize_punctuation(
+                        meta_a[s]
+                    ):
                         meta_diff["A"][s] = meta_a[s]
                         meta_diff["B"][s] = meta_b[s]
                 else:
@@ -405,9 +393,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
             meta_diff["A"]["resource_type"] = meta_a["resource_type"]
             meta_diff["B"]["resource_type"] = meta_b["resource_type"]
 
-        creators_comp = compare_people(
-            meta_a.get("creators"), meta_b.get("creators")
-        )
+        creators_comp = compare_people(meta_a.get("creators"), meta_b.get("creators"))
         if creators_comp:
             meta_diff["A"]["creators"] = creators_comp["A"]
             meta_diff["B"]["creators"] = creators_comp["B"]
@@ -416,9 +402,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
             if "contributors" not in meta_a.keys():
                 meta_a["contributors"] = []
             if meta_b["contributors"] != meta_a["contributors"]:
-                comp = compare_people(
-                    meta_a["contributors"], meta_b["contributors"]
-                )
+                comp = compare_people(meta_a["contributors"], meta_b["contributors"])
                 if comp:
                     meta_diff["A"]["contributors"] = comp["A"]
                     meta_diff["B"]["contributors"] = comp["B"]
@@ -427,17 +411,12 @@ def compare_metadata(A: dict, B: dict) -> dict:
             if "additional_titles" not in meta_a.keys():
                 meta_a["additional_titles"] = []
             existing_titles = [
-                _normalize_punctuation(t["title"])
-                for t in meta_a["additional_titles"]
+                _normalize_punctuation(t["title"]) for t in meta_a["additional_titles"]
             ]
             for t in meta_b["additional_titles"]:
                 if _normalize_punctuation(t["title"]) not in existing_titles:
-                    meta_diff["A"].setdefault("additional_titles", []).append(
-                        {}
-                    )
-                    meta_diff["B"].setdefault("additional_titles", []).append(
-                        t
-                    )
+                    meta_diff["A"].setdefault("additional_titles", []).append({})
+                    meta_diff["B"].setdefault("additional_titles", []).append(t)
                 else:
                     same = True
                     t_2 = [
@@ -453,12 +432,8 @@ def compare_metadata(A: dict, B: dict) -> dict:
                     ):
                         same = False
                     if not same:
-                        meta_diff["A"].setdefault(
-                            "additional_titles", []
-                        ).append(t_2)
-                        meta_diff["B"].setdefault(
-                            "additional_titles", []
-                        ).append(t)
+                        meta_diff["A"].setdefault("additional_titles", []).append(t_2)
+                        meta_diff["B"].setdefault("additional_titles", []).append(t)
 
         if "identifiers" in meta_b.keys() or "identifiers" in meta_a.keys():
             comp = obj_list_compare(
@@ -605,9 +580,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
             for k in ["pages", "isbn", "title"]:
                 if k in custom_b["imprint:imprint"].keys():
                     if k in custom_a["imprint:imprint"].keys():
-                        if custom_a["imprint:imprint"][
-                            k
-                        ] != unicodedata.normalize(
+                        if custom_a["imprint:imprint"][k] != unicodedata.normalize(
                             "NFC", custom_b["imprint:imprint"][k]
                         ):
                             same = False
@@ -624,12 +597,8 @@ def compare_metadata(A: dict, B: dict) -> dict:
                     same = False
 
             if not same:
-                custom_diff["A"]["imprint:imprint"] = custom_a[
-                    "imprint:imprint"
-                ]
-                custom_diff["B"]["imprint:imprint"] = custom_b[
-                    "imprint:imprint"
-                ]
+                custom_diff["A"]["imprint:imprint"] = custom_a["imprint:imprint"]
+                custom_diff["B"]["imprint:imprint"] = custom_b["imprint:imprint"]
 
         if "journal:journal" in custom_b.keys():
             if "journal:journal" not in custom_a.keys():
@@ -638,9 +607,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
             for k in ["issn", "issue", "pages", "title"]:
                 if k in custom_b["journal:journal"].keys():
                     if k in custom_a["journal:journal"].keys():
-                        if custom_a["journal:journal"][
-                            k
-                        ] != unicodedata.normalize(
+                        if custom_a["journal:journal"][k] != unicodedata.normalize(
                             "NFC", custom_b["journal:journal"][k]
                         ):
                             same = False
@@ -648,12 +615,8 @@ def compare_metadata(A: dict, B: dict) -> dict:
                         same = False
                         custom_a["journal:journal"][k] = None
             if not same:
-                custom_diff["A"]["journal:journal"] = custom_a[
-                    "journal:journal"
-                ]
-                custom_diff["B"]["journal:journal"] = custom_b[
-                    "journal:journal"
-                ]
+                custom_diff["A"]["journal:journal"] = custom_a["journal:journal"]
+                custom_diff["B"]["journal:journal"] = custom_b["journal:journal"]
 
         if custom_diff["A"] or custom_diff["B"]:
             output["A"]["custom_fields"] = custom_diff["A"]
@@ -775,7 +738,9 @@ def update_nested_dict(original, update):
     return original
 
 
-def replace_value_in_nested_dict(d: dict, path: str, new_value: Any) -> dict:
+def replace_value_in_nested_dict(
+    d: dict, path: str, new_value: Any
+) -> Union[dict, bool]:
     """
     Replace a in a nested dictionary based on a bar-separated path string.
 
@@ -795,7 +760,7 @@ def replace_value_in_nested_dict(d: dict, path: str, new_value: Any) -> dict:
     {'a': {'b': {'e': 3}}}
 
     :param d: The dictionary or list to update.
-    :param path: The dot-separated path string to the value.
+    :param path: The bar-separated path string to the value.
     :param new_value: The new value to set.
 
     returns: dict: The updated dictionary.
@@ -804,9 +769,7 @@ def replace_value_in_nested_dict(d: dict, path: str, new_value: Any) -> dict:
     current = d
     for i, key in enumerate(keys):
         if i == len(keys) - 1:  # If this is the last key
-            if key.isdigit() and isinstance(
-                current, list
-            ):  # Handle list index
+            if key.isdigit() and isinstance(current, list):  # Handle list index
                 current[int(key)] = new_value
             else:  # Handle dictionary key
                 current[key] = new_value
@@ -818,9 +781,13 @@ def replace_value_in_nested_dict(d: dict, path: str, new_value: Any) -> dict:
                     return False
                 current = current[key]
             else:  # Next level is a dictionary
-                if key not in current or not isinstance(
-                    current[key], (dict, list)
-                ):
+                if isinstance(current, dict) and key not in current:
+                    # Add new dictionary or list at this level to hold deeper keys
+                    if keys[i + 1].isdigit():
+                        current[key] = []
+                    else:
+                        current[key] = {}
+                elif not isinstance(current[key], (dict, list)):
                     # If key not found or next level is not a dict/list
                     return False
                 current = current[key]

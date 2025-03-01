@@ -1,6 +1,6 @@
 [project]
 name = "invenio-record-importer-kcworks"
-version = "0.2.21-alpha0"
+version = "0.3.0-alpha1"
 description = "Bulk import records into a InvenioRDM instance configured for Knowledge Commons Works"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -72,16 +72,19 @@ test = ["coverage"]
 importer = "invenio_record_importer_kcworks.cli:cli"
 
 [project.entry-points."invenio_base.apps"]
-importer = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
+invenio_record_importer_kcworks = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
 
 [project.entry-points."invenio_base.api_apps"]
-importer = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
+invenio_record_importer_kcworks = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
+
+[project.entry-points."invenio_base.api_blueprints"]
+invenio_record_importer_kcworks = "invenio_record_importer_kcworks.resources:create_api_blueprint"
 
 [project.entry-points."flask.commands"]
 importer = "invenio_record_importer_kcworks.cli:cli"
 
 [project.entry-points."invenio_celery.tasks"]
-importer = "invenio_record_importer_kcworks.tasks"
+invenio-record-importer-kcworks = "invenio_record_importer_kcworks.tasks"
 
 [tool.pytest.ini_options]
 addopts = "--doctest-glob='*.rst' --doctest-modules --ignore=tests/helpers"
@@ -134,16 +137,16 @@ ignore = [
 # package-data = {"sample" = ["*.dat"]}
 
 [tool.bumpver]
-current_version = "0.2.21-alpha0"
+current_version = "0.3.0-alpha1"
 version_pattern = "MAJOR.MINOR.PATCH[-TAGNUM]"
 commit_message = "bump version {old_version} -> {new_version}"
 tag_message = "{new_version}"
 tag_scope = "default"
 pre_commit_hook = ""
 post_commit_hook = ""
-commit = true
-tag = true
-push = true
+commit = false
+tag = false
+push = false
 
 [tool.bumpver.file_patterns]
 "pyproject.toml" = [
