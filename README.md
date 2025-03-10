@@ -4,6 +4,8 @@ Version 0.3.0-alpha1
 
 *ALPHA QUALITY SOFTWARE - USE AT OWN RISK*
 
+The focus for this module has shifted from the CLI used to migrate records from the legacy Humanities Commons CORE repository to an API endpoint that can be used to import records from any source. The CLI interface has not yet been updated to work with the logic behind the API endpoint, and is currently broken. The API endpoint, however, is fully functional and documentation can be found [here](https://mesh-research.github.io/knowledge-commons-works/api.html#streamlined-import-api).
+
 **This documentation is out of date.**
 
 This is a command line utility to perform a bulk import of records into Knowledge Commons Works, an InvenioRDM instance. The utility could be adapted to work with other InvenioRDM installations, but in its current form it assumes the customized metadata schema, database structures, and other configuration employed in Knowledge Commons Works.
