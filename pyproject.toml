@@ -52,6 +52,11 @@ dependencies = [
   'validators',
   ]
 
+[tool.uv.sources]
+invenio-group-collections-kcworks = {path = "../invenio-group-collections-kcworks"}
+invenio-remote-user-data-kcworks = {path = "../invenio-remote-user-data-kcworks"}
+invenio-communities = {path = "../invenio-communities"}
+
 [project.urls]
 "Homepage" = "https://github.com/Knowledge-Commons-Works/invenio-record-importer-kcworks"
 
