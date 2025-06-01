@@ -227,17 +227,12 @@ class RecordLoader:
             ),
             "",
         )
-        app.logger.debug(f"result.source_id: {result.source_id}")
-        app.logger.debug(f"scheme: {self.sourceid_scheme}")
         for key, val in overrides.items():
             app.logger.debug(f"updating metadata key {key} with value {val}")
             updated_data = replace_value_in_nested_dict(import_data, key, val)
             if isinstance(updated_data, dict):
                 import_data = updated_data
             else:
-                app.logger.error(
-                    f"failed to update metadata key {key} with value {val}"
-                )
                 raise ValueError(
                     f"failed to update metadata key {key} with value {val}"
                 )
@@ -256,12 +251,11 @@ class RecordLoader:
 
         # Remove the owned_by field from the access dictionary because we
         # will be adding it back in later
-        app.logger.debug(
-            f"submitted owned_by: {pformat(submitted_data['parent'].get('access', {}).get('owned_by', []))}"
-        )
         result.submitted["owners"] = copy.deepcopy(
             submitted_data["parent"].get("access", {}).get("owned_by", [])
         )
+        if isinstance(result.submitted["owners"], dict):
+            result.submitted["owners"] = [result.submitted["owners"]]
         if "access" in result.submitted["data"]["parent"].keys():
             result.submitted["data"]["parent"]["access"] = {
                 k: v
@@ -312,7 +306,6 @@ class RecordLoader:
                     [{"validation_error": e} for e in validation_errors]
                 )
             result.status = result.record_created["status"]
-            app.logger.info(f"    record status: {result.record_created['status']}")
             if result.record_created["status"] in [
                 "updated_published",
                 "updated_draft",
@@ -331,13 +324,6 @@ class RecordLoader:
                 else True
             )
             draft_id = result.record_created["record_data"]["id"]
-            app.logger.info(f"    metadata record id: {draft_id}")
-            app.logger.info(f"    is_draft: {is_draft}")
-
-            print(
-                f"import_record_to_invenio metadata_record: "
-                f"{pformat(result.record_created['record_data'])}"
-            )
 
             # Upload the files
             if len(result.submitted["files"].get("entries", [])) > 0:
@@ -351,10 +337,6 @@ class RecordLoader:
                     existing_record=result.existing_record,
                 )
             else:
-                app.logger.warning(
-                    f"files in metadata: "
-                    f"{pformat(result.record_created['record_data'].get('files'))}"
-                )
                 FilesHelper(is_draft=is_draft).set_to_metadata_only(draft_id)
                 result.record_created["record_data"]["files"]["enabled"] = False
                 if result.existing_record:
@@ -371,7 +353,6 @@ class RecordLoader:
                         }
                     }
                 )
-            app.logger.info(f"uploaded files result: {pformat(result.uploaded_files)}")
 
             # Attach the record to the communities
             result.community_review_result = (
@@ -390,11 +371,6 @@ class RecordLoader:
             if result.community_review_result["status"] == "already_published":
                 if result.uploaded_files.get("status") != "skipped":
                     app.logger.info("    publishing new draft record version...")
-                    app.logger.debug(
-                        records_service.read(
-                            system_identity, id_=draft_id
-                        )._record.files.entries
-                    )
                     try:
                         check_rec = records_service.read_draft(
                             system_identity, id_=draft_id
@@ -476,7 +452,7 @@ class RecordLoader:
                 result.record_created["status"] = "not_created"
         except FileUploadError as e:
             app.logger.error(f"FileUploadError: {e}")
-            result.errors.append(e.message)
+            result.errors.append({"file_upload_error": e.message})
             result.status = "error"
             if result.record_created:
                 try:
@@ -570,6 +546,17 @@ class RecordLoader:
 
         if index > -1:
             failed_list.append(result)
+        self._update_failed_logfile(lists)
+
+        lists["failed_records"] = failed_list
+
+        return lists
+
+    def _update_failed_logfile(self, lists: dict) -> None:
+        """
+        Update the failed records logfile.
+        """
+        failed_list = lists["failed_records"]
         skipped_ids = []
         if len(lists["skipped_records"]) > 0:
             skipped_ids = [r["source_id"] for r in lists["skipped_records"] if r]
@@ -588,10 +575,6 @@ class RecordLoader:
             for o in ordered_failed_records:
                 failed_writer.write(o)
 
-        lists["failed_records"] = failed_list
-
-        return lists
-
     def _log_repaired_record(
         self,
         result: LoaderResult,
@@ -600,7 +583,7 @@ class RecordLoader:
         """
         Log a repaired record.
         """
-        app.logger.info("    repaired previously failed record...")
+        app.logger.info("repaired previously failed record...")
         app.logger.info(
             f"    {result.log_object.get('doi')} {result.log_object.get('source_id')}"
             f" {result.log_object.get('source_id_2')}"
@@ -611,10 +594,7 @@ class RecordLoader:
             if isinstance(d, dict) and d["source_id"] != result.log_object["source_id"]
         ]
         lists["repaired_failed"].append(result.log_object)
-        lists["failed_records"], self.residual_failed_records = self._log_failed_record(
-            result,
-            lists,
-        )
+        self._update_failed_logfile(lists)
         return lists
 
     def _load_prior_failed_records(
@@ -748,8 +728,6 @@ class RecordLoader:
         if len(record_set) == 0:
             raise NoAvailableRecordsError("No records found to load.")
 
-        app.logger.debug(f"Record set: {pformat(record_set)}")
-
         return record_set
 
     def _get_log_object(
@@ -784,7 +762,6 @@ class RecordLoader:
             "source_id_2": scheme_ids[1],
         }
 
-        app.logger.info(f"    record log object: {rec_log_object}")
         return rec_log_object
 
     def _handle_raised_exception(
@@ -1193,8 +1170,13 @@ class RecordLoader:
                         strict_validation=flags["strict_validation"],
                         notify_record_owners=flags["notify_record_owners"],
                     )
-                app.logger.debug("result status: %s", result.status)
-                if result.status == "new_record":
+                if result.status in [
+                    "new_record",
+                    "updated_published",
+                    "updated_draft",
+                    "unchanged_existing_draft",
+                    "unchanged_existing_published",
+                ]:
                     lists = self._log_success(result, lists)
                     counts = self._update_counts(counts, result)
                     if (

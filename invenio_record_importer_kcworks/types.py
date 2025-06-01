@@ -1,7 +1,9 @@
-from typing import Any, Union
-from pydantic import BaseModel, field_validator
-from tempfile import SpooledTemporaryFile
 from io import BufferedReader
+from pprint import pformat
+from tempfile import SpooledTemporaryFile
+from typing import Any, Union
+
+from pydantic import BaseModel, field_validator
 
 
 class FileData(BaseModel):
@@ -80,3 +82,24 @@ class LoaderResult(BaseModel):
     status: str = ""
     errors: list[dict] = []
     submitted: dict = {}
+
+    def __str__(self) -> str:
+        """Return a pretty-printed string representation of the LoaderResult."""
+        # Create a dictionary with the most important fields
+        result_dict = {
+            "index": self.index,
+            "source_id": self.source_id,
+            "status": self.status,
+            "record_id": self.record_created.get("record_data", {}).get("id", ""),
+            "errors": self.errors,
+            "uploaded_files": self.uploaded_files,
+            "primary_community": self.primary_community.get("id", ""),
+            "assigned_owners": self.assigned_owners,
+            "record_created": self.record_created,
+            "existing_record": self.existing_record,
+            "community_review_result": self.community_review_result,
+            "added_to_collections": self.added_to_collections,
+            "submitted": self.submitted,
+        }
+
+        return pformat(result_dict, indent=2, width=100)

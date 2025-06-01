@@ -119,7 +119,7 @@ class FilesHelper:
             )
             if draft_record.files.entries:
                 inner_clear_manager(draft_record, is_published)
-            app.logger.info("    deleted all files from existing draft")
+            app.logger.info("deleted all files from existing draft")
         if is_published:
             app.logger.info("Handling published record")
             record = records_service.files._get_record(
@@ -127,10 +127,10 @@ class FilesHelper:
             )
             if record.files.entries:
                 inner_clear_manager(record, is_published)
-            app.logger.info("    deleted all files from existing " "published record")
+            app.logger.info("deleted all files from existing published record")
         else:
             app.logger.info(
-                "    no files attached to existing record "
+                "no files attached to existing record "
                 "and no new files to be uploaded"
             )
 
@@ -205,7 +205,7 @@ class FilesHelper:
                 app.logger.debug(pformat(removed_file))
                 return True
             except Exception as e:
-                app.logger.error(f"    failed to unlock files for record {draft_id}...")
+                app.logger.error(f"failed to unlock files for record {draft_id}...")
                 raise e
 
         record = read_method(system_identity, draft_id)._record
@@ -222,7 +222,7 @@ class FilesHelper:
         record = None
 
         if need_to_unlock:
-            app.logger.warning("    unlocking published record files...")
+            app.logger.warning("unlocking published record files...")
             record = records_service.read(
                 system_identity, existing_record["id"]
             )._record
@@ -233,7 +233,7 @@ class FilesHelper:
                 raise RuntimeError("uow is required")
 
             try:
-                app.logger.warning("    unlocking draft record files...")
+                app.logger.warning("unlocking draft record files...")
                 draft_record = records_service.read_draft(
                     system_identity, existing_record["id"]
                 )._record
@@ -259,7 +259,7 @@ class FilesHelper:
                 raise RuntimeError("uow is required")
 
             try:
-                app.logger.warning("    locking draft record files...")
+                app.logger.warning("locking draft record files...")
                 draft_record = records_service.read_draft(
                     system_identity, existing_record["id"]
                 )._record
@@ -359,12 +359,6 @@ class FilesHelper:
             that were generated.
 
         """
-        app.logger.debug(f"handle_record_files file_data: {pformat(file_data)}")
-        app.logger.debug(f"handle_record_files file_data: {files}")
-        app.logger.debug(
-            f"handle_record_files existing_record.files: "
-            f"{pformat(existing_record.get('files') if existing_record else None)}"  # noqa: E501
-        )
         assert metadata["files"]["enabled"] is True
         if isinstance(file_data, list):
             files_to_upload = {f["key"]: f for f in file_data}
@@ -379,11 +373,11 @@ class FilesHelper:
                 existing_record["is_draft"],
                 existing_record["is_published"],
                 existing_record["files"]["entries"],
-                files_to_upload["entries"],
+                files_to_upload,
             )
 
         if existing_record and same_files:
-            app.logger.info("    skipping uploading files (same already uploaded)...")
+            app.logger.info("skipping uploading files (same already uploaded)...")
 
             # Check that any published record has the correct file entries
             if existing_record["is_published"]:
@@ -400,7 +394,7 @@ class FilesHelper:
                     system_identity, id_=metadata["id"]
                 )._record
                 if uow and check_record.files.entries != files_to_upload["entries"]:
-                    app.logger.error("    draft record files are missing, updating...")
+                    app.logger.error("draft record files are missing, updating...")
                     check_record.files.sync(files_to_upload["entries"])
                     uow.register(RecordCommitOp(check_record))
                 print("    draft record files are...")
@@ -411,16 +405,21 @@ class FilesHelper:
             }
 
         elif len(files_to_upload) > 0:
-            app.logger.info("    uploading new files...")
-            app.logger.warning("file data: %s", pformat(files_to_upload))
+            app.logger.info("uploading new files...")
             # FIXME: Below is an implementation detail for the CORE
             # migration that should be removed when we use this method
             # for all imports.
             if not source_filepaths and not files:
                 first_file = next(iter(files_to_upload))
-                source_filepaths = {
-                    first_file: metadata["custom_fields"]["hclegacy:file_location"]
-                }
+                try:
+                    source_filepaths = {
+                        first_file: metadata["custom_fields"]["hclegacy:file_location"]
+                    }
+                except KeyError:
+                    raise FileUploadError(
+                        "No binary file data or source filepaths provided "
+                        f"to upload files for {metadata['id']}"
+                    )
 
             # If we're updating a draft of a published record, we need to
             # unlock the published record files before we can upload new
@@ -437,7 +436,7 @@ class FilesHelper:
             # Lock the files again for a published record
             self._lock_files(existing_record)
         else:
-            app.logger.info("    no files to upload marking as " "metadata-only...")
+            app.logger.info("no files to upload marking as metadata-only...")
             self.set_to_metadata_only(metadata["id"])
             uploaded_files = {}
         print("returning uploaded_files:", pformat(uploaded_files))
@@ -491,8 +490,8 @@ class FilesHelper:
         else:
             app.logger.error(existing_record.files.entries)
             app.logger.error(
-                "    file key already exists on record but is not found in "
-                "draft metadata retrieved by record service"
+                "file key already exists on record but is not found in draft "
+                "metadata retrieved by record service"
             )
             raise InvalidKeyError(
                 f"File key {k} already exists on record but is not found in "
@@ -508,17 +507,10 @@ class FilesHelper:
             "/srv/www/commons/shared/uploads/humcore/", ""
         )
         long_filename = long_filename.replace("/app/site/web/app/uploads/humcore/", "")
-        # app.logger.debug(filename)
-        # app.logger.debug(source_filename)
-        # app.logger.debug(normalize_string(filename))
-        # app.logger.debug(normalize_string(unquote(source_filename)))
         try:
             assert normalize_string(filename) in normalize_string(unquote(filename))
         except AssertionError:
-            app.logger.error(
-                f"    file key {filename} does not match source filename"
-                f" {filename}..."
-            )
+            app.logger.error(f"file key {filename} does not match source filename")
             raise UploadFileNotFoundError(
                 f"File key from metadata {filename} not found in source "
                 f"file path {filename}"
@@ -568,7 +560,7 @@ class FilesHelper:
             except AssertionError:
                 raise FileUploadError(f"file size mismatch for key {key}...")
         else:
-            app.logger.warning(f"file size not provided for key {key}...")
+            app.logger.warning(f"file size not provided for key {key}")
 
     @unit_of_work()
     def _upload_draft_files(
@@ -600,9 +592,6 @@ class FilesHelper:
 
         output = {}
 
-        app.logger.debug(f"files_dict in _upload_draft_files: {pformat(files_dict)}")
-        app.logger.debug(f"files in _upload_draft_files: {pformat(files)}")
-
         # Ensure a draft exists for a published record
         try:
             check_record = records_service.read_draft(
@@ -610,11 +599,6 @@ class FilesHelper:
             )._record
         except (NoResultFound, DraftNotCreatedError):
             records_service.edit(system_identity, id_=draft_id)
-
-        app.logger.debug(f"uploading for record: {draft_id}")
-        app.logger.debug(
-            pformat(records_service.read_draft(system_identity, id_=draft_id))
-        )
 
         prior_failed = False
         for k, v in files_dict.items():
@@ -644,7 +628,6 @@ class FilesHelper:
                         file_item = [
                             f for f in files if f.filename.split("/")[-1] == k
                         ][0]
-                        app.logger.debug(f"found file: {file_item.filename}")
                         binary_file_data = file_item.stream
                     except IndexError:
                         msg = f"File {k} not found in list of files."
@@ -656,8 +639,6 @@ class FilesHelper:
                 # then check that the file size is correct
                 try:
                     assert binary_file_data is not None
-                    app.logger.debug(f"binary_file_data: {binary_file_data}")
-                    app.logger.debug(type(binary_file_data))
                     binary_file_data.seek(0)
                     # check will raise FileUploadError for incorrect size (catch below)
                     self._check_file_size(
@@ -682,7 +663,6 @@ class FilesHelper:
                         )
                         == 1
                     )
-                    app.logger.debug(f"initialization: {pformat(initialization)}")
                 except InvalidKeyError as e:
                     msg = (
                         f"Failed to initialize file upload. Key {k} is invalid: "
@@ -702,7 +682,7 @@ class FilesHelper:
                     draft_files = check_record.files
                     if uow and draft_files.bucket is None:
                         draft_files.create_bucket()
-                        app.logger.info("    created bucket for draft files...")
+                        app.logger.info("created bucket for draft files...")
                         uow.register(RecordCommitOp(check_record))
                 except (NoResultFound, DraftNotCreatedError):
                     pass

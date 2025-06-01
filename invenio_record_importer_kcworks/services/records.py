@@ -118,6 +118,7 @@ class RecordsHelper:
             app.logger.debug(f"owner: {pformat(owner.get('identifiers'))}")
             existing_user = None
             user_email = owner.get("email")
+            user_id = owner.get("user")
             user_username = next(
                 (
                     i.get("identifier")
@@ -126,13 +127,23 @@ class RecordsHelper:
                 ),
                 None,
             )
+            # FIXME: Look up using other identifiers
             other_user_ids = [
                 d.get("identifier")
                 for d in owner.get("identifiers", [])
                 if d.get("scheme") != "kc_username"
             ]
             try:
-                existing_user = current_accounts.datastore.get_user_by_email(user_email)
+                if user_id:
+                    app.logger.debug(f"finding user for id: {user_id}")
+                    existing_user = current_accounts.datastore.get_user_by_id(
+                        int(user_id)
+                    )
+                    app.logger.debug(f"found user for id: {existing_user}")
+                elif user_email:
+                    existing_user = current_accounts.datastore.get_user_by_email(
+                        user_email
+                    )
                 app.logger.debug(f"found user for email: {existing_user}")
             except NoResultFound:
                 app.logger.debug(f"no user found for email: {user_email}")
@@ -213,27 +224,21 @@ class RecordsHelper:
             - access_grants: a list of access grants for the record
         """
         # Create/find the necessary user account
-        app.logger.info("    creating or finding the user (submitter)...")
-        app.logger.debug(f"user_id: {user_id}")
-        app.logger.debug(f"submitted_owners: {pformat(submitted_owners)}")
-        app.logger.debug(f"collection_id: {collection_id}")
+        app.logger.info("creating or finding the user (submitter)...")
         new_owners = []
         new_grants = []
         if not submitted_owners:
             new_owners = [current_accounts.datastore.get_user(user_id)]
-            app.logger.debug(f"new_owners: {new_owners}")
             app.logger.warning(
-                "    no submitter email or username found in source metadata. "
+                "No submitter email or username found in source metadata. "
                 "Assigning ownership to the currently active user..."
             )
-        app.logger.debug(f"new_owners: {new_owners}")
 
         # Find existing users and owners without accounts
         owners_with_accounts, missing_owners = RecordsHelper._find_existing_users(
             submitted_owners
         )
         new_owners.extend(owners_with_accounts)
-        app.logger.debug(f"new_owners: {new_owners}")
 
         for missing_owner in missing_owners:
             missing_owner_kcid = next(
@@ -257,26 +262,38 @@ class RecordsHelper:
                 for d in missing_owner.get("identifiers", [])
                 if d.get("scheme") not in ["kc_username", "orcid"]
             ]
-            new_owner_result = UsersHelper().create_invenio_user(
-                user_email=missing_owner["email"],
-                idp_username=missing_owner_kcid,
-                full_name=missing_owner.get("full_name", ""),
-                idp=user_system,
-                orcid=missing_owner_orcid,
-                other_user_ids=other_user_ids,
-            )
-            new_owners.append(new_owner_result["user"])
+            try:
+                new_owner_result = UsersHelper().create_invenio_user(
+                    user_email=missing_owner["email"],
+                    idp_username=missing_owner_kcid,
+                    full_name=missing_owner.get("full_name", ""),
+                    idp=user_system,
+                    orcid=missing_owner_orcid,
+                    other_user_ids=other_user_ids,
+                )
+                new_owners.append(new_owner_result["user"])
+            except KeyError as e:
+                app.logger.error(f"Error creating user for {missing_owner}: {str(e)}")
+                new_owners = [current_accounts.datastore.get_user(user_id)]
+                app.logger.warning(
+                    f"Assigning ownership to the currently active user: {new_owners}"
+                )
 
         new_owner = new_owners[0]
         new_grant_holders = new_owners[1:]
 
         # Check to make sure the record is not already owned by the new owners
-        if existing_record:
-            if new_owner.id == existing_record["parent"]["access"].get("owned_by").get(
-                "user"
-            ):
-                app.logger.info("    skipping re-assigning ownership of the record ")
-                app.logger.info(f"    (already belongs to owner {new_owner.id})")
+        if (
+            existing_record
+            and existing_record["parent"].get("access", {}).get("owned_by", {})
+            and new_owner.id
+            == existing_record["parent"]
+            .get("access", {})
+            .get("owned_by", {})
+            .get("user")
+        ):
+            app.logger.info("skipping re-assigning ownership of the record ")
+            app.logger.info(f"(already belongs to owner {new_owner.id})")
         else:
             # Change the ownership of the record
             try:
@@ -437,7 +454,6 @@ class RecordsHelper:
             - record_uuid: the UUID of the metadata record
             - status: the status of the metadata record
         """
-        app.logger.debug("~~~~~~~~")
         metadata = RecordsHelper._coerce_types(metadata)
         app.logger.debug("metadata for new record:")
         app.logger.debug(pformat(metadata))
@@ -456,7 +472,7 @@ class RecordsHelper:
 
                 prefix = app.config.get("SEARCH_INDEX_PREFIX", "")
                 if prefix:
-                    index = f"{prefix}-rdmrecords"
+                    index = f"{prefix}rdmrecords"
                 else:
                     index = "rdmrecords"
                 same_doi = current_search_client.search(
@@ -466,9 +482,7 @@ class RecordsHelper:
                 )
                 app.logger.debug(f"same_doi: {pformat(same_doi)}")
             except Exception as e:
-                app.logger.error(
-                    "    error checking for existing record with same DOI:"
-                )
+                app.logger.error("error checking for existing record with same DOI:")
                 raise e
             if same_doi["hits"]["total"]["value"] > 0:
                 draft_recs = []
@@ -520,7 +534,7 @@ class RecordsHelper:
                         recs.append(r)
 
                 app.logger.info(
-                    f"    found {same_doi['hits']['total']['value']} existing"
+                    f"found {same_doi['hits']['total']['value']} existing"
                     " records with same DOI..."
                 )
                 # check for corrupted draft with different DOI and add to recs
@@ -547,16 +561,16 @@ class RecordsHelper:
                         for r in recs
                     ]
                     app.logger.info(
-                        "    found more than one existing record with same "
+                        "found more than one existing record with same "
                         f"DOI: {rec_list}"
                     )
-                    app.logger.info("   deleting extra records...")
+                    app.logger.info("deleting extra records...")
                     for r in recs[1:]:
                         try:
                             self.delete_invenio_record(r["id"], record_type="draft")
                         except PIDUnregistered as e:
                             app.logger.error(
-                                f"    error deleting extra record with same "
+                                f"error deleting extra record with same "
                                 f"DOI: {r['id']} was unregistered: {str(e)}"
                             )
                             raise DraftDeletionFailedError(
@@ -566,7 +580,7 @@ class RecordsHelper:
                         except Exception as e:
                             if r["is_published"] and not r["is_draft"]:
                                 app.logger.error(
-                                    f"    error deleting extra published "
+                                    f"error deleting extra published "
                                     f"record {r['id']} with same DOI: {str(e)}"
                                 )
                                 raise DraftDeletionFailedError(
@@ -575,22 +589,19 @@ class RecordsHelper:
                                 )
                             else:
                                 app.logger.info(
-                                    f"    could not delete draft record "
+                                    f"could not delete draft record "
                                     f"{r['id']} with same DOI. It will be "
                                     "cleaned up by the system later."
                                 )
                                 pass
                 existing_metadata = recs[0] if len(recs) > 0 else None
-                # app.logger.debug(
-                #     f"existing_metadata: {pformat(existing_metadata)}"
-                # )
                 # Check for differences in metadata
                 if existing_metadata:
                     differences = compare_metadata(existing_metadata, metadata)
                     app.logger.debug(f"differences: {differences}")
                     if differences:
                         app.logger.info(
-                            "    existing record with same DOI has different"
+                            "existing record with same DOI has different"
                             f" metadata: existing record: {differences['A']}"
                             f"; new record: {differences['B']}"
                         )
@@ -615,9 +626,7 @@ class RecordsHelper:
                                         update_payload.setdefault(key, {})[k2] = (
                                             metadata[key][k2]
                                         )
-                        app.logger.info(
-                            "    updating existing record with new metadata..."
-                        )
+                        app.logger.info("updating existing record with new metadata...")
                         new_comparison = compare_metadata(
                             existing_metadata, update_payload
                         )
@@ -660,9 +669,7 @@ class RecordsHelper:
                                 # problems setting the default files for the
                                 # new draft in
                                 # BaseRecordFilesComponent.update_draft
-                                app.logger.info(
-                                    "    existing record has files attached..."
-                                )
+                                app.logger.info("existing record has files attached...")
                                 update_payload["files"] = existing_metadata["files"]
                                 # update_payload["files"] = metadata["files"]
                                 print(
@@ -677,7 +684,7 @@ class RecordsHelper:
                                     for r in existing_metadata["metadata"]["rights"]
                                 ]
                             app.logger.info(
-                                "    metadata updated to match migration " "source..."
+                                "metadata updated to match migration source"
                             )
                             try:
                                 # If there is an existing draft for a
@@ -689,13 +696,12 @@ class RecordsHelper:
                                     data=update_payload,
                                 )
                                 app.logger.info(
-                                    "    continuing with existing draft record"
+                                    "continuing with existing draft record"
                                     " (new metadata)..."
                                 )
                                 if not result._record.files.bucket:
                                     result._record.files.create_bucket()
                                     uow.register(RecordCommitOp(result._record))
-                                app.logger.debug(pformat(result))
                                 return {
                                     "status": "updated_draft",
                                     "record_data": result.to_dict(),
@@ -706,26 +712,16 @@ class RecordsHelper:
                                 # published record, we create a new draft
                                 # to edit
                                 app.logger.info(
-                                    "    creating new draft of published "
+                                    "creating new draft of published "
                                     "record or recovering unpublished draft..."
-                                )
-                                app.logger.debug(
-                                    records_service.read(
-                                        system_identity,
-                                        id_=existing_metadata["id"],
-                                    )._record.files.entries
                                 )
                                 create_draft_result = records_service.edit(
                                     system_identity,
                                     id_=existing_metadata["id"],
                                 )
                                 app.logger.info(
-                                    "    updating new draft of published "
+                                    "updating new draft of published "
                                     "record with new metadata..."
-                                )
-                                app.logger.info(
-                                    f"    create_draft_result record files: "
-                                    f"{pformat(records_service.read_draft(system_identity, id_=create_draft_result.id)._record.files)}"
                                 )
                                 result = records_service.update_draft(
                                     system_identity,
@@ -759,10 +755,6 @@ class RecordsHelper:
                                     f"updated new draft of published: "
                                     f"{pformat(result.to_dict())}"
                                 )
-                                app.logger.debug(
-                                    f"****title: "
-                                    f"{result.to_dict()['metadata'].get('title')}"  # noqa: E501
-                                )
                                 return {
                                     "status": "updated_published",
                                     "record_data": result.to_dict(),
@@ -776,7 +768,7 @@ class RecordsHelper:
                             else "published"
                         )
                         app.logger.info(
-                            f"    continuing with existing {record_type} "
+                            f"continuing with existing {record_type} "
                             "record (same metadata)..."
                         )
                         existing_record_id = ""
@@ -806,7 +798,7 @@ class RecordsHelper:
                         return result
 
         # Make draft and publish
-        app.logger.info("    creating new draft record...")
+        app.logger.info("creating new draft record...")
         try:
             result = records_service.create(system_identity, data=metadata)
         except InvalidRelationValue as e:
@@ -814,9 +806,8 @@ class RecordsHelper:
                 f"Validation error while creating new record: {str(e)}"
             )
         result_recid = result._record.id
-        app.logger.debug(f"    new draft record recid: {result_recid}")
-        app.logger.debug(f"    new draft record: {pformat(result.to_dict())}")
-        print(f"    new draft record: {pformat(result.to_dict())}")
+        app.logger.debug(f"new draft record recid: {result_recid}")
+        app.logger.debug(f"new draft record: {pformat(result.to_dict())}")
 
         return {
             "status": "new_record",
@@ -844,8 +835,7 @@ class RecordsHelper:
         """
         result = None
         app.logger.info(
-            f"    deleting {record_type if record_type else ''} record "
-            f"{record_id}..."
+            f"deleting {record_type if record_type else ''} record " f"{record_id}..."
         )
 
         def inner_delete_draft(record_id: str) -> dict:
@@ -875,12 +865,12 @@ class RecordsHelper:
             if reviews:
                 # FIXME: What if there are multiple reviews?
                 app.logger.debug(
-                    f"    deleting review request for draft record " f"{record_id}..."
+                    f"deleting review request for draft record " f"{record_id}..."
                 )
                 records_service.review.delete(system_identity, id_=record_id)
         except ReviewNotFoundError:
             app.logger.info(
-                f"    no review requests found for draft record " f"{record_id}..."
+                f"no review requests found for draft record " f"{record_id}..."
             )
 
         if record_type == "draft":
@@ -912,10 +902,8 @@ class RecordsHelper:
             service = current_rdm_records.records_service
             record = service.read(id_=record_id, identity=system_identity)._record
             siblings = list(RDMRecord.get_records_by_parent(record.parent))
-            app.logger.warning("siblings: %s", pformat(siblings))
             # remove the 0th (latest) version to leave the previous version(s):
             siblings.pop(0)
-            app.logger.warning("siblings after pop: %s", pformat(siblings))
             # already deleted previous versions will have nothing for metadata
             # (sibling.get('id') will return nothing)
             has_versions = any([sibling.get("id") for sibling in siblings])

@@ -754,7 +754,7 @@ class CommunitiesHelper:
                 # TODO: This is a hack to get the index name
                 prefix = app.config.get("SEARCH_INDEX_PREFIX")
                 if prefix:
-                    index = f"{prefix}-communities"
+                    index = f"{prefix}communities"
                 else:
                     index = "communities"
                 try:
@@ -782,16 +782,6 @@ class CommunitiesHelper:
                     # NOTE: Don't check for identical group name because
                     # sometimes the group name has changed since the record
                     # was created
-                    #
-                    # coll_records = [
-                    #     c
-                    #     for c in coll_records
-                    #     if c["custom_fields"].get("kcr:commons_group_name")
-                    #     == group_name
-                    # ]
-                    # app.logger.debug(
-                    #     f"coll_record_search: {pformat(coll_search)}"
-                    # )
                     try:
                         assert len(coll_records) == 1
                     except AssertionError:
@@ -817,53 +807,51 @@ class CommunitiesHelper:
                         )
                         app.logger.debug("   created group collection...")
                     except UnprocessableEntity as e:
-                        if "Something went wrong requesting group" in e.description:
-                            app.logger.warning(
-                                f"Failed requesting group collection from API "
-                                f"{e.description}"
-                            )
+                        if e.description and (
+                            "Something went wrong requesting group" in e.description
+                        ):
                             raise CommonsGroupServiceError(
                                 f"Failed requesting group collection from API "
                                 f"{e.description}"
                             )
                     except CommonsGroupNotFoundError:
                         message = (
-                            f"    group {group_id} ({group_name})"
+                            f"Group {group_id} ({group_name})"
                             f"not found on Knowledge Commons. Could not "
                             f"create a group collection..."
                         )
                         app.logger.warning(message)
                         raise CommonsGroupNotFoundError(message)
+                    except TimeoutError:
+                        raise CommonsGroupServiceError(
+                            f"Timed out while creating group collection "
+                            f"for group {group_id} ({group_name})"
+                        )
                 if coll_record:
                     app.logger.debug(
-                        f"    adding record to group collection "
-                        f"{coll_record['id']}..."
+                        f"Adding record to group collection {coll_record['id']}"
                     )
                     add_result = self.publish_record_to_community(
                         metadata_record["id"],
                         coll_record["id"],
                     )
                     added_to_collections.append(add_result)
-                    app.logger.debug(
-                        f"    added to group collection {coll_record['id']}"
-                    )
-                    # app.logger.debug(f"    add_result: "
-                    #     f"{pformat(add_result)}")
+                    app.logger.debug(f"Added to group collection {coll_record['id']}")
             if added_to_collections:
                 self._remove_from_extraneous_collections(metadata_record, group_list)
                 app.logger.info(
-                    f"    record {metadata_record['id']} successfully added "
-                    f"to group collections {added_to_collections}..."
+                    f"Record {metadata_record['id']} successfully added "
+                    f"to group collections {added_to_collections}"
                 )
                 return added_to_collections
             else:
                 app.logger.info(
-                    f"    record {metadata_record['id']} not added to any "
-                    "group collections..."
+                    f"Record {metadata_record['id']} not added to any "
+                    "group collections"
                 )
                 return []
         else:
-            app.logger.info("    no group collections to add to...")
+            app.logger.info("No group collections to add to")
             return []
 
     def _remove_from_extraneous_collections(
@@ -873,12 +861,6 @@ class CommunitiesHelper:
         group list.
         """
         group_ids = [g.get("group_identifier") for g in group_list]
-        app.logger.debug(f"group_ids: {pformat(group_ids)}")
-        parent_communities = [
-            c.get("custom_fields", {}).get("kcr:commons_group_id")
-            for c in metadata_record["parent"]["communities"].get("entries", [])
-        ]
-        app.logger.debug(f"parent_communities: {pformat(parent_communities)}")
         extraneous_collections = [
             c
             for c in metadata_record["parent"]["communities"].get("entries", [])
@@ -887,16 +869,13 @@ class CommunitiesHelper:
         ]
         if extraneous_collections:
             app.logger.debug(
-                f"    removing record from extraneous collections "
-                f"{extraneous_collections}..."
+                f"Removing record from extraneous collections "
+                f"{extraneous_collections}"
             )
             for c in extraneous_collections:
-                app.logger.debug(
-                    current_community_records_service.community_record_schema.schema  # noqa: E501
-                )
                 removed = current_community_records_service.delete(
                     system_identity,
                     c["id"],
                     {"records": [{"id": metadata_record["id"]}]},
                 )
-                app.logger.debug(f"    removed {removed}")
+                app.logger.debug(f"Removed {removed}")
