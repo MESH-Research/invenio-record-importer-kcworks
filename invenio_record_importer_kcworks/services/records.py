@@ -7,6 +7,9 @@
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
+from datetime import datetime
+from traceback import format_exc
+
 from flask import current_app as app
 from invenio_access.permissions import system_identity
 from invenio_access.utils import get_identity
@@ -412,11 +415,28 @@ class RecordsHelper:
             )
         return metadata
 
+    @staticmethod
+    def _validate_timestamp(timestamp: str) -> bool:
+        """
+        Validate if a string is a valid UTC timestamp.
+
+        The timestamp must be in the format 'YYYY-MM-DDTHH:mm:ss.SSSSSS+00:00'
+        """
+        try:
+            # First check the basic format
+            dt = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%f%z")
+            # Then verify it's UTC
+            return str(dt.tzinfo) == "UTC"
+        except ValueError as e:
+            app.logger.error(f"error validating timestamp {timestamp}: {format_exc(e)}")
+            return False
+
     @unit_of_work()
     def create_invenio_record(
         self,
         metadata: dict,
         no_updates: bool = False,
+        created_timestamp_override: Optional[str] = None,
         uow: Optional[UnitOfWork] = None,
     ) -> dict:
         """
@@ -808,6 +828,17 @@ class RecordsHelper:
         result_recid = result._record.id
         app.logger.debug(f"new draft record recid: {result_recid}")
         app.logger.debug(f"new draft record: {pformat(result.to_dict())}")
+
+        # If we want to override the created timestamp, we need to do it
+        # manually here because normal record api objects operations don't
+        # have access to that model field.
+        if (
+            created_timestamp_override
+            and RecordsHelper._validate_timestamp(created_timestamp_override)
+            and uow
+        ):
+            result._record.model.created = created_timestamp_override
+            uow.register(RecordCommitOp(result._record))
 
         return {
             "status": "new_record",

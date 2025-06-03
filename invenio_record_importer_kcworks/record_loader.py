@@ -7,10 +7,13 @@
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
-import arrow
 import copy
+from typing import Optional
+
+import arrow
 from flask import current_app as app
 from invenio_access.permissions import system_identity
+from invenio_drafts_resources.resources.records.errors import DraftNotCreatedError
 from invenio_pidstore.errors import PIDDoesNotExistError
 from invenio_rdm_records.proxies import (
     current_rdm_records_service as records_service,
@@ -34,6 +37,11 @@ from invenio_record_importer_kcworks.errors import (
 )
 from invenio_record_importer_kcworks.utils.utils import (
     replace_value_in_nested_dict,
+)
+from invenio_records_resources.services.uow import (
+    unit_of_work,
+    UnitOfWork,
+    RecordCommitOp,
 )
 import itertools
 import json
@@ -103,6 +111,35 @@ class RecordLoader:
             raise ValueError("community_id is required")
         self.views_field = views_field
         self.downloads_field = downloads_field
+
+    @unit_of_work()
+    def _override_created_timestamp(
+        self,
+        draft_id: str,
+        created_timestamp_override: str,
+        uow: Optional[UnitOfWork] = None,
+    ) -> None:
+        """
+        Override the created timestamp of a draft record.
+
+        If we want to override the created timestamp, we need to do it
+        manually here because normal record api objects operations don't
+        have access to that model field.
+        """
+        if (
+            created_timestamp_override
+            and RecordsHelper._validate_timestamp(created_timestamp_override)
+            and uow
+        ):
+            try:
+                record = records_service.read_draft(
+                    system_identity, id_=draft_id
+                )._record
+            except (NoResultFound, DraftNotCreatedError):
+                record = records_service.read(system_identity, id_=draft_id)._record
+
+            record.model.created = created_timestamp_override
+            uow.register(RecordCommitOp(record))
 
     def load(
         self,
@@ -240,6 +277,7 @@ class RecordLoader:
         # Build the initial metadata to be submitted
         result.submitted["files"] = copy.deepcopy(import_data["files"])
 
+        created_timestamp_override = import_data.get("created", None)
         submitted_data = {
             "access": import_data.get("access", {}),
             "custom_fields": import_data.get("custom_fields", {}),
@@ -292,7 +330,7 @@ class RecordLoader:
             app.logger.info("    finding or creating draft metadata record...")
             app.logger.debug(f"    submitted_data: {pformat(submitted_data)}")
             result.record_created = RecordsHelper().create_invenio_record(
-                submitted_data, no_updates
+                submitted_data, no_updates, created_timestamp_override
             )
             validation_errors = (
                 result.record_created["record_data"]
@@ -383,6 +421,8 @@ class RecordLoader:
                         records_service.edit(system_identity, id_=draft_id)
                     publish = records_service.publish(system_identity, id_=draft_id)
                     assert publish.data["status"] == "published"
+
+            self._override_created_timestamp(draft_id, created_timestamp_override)
 
             # Assign ownership of the record
             result.assigned_owners = RecordsHelper.assign_record_ownership(
