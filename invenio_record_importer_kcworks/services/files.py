@@ -83,7 +83,7 @@ class FilesHelper:
                 if record.files.entries:
                     for k in record.files.entries.keys():
                         self._delete_file(draft_id, k, records_service.draft_files)
-            except NoResultFound:
+            except (NoResultFound, DraftNotCreatedError):
                 pass
             record.files.enabled = False
             record["access"]["status"] = "metadata-only"
@@ -393,7 +393,11 @@ class FilesHelper:
                 check_record = records_service.read_draft(
                     system_identity, id_=metadata["id"]
                 )._record
-                if uow and check_record.files.entries != files_to_upload["entries"]:
+                if (
+                    uow
+                    and files_to_upload
+                    and check_record.files.entries != files_to_upload["entries"]
+                ):
                     app.logger.error("draft record files are missing, updating...")
                     check_record.files.sync(files_to_upload["entries"])
                     uow.register(RecordCommitOp(check_record))

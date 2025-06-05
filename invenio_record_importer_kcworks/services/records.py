@@ -278,7 +278,7 @@ class RecordsHelper:
             except KeyError as e:
                 app.logger.error(f"Error creating user for {missing_owner}: {str(e)}")
                 new_owners = [current_accounts.datastore.get_user(user_id)]
-                app.logger.warning(
+                app.logger.error(
                     f"Assigning ownership to the currently active user: {new_owners}"
                 )
 
