@@ -54,7 +54,8 @@ from invenio_records_resources.services.uow import (
     UnitOfWork,
     RecordCommitOp,
 )
-from invenio_search.proxies import current_search_client
+from invenio_search.utils import prefix_index
+from invenio_search import current_search_client
 from marshmallow.exceptions import ValidationError
 from pprint import pformat
 from sqlalchemy.orm.exc import NoResultFound
@@ -722,6 +723,7 @@ class RecordsHelper:
                                 if not result._record.files.bucket:
                                     result._record.files.create_bucket()
                                     uow.register(RecordCommitOp(result._record))
+
                                 return {
                                     "status": "updated_draft",
                                     "record_data": result.to_dict(),
@@ -837,14 +839,24 @@ class RecordsHelper:
             and RecordsHelper._validate_timestamp(created_timestamp_override)
             and uow
         ):
-            result._record.model.created = created_timestamp_override
-            uow.register(RecordCommitOp(result._record))
+            self._apply_artificial_created_date(result, created_timestamp_override, uow)
 
         return {
             "status": "new_record",
             "record_data": result.to_dict(),
             "record_uuid": result_recid,
         }
+
+    def _apply_artificial_created_date(self, result, created_timestamp_override, uow):
+        """
+        Set the artificial created date on the record model.
+
+        This updates only the record model's created timestamp. Event updating
+        is handled separately in _override_created_timestamp after the record
+        is added to the community.
+        """
+        result._record.model.created = created_timestamp_override
+        uow.register(RecordCommitOp(result._record))
 
     def delete_invenio_record(
         self, record_id: str, record_type: Optional[str] = None

@@ -120,11 +120,12 @@ class RecordLoader:
         uow: Optional[UnitOfWork] = None,
     ) -> None:
         """
-        Override the created timestamp of a draft record.
+        Override the created timestamp of a draft record and update related events.
 
         If we want to override the created timestamp, we need to do it
         manually here because normal record api objects operations don't
-        have access to that model field.
+        have access to that model field. We also update the stats-community-events
+        index to reflect the artificial created date.
         """
         if (
             created_timestamp_override
@@ -140,6 +141,87 @@ class RecordLoader:
 
             record.model.created = created_timestamp_override
             uow.register(RecordCommitOp(record))
+
+            # Update events in the stats-community-events index
+            try:
+                from invenio_search.utils import prefix_index
+                from invenio_search import current_search_client
+
+                # Force a refresh to make sure events are searchable
+                current_search_client.indices.refresh(
+                    index=prefix_index("stats-community-events")
+                )
+
+                # Get the community ID from the record
+                if hasattr(record.parent, "communities"):
+                    record_communities = record.parent.communities.ids
+                    app.logger.error(f"Record communities: {record_communities}")
+                else:
+                    record_communities = []
+
+                if record_communities:
+                    for community_id in record_communities:
+                        app.logger.error(f"Community ID: {community_id}")
+                        app.logger.error(f"Record PID value: {record.pid.pid_value}")
+                        search_query = {
+                            "query": {
+                                "bool": {
+                                    "must": [
+                                        {
+                                            "term": {
+                                                "record_id": str(record.pid.pid_value)
+                                            }
+                                        },
+                                        {"term": {"community_id": community_id}},
+                                    ]
+                                }
+                            }
+                        }
+                        app.logger.error(f"Search query: {pformat(search_query)}")
+                        search_result = current_search_client.search(
+                            index=prefix_index("stats-community-events"),
+                            body=search_query,
+                        )
+                        app.logger.error(f"Search result: {pformat(search_result)}")
+
+                        for hit in search_result["hits"]["hits"]:
+                            event_id = hit["_id"]
+                            event_source = hit["_source"]
+                            update_body = {
+                                "doc": {
+                                    "record_created_date": created_timestamp_override
+                                }
+                            }
+                            updated_event = current_search_client.update(
+                                index=prefix_index("stats-community-events"),
+                                id=event_id,
+                                body=update_body,
+                            )
+                            app.logger.error(f"Updated event: {pformat(updated_event)}")
+                            app.logger.error(
+                                f"Updating event {event_id}: "
+                                f"{pformat(event_source)}"
+                            )
+                            app.logger.error(
+                                f"Updated event {event_id} with created_date: "
+                                f"{created_timestamp_override}"
+                            )
+
+                    # Refresh the index after all updates to ensure they're searchable
+                    current_search_client.indices.refresh(
+                        index=prefix_index("stats-community-events")
+                    )
+
+                    app.logger.info(
+                        f"Updated stats-community-events index for record {record.id} "
+                        f"to use original creation date: {created_timestamp_override}"
+                    )
+                else:
+                    app.logger.warning(f"No communities found for record {record.id}")
+            except Exception as e:
+                app.logger.warning(
+                    f"Failed to update stats-community-events index for record {record.id}: {e}"
+                )
 
     def load(
         self,

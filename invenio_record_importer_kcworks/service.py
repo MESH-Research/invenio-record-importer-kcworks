@@ -77,6 +77,12 @@ class RecordImporterService(Service):
             The field to use for the views count. Defaults to ""
         downloads_field : str
             The field to use for the downloads count. Defaults to ""
+
+        Returns
+        -------
+        dict
+            The import result. This is an APIResponsePayload object dumped to a
+            dictionary.
         """
         # load_community_needs(identity)
 
