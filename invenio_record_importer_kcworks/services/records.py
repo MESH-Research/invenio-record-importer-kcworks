@@ -7,8 +7,7 @@
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
-from datetime import datetime
-from traceback import format_exc
+from datetime import datetime, timezone
 
 from flask import current_app as app
 from invenio_access.permissions import system_identity
@@ -421,15 +420,24 @@ class RecordsHelper:
         """
         Validate if a string is a valid UTC timestamp.
 
-        The timestamp must be in the format 'YYYY-MM-DDTHH:mm:ss.SSSSSS+00:00'
+        The timestamp can be in formats:
+        - 'YYYY-MM-DDTHH:mm:ssZ' (ISO 8601 with Z for UTC)
+        - 'YYYY-MM-DDTHH:mm:ss.SSSSSS+00:00' (with microseconds and explicit timezone)
         """
         try:
-            # First check the basic format
-            dt = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%f%z")
-            # Then verify it's UTC
+            # Try ISO 8601 format with Z timezone indicator
+            if timestamp.endswith("Z"):
+                dt = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
+                # Convert to UTC timezone
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                # Try format with microseconds and timezone offset
+                dt = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%f%z")
+
+            # Verify it's UTC
             return str(dt.tzinfo) == "UTC"
         except ValueError as e:
-            app.logger.error(f"error validating timestamp {timestamp}: {format_exc(e)}")
+            app.logger.error(f"error validating timestamp {timestamp}: {str(e)}")
             return False
 
     @unit_of_work()
