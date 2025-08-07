@@ -17,12 +17,11 @@ kcr:submitter_username  The HC (Wordpress) username of the user who
 """
 
 from invenio_i18n import lazy_gettext as _
-from invenio_records_resources.services.custom_fields import (
+from invenio_records_resources.services.custom_fields import (  # EDTFDateStringCF,
     TextCF,
-    # EDTFDateStringCF,
 )
 from marshmallow import validate
-from marshmallow_utils.fields import SanitizedUnicode, EDTFDateTimeString
+from marshmallow_utils.fields import EDTFDateTimeString, SanitizedUnicode
 
 KCR_NAMESPACE = {
     "kcr": "",

@@ -10,7 +10,6 @@ from invenio_records_resources.services.custom_fields import (
 )
 from marshmallow_utils.fields import SanitizedUnicode
 
-
 KCR_MEDIA_FIELD = [
     TextCF(name="kcr:media", field_cls=SanitizedUnicode, multiple=True),
 ]

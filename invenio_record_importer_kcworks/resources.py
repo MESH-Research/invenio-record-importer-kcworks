@@ -1,20 +1,22 @@
-from flask import g, jsonify, current_app as app
+import json
+
+import marshmallow as ma
+from flask import current_app as app
+from flask import g, jsonify
 from flask_resources import Resource, ResourceConfig
 from flask_resources.config import from_conf
 from flask_resources.context import resource_requestctx
 from flask_resources.parsers.decorators import request_parser
-from flask_resources.responses import ResponseHandler
 from flask_resources.resources import route
+from flask_resources.responses import ResponseHandler
 from flask_resources.serializers.json import JSONSerializer
 from invenio_records_resources.services.errors import PermissionDeniedError
-import json
-import marshmallow as ma
 from werkzeug.datastructures import ImmutableMultiDict
 from werkzeug.exceptions import (
+    BadRequest,
     Forbidden,
     MethodNotAllowed,
     NotFound,
-    BadRequest,
     UnprocessableEntity,
 )
 

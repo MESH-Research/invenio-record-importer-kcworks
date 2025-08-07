@@ -8,13 +8,14 @@ where applicable. Flask configuration variables take precedence over
 environment variables.
 """
 
-import arrow
 from pathlib import Path
 
+import arrow
 from invenio_records_resources.services.base.config import (
     ConfiguratorMixin,
     ServiceConfig,
 )
+
 from .permissions import RecordImporterPermissionPolicy
 from .results import ImportResult, ImportResultsList
 

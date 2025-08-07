@@ -1,9 +1,11 @@
 """Handle API interactions with Fedora."""
 import io
 import os
+
 import requests
 from lxml import etree
 from lxml.etree import XMLSyntaxError
+
 # from swamplr.swamplr_logging import write_to_log
 
 

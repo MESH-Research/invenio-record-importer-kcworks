@@ -11,20 +11,21 @@
 Utility functions for core-migrate
 """
 
+import json
+import random
+import re
+import string
+import unicodedata
 from datetime import datetime
+from typing import Any, Optional, Union
+
+import requests
 from flask import current_app as app
 from flask_security.utils import hash_password
 from invenio_search.proxies import current_search_client
-from isbnlib import is_isbn10, is_isbn13, clean
-import json
-import random
-import requests
+from isbnlib import clean, is_isbn10, is_isbn13
 from requests.exceptions import JSONDecodeError as RequestsJSONDecodeError
-import re
 from simplejson.errors import JSONDecodeError as SimpleJSONDecodeError
-import string
-from typing import Any, Optional, Union
-import unicodedata
 
 
 # TODO: Deprecated; remove

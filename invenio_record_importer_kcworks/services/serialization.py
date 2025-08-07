@@ -7,10 +7,11 @@
 # and/or modify it under the terms of the MIT License; see
 # LICENSE file for more details.
 
-from flask import current_app as app
 import json
-import jsonlines
 from pathlib import Path
+
+import jsonlines
+from flask import current_app as app
 
 
 class SerializationService:

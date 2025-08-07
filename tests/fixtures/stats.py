@@ -6,13 +6,13 @@ from invenio_rdm_records.resources.stats.event_builders import (
 from invenio_rdm_records.services.stats import (
     permissions_policy_lookup_factory,
 )
+from invenio_record_importer_kcworks.services.stats.aggregations import (
+    StatAggregatorOverridable,
+)
 from invenio_search.proxies import current_search, current_search_client
 from invenio_stats.contrib.event_builders import build_file_unique_id
 from invenio_stats.processors import EventsIndexer, anonymize_user, flag_robots
 from invenio_stats.queries import TermsQuery
-from invenio_record_importer_kcworks.services.stats.aggregations import (
-    StatAggregatorOverridable,
-)
 
 # from invenio_stats.queries import TermsQuery
 

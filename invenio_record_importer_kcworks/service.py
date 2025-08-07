@@ -1,10 +1,12 @@
+from pprint import pformat
+
 from flask import current_app as app
 from flask_principal import Identity
 from invenio_records_resources.services.base import Service
-from pprint import pformat
+
 from .record_loader import RecordLoader
-from .types import FileData, APIResponsePayload
 from .services.communities import CommunitiesHelper
+from .types import APIResponsePayload, FileData
 
 
 class RecordImporterService(Service):

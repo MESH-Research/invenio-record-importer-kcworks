@@ -1,13 +1,12 @@
-from invenio_records_permissions.policies import BasePermissionPolicy
-from invenio_records_permissions.generators import (
-    SystemProcess,
-)
-
 from invenio_communities.generators import (
     CommunityCurators,
     CommunityOwners,
     IfPolicyClosed,
 )
+from invenio_records_permissions.generators import (
+    SystemProcess,
+)
+from invenio_records_permissions.policies import BasePermissionPolicy
 
 
 class RecordImporterPermissionPolicy(BasePermissionPolicy):

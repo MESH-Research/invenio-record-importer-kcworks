@@ -14,7 +14,6 @@ Implements the following fields:
 
 from invenio_i18n import lazy_gettext as _
 
-
 KCR_JOURNAL_CUSTOM_FIELDS_UI = {
     "section": _("Journal"),
     "fields": [

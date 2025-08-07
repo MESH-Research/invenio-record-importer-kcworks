@@ -5,17 +5,10 @@ kcr:notes           Notes related to the record. This value is an array of
 """
 
 from invenio_i18n import lazy_gettext as _
-from invenio_records_resources.services.custom_fields import (
-    BaseCF,
-    TextCF,
-    IntegerCF
-)
+from invenio_records_resources.services.custom_fields import BaseCF, IntegerCF, TextCF
 from marshmallow import fields, validate
-from marshmallow_utils.fields import (
-    SanitizedUnicode,
-    SanitizedHTML,
-    StrippedHTML
-)
+from marshmallow_utils.fields import SanitizedHTML, SanitizedUnicode, StrippedHTML
+
 from .kcr_metadata_fields import KCR_NAMESPACE
 
 

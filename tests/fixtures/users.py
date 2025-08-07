@@ -3,8 +3,8 @@ from flask_security.utils import hash_password
 from invenio_access.models import ActionRoles, Role
 from invenio_access.permissions import superuser_access
 from invenio_administration.permissions import administration_access_action
-from invenio_oauthclient.models import UserIdentity
 from invenio_oauth2server.models import Token
+from invenio_oauthclient.models import UserIdentity
 
 
 @pytest.fixture(scope="function")

@@ -7,29 +7,26 @@
 # modify it under the terms of the MIT License; see LICENSE file for more
 # details.
 
-import arrow
+import datetime
+import json
+import re
 from copy import deepcopy
+from pprint import pformat, pprint
+
+import arrow
+import pytest
+import pytz
 from click.testing import CliRunner
+from dateutil.parser import isoparse
 from invenio_access.permissions import system_identity
 from invenio_pidstore.errors import PIDUnregistered
-from invenio_rdm_records.proxies import (
-    current_rdm_records_service as records_service,
-)
+from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_rdm_records.records.stats.api import Statistics
 from invenio_record_importer_kcworks.cli import cli
-from invenio_record_importer_kcworks.services.stats.stats import (
-    StatsFabricator,
-    AggregationFabricator,
-)
-from invenio_record_importer_kcworks.utils import (
-    valid_date,
-    generate_random_string,
-)
-from invenio_record_importer_kcworks.serializer import add_date_info
 from invenio_record_importer_kcworks.queries import (
-    view_events_search,
-    download_events_search,
     aggregations_search,
+    download_events_search,
+    view_events_search,
 )
 from invenio_record_importer_kcworks.record_loader import (
     api_request,
@@ -38,20 +35,25 @@ from invenio_record_importer_kcworks.record_loader import (
     delete_invenio_record,
     import_record_to_invenio,
 )
+from invenio_record_importer_kcworks.serializer import add_date_info
 from invenio_record_importer_kcworks.services.communities import (
     CommunitiesHelper,
 )
 from invenio_record_importer_kcworks.services.files import FilesHelper
+from invenio_record_importer_kcworks.services.stats.stats import (
+    AggregationFabricator,
+    StatsFabricator,
+)
+from invenio_record_importer_kcworks.utils import (
+    generate_random_string,
+    valid_date,
+)
 from invenio_search import current_search_client
-import datetime
-import json
-import re
-from pprint import pprint, pformat
-import pytest
-import pytz
-from dateutil.parser import isoparse
+
 from .helpers.sample_records import (
+    rec583,
     rec11451,
+    rec16079,
     rec22625,
     rec22647,
     rec28491,
@@ -62,8 +64,6 @@ from .helpers.sample_records import (
     rec44881,
     rec45177,
     rec48799,
-    rec583,
-    rec16079,
 )
 
 

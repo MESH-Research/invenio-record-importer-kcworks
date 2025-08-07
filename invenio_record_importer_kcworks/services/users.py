@@ -7,8 +7,13 @@
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
-import arrow
+import json
+import os
 from pprint import pformat
+from traceback import print_exc
+
+import arrow
+import requests
 from flask import current_app as app
 from invenio_access.permissions import system_identity
 from invenio_accounts.errors import AlreadyLinkedError
@@ -17,12 +22,8 @@ from invenio_accounts.proxies import current_accounts
 from invenio_communities.proxies import current_communities
 from invenio_db import db
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
-from invenio_record_importer_kcworks.tasks import send_security_email
 from invenio_record_importer_kcworks.services.communities import CommunityRecordHelper
-import json
-import os
-import requests
-from traceback import print_exc
+from invenio_record_importer_kcworks.tasks import send_security_email
 
 
 class UsersHelper:

@@ -1,10 +1,12 @@
-from flask import request, current_app as app
+from functools import wraps
+
+from flask import current_app as app
+from flask import request
 from flask_resources.config import resolve_from_conf
 from flask_resources.context import resource_requestctx
 from flask_resources.deserializers import JSONDeserializer
-from flask_resources.parsers.body import RequestBodyParser
 from flask_resources.errors import InvalidContentType
-from functools import wraps
+from flask_resources.parsers.body import RequestBodyParser
 
 
 def request_body_parser(

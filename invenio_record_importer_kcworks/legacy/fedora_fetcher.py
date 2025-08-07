@@ -7,13 +7,13 @@
 # modify it under the terms of the MIT License; see LICENSE file for more
 # details.
 
-from invenio_record_importer_kcworks.libs.fedoraapi import FedoraApi
-import requests
-from typing import Optional
 import os
-from pprint import pprint
 import xml.etree.ElementTree as ET
+from pprint import pprint
+from typing import Optional
 
+import requests
+from invenio_record_importer_kcworks.libs.fedoraapi import FedoraApi
 from invenio_record_importer_kcworks.utils.utils import valid_date
 
 fedora_fields = [

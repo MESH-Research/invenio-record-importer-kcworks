@@ -8,8 +8,8 @@
 # LICENSE file for more details.
 
 from .config import ConfigVariables, RecordImporterServiceConfig
-from .service import RecordImporterService
 from .resources import RecordImporterResource, RecordImporterResourceConfig
+from .service import RecordImporterService
 
 
 class InvenioRecordImporter(object):

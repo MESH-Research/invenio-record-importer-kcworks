@@ -1,9 +1,8 @@
 import pytest
-
 from invenio_access.permissions import system_identity
 from invenio_pidstore.errors import PIDAlreadyExists
-from invenio_vocabularies.contrib.subjects.api import Subject
 from invenio_records_resources.proxies import current_service_registry
+from invenio_vocabularies.contrib.subjects.api import Subject
 
 
 @pytest.fixture(scope="module")

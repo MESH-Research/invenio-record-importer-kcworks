@@ -8,17 +8,25 @@
 # more details.
 
 import copy
-from typing import Optional
+import itertools
+import json
+from pathlib import Path
+from pprint import pformat
+from traceback import format_exc, print_exc
+from typing import Optional, Union
 
 import arrow
+import jsonlines
 from flask import current_app as app
 from invenio_access.permissions import system_identity
 from invenio_drafts_resources.resources.records.errors import DraftNotCreatedError
 from invenio_pidstore.errors import PIDDoesNotExistError
-from invenio_rdm_records.proxies import (
-    current_rdm_records_service as records_service,
-)
+from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_record_importer_kcworks.errors import (
+    DraftValidationError,
+    FileUploadError,
+    InvalidParametersError,
+    NoAvailableRecordsError,
     PublicationValidationError,
     SkipRecord,
 )
@@ -28,40 +36,25 @@ from invenio_record_importer_kcworks.services.communities import (
 from invenio_record_importer_kcworks.services.files import FilesHelper
 from invenio_record_importer_kcworks.services.records import RecordsHelper
 from invenio_record_importer_kcworks.services.stats.stats import (
-    StatsFabricator,
     AggregationFabricator,
+    StatsFabricator,
 )
-from invenio_record_importer_kcworks.errors import (
-    FileUploadError,
-    DraftValidationError,
+from invenio_record_importer_kcworks.types import (
+    APIResponsePayload,
+    FileData,
+    ImportedRecord,
+    LoaderResult,
 )
 from invenio_record_importer_kcworks.utils.utils import (
     replace_value_in_nested_dict,
 )
 from invenio_records_resources.services.uow import (
-    unit_of_work,
-    UnitOfWork,
     RecordCommitOp,
+    UnitOfWork,
+    unit_of_work,
 )
-import itertools
-import json
-import jsonlines
-from pathlib import Path
-from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.exc import NoResultFound
-from traceback import print_exc, format_exc
-from typing import Union
-from pprint import pformat
-from invenio_record_importer_kcworks.errors import (
-    InvalidParametersError,
-    NoAvailableRecordsError,
-)
-from invenio_record_importer_kcworks.types import (
-    APIResponsePayload,
-    LoaderResult,
-    FileData,
-    ImportedRecord,
-)
+from sqlalchemy.orm.exc import StaleDataError
 
 
 class RecordLoader:
@@ -144,8 +137,8 @@ class RecordLoader:
 
             # Update events in the stats-community-events index
             try:
-                from invenio_search.utils import prefix_index
                 from invenio_search import current_search_client
+                from invenio_search.utils import prefix_index
 
                 # Force a refresh to make sure events are searchable
                 current_search_client.indices.refresh(

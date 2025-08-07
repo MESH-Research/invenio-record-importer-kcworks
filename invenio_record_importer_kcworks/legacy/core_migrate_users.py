@@ -9,15 +9,16 @@
 # to ensure that the script has access to a current Flask app
 # instance.
 
-import click, csv
+import csv
+from pprint import pprint
 
+import click
+from invenio_utilities_tuw.cli.utils import set_record_owners
 from invenio_utilities_tuw.utils import (
     get_identity_for_user,
     get_record_service,
     get_user_by_identifier,
 )
-from invenio_utilities_tuw.cli.utils import set_record_owners
-from pprint import pprint
 
 cli = click.Group()
 

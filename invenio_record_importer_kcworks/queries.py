@@ -2,7 +2,6 @@ from flask import current_app as app
 from invenio_search.proxies import current_search_client
 from opensearchpy.helpers.search import Search
 
-
 # def view_events_search(recid):
 #     my_search = RecordsSearch(index="events-stats-record-view").query(
 #         dsl.QueryString(q=f"record_id:{recid}")

@@ -8,6 +8,8 @@
 # more details.
 
 from datetime import datetime, timezone
+from pprint import pformat
+from typing import Any, Optional
 
 from flask import current_app as app
 from invenio_access.permissions import system_identity
@@ -16,7 +18,11 @@ from invenio_accounts.models import User
 from invenio_accounts.proxies import current_accounts
 from invenio_db import db
 from invenio_i18n.proxies import current_i18n
-from invenio_pidstore.errors import PIDUnregistered, PIDDoesNotExistError
+from invenio_pidstore.errors import PIDDoesNotExistError, PIDUnregistered
+from invenio_rdm_records.proxies import (
+    current_rdm_records,
+)
+from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_rdm_records.records.api import RDMRecord
 from invenio_rdm_records.records.systemfields.access.owners import Owner
 from invenio_rdm_records.resources.serializers.csl import (
@@ -28,14 +34,6 @@ from invenio_rdm_records.services.errors import (
     ReviewNotFoundError,
 )
 from invenio_rdm_records.services.pids.providers.base import PIDProvider
-from invenio_rdm_records.proxies import (
-    current_rdm_records,
-    current_rdm_records_service as records_service,
-)
-from invenio_record_importer_kcworks.services.communities import (
-    CommunityRecordHelper,
-)
-from invenio_record_importer_kcworks.services.users import UsersHelper
 from invenio_record_importer_kcworks.errors import (
     DraftDeletionFailedError,
     ExistingRecordNotUpdatedError,
@@ -44,21 +42,23 @@ from invenio_record_importer_kcworks.errors import (
     PublicationValidationError,
     UpdateValidationError,
 )
+from invenio_record_importer_kcworks.services.communities import (
+    CommunityRecordHelper,
+)
+from invenio_record_importer_kcworks.services.users import UsersHelper
 from invenio_record_importer_kcworks.utils.utils import (
     compare_metadata,
 )
 from invenio_records.systemfields.relations.errors import InvalidRelationValue
 from invenio_records_resources.services.uow import (
-    unit_of_work,
-    UnitOfWork,
     RecordCommitOp,
+    UnitOfWork,
+    unit_of_work,
 )
-from invenio_search.utils import prefix_index
 from invenio_search import current_search_client
+from invenio_search.utils import prefix_index
 from marshmallow.exceptions import ValidationError
-from pprint import pformat
 from sqlalchemy.orm.exc import NoResultFound
-from typing import Optional, Any
 
 
 class RecordsHelper:

@@ -27,28 +27,27 @@ Normally these variables can be set in the .env file in your base
 knowledge_commons_works directory.
 """
 
+from pprint import pformat, pprint
+from typing import Optional
+
 import arrow
 import click
 from flask import current_app as app
 from flask.cli import with_appcontext
 from halo import Halo
-
+from invenio_record_importer_kcworks.record_loader import (
+    RecordLoader,
+)
 from invenio_record_importer_kcworks.serializer import serialize_json
+from invenio_record_importer_kcworks.services.records import RecordsHelper
 from invenio_record_importer_kcworks.services.serialization import (
     SerializationService,
 )
 from invenio_record_importer_kcworks.services.stats.stats import (
-    StatsFabricator,
     AggregationFabricator,
+    StatsFabricator,
 )
-from invenio_record_importer_kcworks.record_loader import (
-    RecordLoader,
-)
-from invenio_record_importer_kcworks.services.records import RecordsHelper
 from invenio_record_importer_kcworks.services.users import UsersHelper
-
-from pprint import pformat, pprint
-from typing import Optional
 
 
 @click.group()

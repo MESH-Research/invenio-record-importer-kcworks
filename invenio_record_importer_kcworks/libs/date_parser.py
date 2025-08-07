@@ -1,16 +1,17 @@
 import glob
 import re
 from typing import List
+
 import arrow
 import dateparser
-from invenio_record_importer_kcworks.utils import (
-    valid_date,
-    monthwords,
-    seasonwords,
-)
-from flask import current_app as app
 import regex
 import timefhuman
+from flask import current_app as app
+from invenio_record_importer_kcworks.utils import (
+    monthwords,
+    seasonwords,
+    valid_date,
+)
 
 
 class DateParser:

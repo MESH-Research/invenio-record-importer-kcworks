@@ -1,6 +1,9 @@
 import pytest
 from invenio_communities.proxies import current_communities
-from invenio_rdm_records.proxies import current_rdm_records
+from invenio_rdm_records.contrib.codemeta import (
+    CODEMETA_CUSTOM_FIELDS,
+    CODEMETA_NAMESPACE,
+)
 from invenio_rdm_records.contrib.imprint import (
     IMPRINT_CUSTOM_FIELDS,
     IMPRINT_NAMESPACE,
@@ -9,18 +12,15 @@ from invenio_rdm_records.contrib.journal import (
     JOURNAL_CUSTOM_FIELDS,
     JOURNAL_NAMESPACE,
 )
-from invenio_rdm_records.contrib.thesis import (
-    THESIS_CUSTOM_FIELDS,
-    THESIS_NAMESPACE,
-)
 from invenio_rdm_records.contrib.meeting import (
     MEETING_CUSTOM_FIELDS,
     MEETING_NAMESPACE,
 )
-from invenio_rdm_records.contrib.codemeta import (
-    CODEMETA_CUSTOM_FIELDS,
-    CODEMETA_NAMESPACE,
+from invenio_rdm_records.contrib.thesis import (
+    THESIS_CUSTOM_FIELDS,
+    THESIS_NAMESPACE,
 )
+from invenio_rdm_records.proxies import current_rdm_records
 from invenio_records_resources.services.custom_fields import (
     TextCF,
 )
@@ -35,36 +35,37 @@ from invenio_search import current_search_client
 from invenio_search.engine import dsl
 from invenio_search.engine import search as search_engine
 from invenio_search.utils import build_alias_name
-from .metadata_fields.kcr_metadata_fields import (
-    KCR_CUSTOM_FIELDS,
-    KCR_NAMESPACE,
-)
-from .metadata_fields.kcr_volumes_fields import (
-    KCR_VOLUMES_FIELDS,
-)
-from .metadata_fields.kcr_media_field import (
-    KCR_MEDIA_FIELD,
-)
-from .metadata_fields.kcr_notes_fields import (
-    KCR_NOTES_FIELDS,
-)
-from .metadata_fields.kcr_user_tags_fields import (
-    KCR_USER_TAGS_FIELDS,
-)
-from .metadata_fields.hclegacy_metadata_fields import (  # noqa: E501
-    HCLEGACY_NAMESPACE,
-    HCLEGACY_CUSTOM_FIELDS,
-)
+from marshmallow_utils.fields import SanitizedUnicode
+
 from .metadata_fields.hclegacy_groups_for_deposit import (  # noqa: E501
     HCLEGACY_GROUPS_FOR_DEPOSIT_FIELD,
+)
+from .metadata_fields.hclegacy_metadata_fields import (  # noqa: E501
+    HCLEGACY_CUSTOM_FIELDS,
+    HCLEGACY_NAMESPACE,
 )
 from .metadata_fields.kcr_ai_field import (
     KCR_AI_USAGE_FIELDS,
 )
+from .metadata_fields.kcr_media_field import (
+    KCR_MEDIA_FIELD,
+)
+from .metadata_fields.kcr_metadata_fields import (
+    KCR_CUSTOM_FIELDS,
+    KCR_NAMESPACE,
+)
+from .metadata_fields.kcr_notes_fields import (
+    KCR_NOTES_FIELDS,
+)
 from .metadata_fields.kcr_series_field import (
     KCR_SERIES_FIELDS,
 )
-from marshmallow_utils.fields import SanitizedUnicode
+from .metadata_fields.kcr_user_tags_fields import (
+    KCR_USER_TAGS_FIELDS,
+)
+from .metadata_fields.kcr_volumes_fields import (
+    KCR_VOLUMES_FIELDS,
+)
 
 
 def _(x):

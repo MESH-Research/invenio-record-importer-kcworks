@@ -1,10 +1,11 @@
 import idutils
-from invenio_rdm_records.services.pids import providers
 from invenio_rdm_records.config import (
-    always_valid,
     RDM_RECORDS_IDENTIFIERS_SCHEMES,
     RDM_RECORDS_PERSONORG_SCHEMES,
+    always_valid,
 )
+from invenio_rdm_records.services.pids import providers
+
 from ..helpers.fake_datacite_client import FakeDataCiteClient
 
 

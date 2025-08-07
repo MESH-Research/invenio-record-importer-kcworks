@@ -7,6 +7,9 @@
 # modify it under the terms of the MIT License; see LICENSE file for more
 # details.
 
+import os
+from pathlib import Path
+
 # from traceback import format_exc
 import pytest
 from invenio_app.factory import create_api
@@ -16,12 +19,10 @@ from invenio_rdm_records.proxies import current_rdm_records
 from invenio_record_importer_kcworks.serializer import serialize_json
 from invenio_records_resources.proxies import current_service_registry
 
-import os
-from pathlib import Path
-from .fixtures.identifiers import test_config_identifiers
 from .fixtures.custom_fields import test_config_fields
-from .fixtures.stats import test_config_stats
+from .fixtures.identifiers import test_config_identifiers
 from .fixtures.saml import test_config_saml
+from .fixtures.stats import test_config_stats
 
 """Pytest configuration for invenio-remote-api-provisioner.
 

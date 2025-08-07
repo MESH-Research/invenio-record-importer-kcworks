@@ -1,8 +1,9 @@
+import traceback
+
+import marshmallow as ma
 import pytest
 from invenio_access.permissions import system_identity
 from invenio_communities.communities.records.api import Community
-import marshmallow as ma
-import traceback
 
 
 @pytest.fixture(scope="function")

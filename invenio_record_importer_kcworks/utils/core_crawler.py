@@ -1,7 +1,7 @@
 import requests
+import xmltodict
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-import xmltodict
 
 
 def get_desc_metadata(url):

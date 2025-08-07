@@ -7,45 +7,43 @@
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
-from tempfile import SpooledTemporaryFile
-from flask import current_app as app
 import fnmatch
+import os
+import re
+import unicodedata
+from io import BufferedReader
+from pathlib import Path
+from pprint import pformat
+from tempfile import SpooledTemporaryFile
+from typing import Optional, Union
+from urllib.parse import unquote
+
+from flask import current_app as app
 from invenio_access.permissions import system_identity
 from invenio_drafts_resources.resources.records.errors import (
     DraftNotCreatedError,
 )
-from invenio_files_rest.errors import InvalidKeyError, BucketLockedError
-from invenio_pidstore.errors import PIDUnregistered, PIDDoesNotExistError
-from invenio_rdm_records.proxies import (
-    current_rdm_records_service as records_service,
-)
+from invenio_files_rest.errors import BucketLockedError, InvalidKeyError
+from invenio_pidstore.errors import PIDDoesNotExistError, PIDUnregistered
+from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_record_importer_kcworks.errors import (
     FileUploadError,
     UploadFileNotFoundError,
 )
+from invenio_record_importer_kcworks.types import FileData
 from invenio_record_importer_kcworks.utils.utils import (
     normalize_string,
     valid_date,
 )
-
 from invenio_records_resources.services.errors import (
     FileKeyNotFoundError,
 )
 from invenio_records_resources.services.uow import (
-    unit_of_work,
-    UnitOfWork,
     RecordCommitOp,
+    UnitOfWork,
+    unit_of_work,
 )
-from io import BufferedReader
-import os
-from pprint import pformat
-from pathlib import Path
-import re
 from sqlalchemy.orm.exc import NoResultFound
-from typing import Optional, Union
-import unicodedata
-from urllib.parse import unquote
-from invenio_record_importer_kcworks.types import FileData
 
 
 class FilesHelper:

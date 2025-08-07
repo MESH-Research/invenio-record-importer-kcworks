@@ -7,7 +7,9 @@
 # and/or modify it under the terms of the MIT License; see
 # LICENSE file for more details.
 
+from pprint import pformat
 from typing import Optional
+
 from flask import current_app as app
 from invenio_access.permissions import system_identity
 from invenio_communities.communities.records.api import Community
@@ -15,8 +17,8 @@ from invenio_communities.communities.services.results import CommunityItem
 from invenio_communities.errors import CommunityDeletedError
 from invenio_communities.members.records.api import Member
 from invenio_communities.proxies import current_communities
-from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
 from invenio_drafts_resources.resources.records.errors import DraftNotCreatedError
+from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
 from invenio_group_collections_kcworks.errors import (
     CollectionNotFoundError,
     CommonsGroupNotFoundError,
@@ -26,14 +28,14 @@ from invenio_group_collections_kcworks.proxies import (
 )
 from invenio_pidstore.errors import PIDUnregistered
 from invenio_rdm_records.proxies import (
-    current_rdm_records,
-    current_rdm_records_service as records_service,
     current_community_records_service,
+    current_rdm_records,
 )
+from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_rdm_records.services.errors import (
+    InvalidAccessRestrictions,
     ReviewNotFoundError,
     ReviewStateError,
-    InvalidAccessRestrictions,
 )
 from invenio_record_importer_kcworks.errors import (
     CollectionDoesNotExistError,
@@ -44,15 +46,14 @@ from invenio_record_importer_kcworks.errors import (
     RestrictedRecordPublicationError,
 )
 from invenio_records_resources.services.uow import (
-    unit_of_work,
     RecordIndexOp,
+    unit_of_work,
 )
-from invenio_requests.proxies import current_requests_service
 from invenio_requests.errors import CannotExecuteActionError
+from invenio_requests.proxies import current_requests_service
 from invenio_search.proxies import current_search_client
 from marshmallow.exceptions import ValidationError
 from opensearchpy.exceptions import NotFoundError
-from pprint import pformat
 from sqlalchemy.orm.exc import NoResultFound, StaleDataError
 from werkzeug.exceptions import UnprocessableEntity
 

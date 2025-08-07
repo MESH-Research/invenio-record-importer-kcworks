@@ -7,40 +7,38 @@
 # and/or modify it under the terms of the MIT License; see
 # LICENSE file for more details.
 
-import arrow
 import datetime
-from flask import current_app as app
-from invenio_access.permissions import system_identity
-from invenio_rdm_records.proxies import (
-    current_rdm_records_service as records_service,
-)
 import json
-from pathlib import Path
-from opensearchpy.exceptions import NotFoundError
 import time
 import uuid
+from pathlib import Path
+from pprint import pformat
+from typing import List, Optional, Union
 
-# from invenio_rdm_records.services.tasks import reindex_stats
-
+import arrow
+from flask import current_app as app
+from invenio_access.permissions import system_identity
+from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_record_importer_kcworks.errors import (
-    TooManyViewEventsError,
-    TooManyDownloadEventsError,
     FailedCreatingUsageEventsError,
+    TooManyDownloadEventsError,
+    TooManyViewEventsError,
 )
 from invenio_record_importer_kcworks.queries import (
-    view_events_search,
     download_events_search,
+    view_events_search,
 )
 from invenio_record_importer_kcworks.tasks import aggregate_events
-from invenio_stats.contrib.event_builders import (
+from invenio_stats.contrib.event_builders import (  # build_record_unique_id,
     build_file_unique_id,
-    # build_record_unique_id,
 )
 from invenio_stats.processors import anonymize_user
 from invenio_stats.proxies import current_stats
 from invenio_stats.tasks import process_events
-from pprint import pformat
-from typing import Union, Optional, List
+from opensearchpy.exceptions import NotFoundError
+
+# from invenio_rdm_records.services.tasks import reindex_stats
+
 
 
 class StatsFabricator:

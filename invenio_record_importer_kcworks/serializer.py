@@ -15,34 +15,34 @@ The main function `serialize_json` writes the output to a jsonl file, with
 one json object per line, separated by newlines.
 """
 
-import arrow
+import json
+import re
 from copy import deepcopy
 from datetime import datetime
+from pathlib import Path
+
+import arrow
+import iso639
+import jsonlines
 from flask import current_app as app
 from idutils import (
+    detect_identifier_schemes,
     is_doi,
     is_url,
-    normalize_pid,
     normalize_doi,
-    detect_identifier_schemes,
+    normalize_pid,
 )
-from isbnlib import get_isbnlike
-import iso639
-import json
-import jsonlines
-from langdetect import detect_langs
-from pathlib import Path
-from stdnum import issn
-from titlecase import titlecase
-import re
-
 from invenio_record_importer_kcworks.libs.date_parser import DateParser
 from invenio_record_importer_kcworks.utils.utils import (
+    normalize_string,
+    normalize_string_lowercase,
     valid_date,
     valid_isbn,
-    normalize_string_lowercase,
-    normalize_string,
 )
+from isbnlib import get_isbnlike
+from langdetect import detect_langs
+from stdnum import issn
+from titlecase import titlecase
 
 book_types = [
     "textDocument-bookChapter",

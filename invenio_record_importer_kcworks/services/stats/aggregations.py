@@ -1,13 +1,14 @@
-import arrow
 from datetime import datetime
+
+# from invenio_stats.bookmark import format_range_dt
+from typing import Union
+
+import arrow
 from flask import current_app
 from invenio_search.engine import dsl, search
 
 # from invenio_search.proxies import current_search_client
 from invenio_stats.aggregations import StatAggregator
-
-# from invenio_stats.bookmark import format_range_dt
-from typing import Union
 
 
 class StatAggregatorOverridable(StatAggregator):
