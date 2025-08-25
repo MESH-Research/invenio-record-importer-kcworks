@@ -155,9 +155,7 @@ genres = {
     "Documentary": "audiovisual-documentary",
     "Editorial": "textDocument-editorial",
     "Essay": "textDocument-essay",
-    "Fictional work": (
-        "textDocument-bookSection"
-    ),  # FIXME: indicate ficiontal???
+    "Fictional work": "textDocument-bookSection",  # FIXME: indicate ficiontal???
     "Finding aid": "other",
     "Image": "image-other",
     "Interview": "textDocument-interviewTranscript",
@@ -214,9 +212,7 @@ def _append_bad_data(rowid: str, content: tuple, bad_data_dict: dict) -> dict:
     return bad_data_dict
 
 
-def _add_resource_type(
-    rec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def _add_resource_type(rec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add resource type information to the new record.
 
     This function adds the resource type information to the new record. It
@@ -354,9 +350,7 @@ def _add_resource_type(
                 "video/quicktime",
             ]
         ):
-            rec["metadata"]["resource_type"] = {
-                "id": "audiovisual-interviewRecording"
-            }
+            rec["metadata"]["resource_type"] = {"id": "audiovisual-interviewRecording"}
         if (
             pubtype in publication_types.keys()
             and genres[genre] != publication_types[pubtype]
@@ -367,9 +361,7 @@ def _add_resource_type(
         bad_data.append(("genre", genre))
         rec["custom_fields"]["hclegacy:publication_type"] = pubtype
         if pubtype in publication_types.keys():
-            rec["metadata"]["resource_type"] = {
-                "id": publication_types[pubtype]
-            }
+            rec["metadata"]["resource_type"] = {"id": publication_types[pubtype]}
         else:
             bad_data.append(("publication-type", pubtype))
 
@@ -408,9 +400,7 @@ def _add_book_authors(
                 focus = invert_flipped_name(level1parts)
                 # print('b focus', focus)
             if len(level1parts) > 2:
-                focus = focus + find_comma_delineated_names(
-                    ", ".join(level1parts[2:])
-                )
+                focus = focus + find_comma_delineated_names(", ".join(level1parts[2:]))
         else:
             focus = focus.strip().split(" ")
             # print('space split', focus)
@@ -511,9 +501,7 @@ def _add_book_authors(
     return author_list, bad_data_dict
 
 
-def _add_author_data(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def _add_author_data(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """
     Add information about authors to the supplied record from supplied row.
 
@@ -549,14 +537,10 @@ def _add_author_data(
                     "type": "personal",  # FIXME: can't hard code
                     # 'name': a['fullname'],
                     "name": (
-                        f'{a["family"]}, {a["given"]}'
-                        if a["family"]
-                        else a["fullname"]
+                        f'{a["family"]}, {a["given"]}' if a["family"] else a["fullname"]
                     ),
                     "given_name": a["given"],
-                    "family_name": (
-                        a["family"] if a["family"] else a["fullname"]
-                    ),
+                    "family_name": a["family"] if a["family"] else a["fullname"],
                 }
                 # Some authors have no name (None or empty strings)
                 if new_person["person_or_org"]["name"] in ["", None]:
@@ -632,9 +616,7 @@ def _add_author_data(
                 bad_data_dict,
             )
     else:
-        _append_bad_data(
-            row["id"], ("authors:no value", row["authors"]), bad_data_dict
-        )
+        _append_bad_data(row["id"], ("authors:no value", row["authors"]), bad_data_dict)
 
     # TODO: Compare these fields?
     # if row['author_info']:
@@ -760,11 +742,11 @@ def add_chapter_label(
             )
         else:
             rn = r"^M{0,3}(CM|CD|D?C{0,3})?(XC|XL|L?X{0,3})?(IX|IV|V?I{0,3})?$"
-            if re.search(
-                r"^([Cc]hapter )?\d+[\.,;]?\d*$", row["chapter"]
-            ) or re.search(rn, row["chapter"]):
-                newrec["custom_fields"]["kcr:chapter_label"] = (
-                    normalize_string(row["chapter"])
+            if re.search(r"^([Cc]hapter )?\d+[\.,;]?\d*$", row["chapter"]) or re.search(
+                rn, row["chapter"]
+            ):
+                newrec["custom_fields"]["kcr:chapter_label"] = normalize_string(
+                    row["chapter"]
                 )
             # elif mytitle in mychap \
             #         and re.search(r'^([Cc]hapter )?\d+[\.,;]?\d*\s?',
@@ -780,14 +762,14 @@ def add_chapter_label(
             # FIXME: label being truncated with \\\\\\\\\ in hc:27769
             elif re.search(r"^[Cc]hapter", row["chapter"]):
                 shortchap = re.sub(r"^[Cc]hapter\s*", "", row["chapter"])
-                newrec["custom_fields"]["kcr:chapter_label"] = (
-                    normalize_string(shortchap)
+                newrec["custom_fields"]["kcr:chapter_label"] = normalize_string(
+                    shortchap
                 )
             elif row["chapter"] == "N/A":
                 pass
             else:
-                newrec["custom_fields"]["kcr:chapter_label"] = (
-                    normalize_string(row["chapter"])
+                newrec["custom_fields"]["kcr:chapter_label"] = normalize_string(
+                    row["chapter"]
                 )
     return newrec, bad_data_dict
 
@@ -849,22 +831,16 @@ def add_legacy_commons_info(
     if row["submitter_email"]:
         newrec["custom_fields"]["kcr:submitter_email"] = row["submitter_email"]
     if row["submitter_login"]:
-        newrec["custom_fields"]["kcr:submitter_username"] = row[
-            "submitter_login"
-        ]
+        newrec["custom_fields"]["kcr:submitter_username"] = row["submitter_login"]
     if row["submitter"]:
         try:
             row["submitter"] = str(row["submitter"])
             # Doesn't work because not Invenio user id
-            newrec["parent"]["access"]["owned_by"].append(
-                {"user": row["submitter"]}
-            )
+            newrec["parent"]["access"]["owned_by"].append({"user": row["submitter"]})
             newrec["custom_fields"]["hclegacy:submitter_id"] = row["submitter"]
         except ValueError:
             row["submitter"] = None
-            _append_bad_data(
-                row["id"], ("submitter", row["submitter"]), bad_data_dict
-            )
+            _append_bad_data(row["id"], ("submitter", row["submitter"]), bad_data_dict)
 
     # Committee deposit
     if row["committee_deposit"] == "yes":
@@ -889,27 +865,21 @@ def add_legacy_commons_info(
         )
         row["society_id"] = [r for r in row["society_id"] if r]
         if row["society_id"]:
-            newrec["custom_fields"]["hclegacy:submitter_org_memberships"] = (
-                row["society_id"]
-            )
+            newrec["custom_fields"]["hclegacy:submitter_org_memberships"] = row[
+                "society_id"
+            ]
 
     # Was CORE deposit previously published?
     if row["published"]:
-        newrec["custom_fields"]["hclegacy:previously_published"] = row[
-            "published"
-        ]
+        newrec["custom_fields"]["hclegacy:previously_published"] = row["published"]
 
     if row["organization"]:
-        newrec["custom_fields"]["hclegacy:submitter_affiliation"] = row[
-            "organization"
-        ]
+        newrec["custom_fields"]["hclegacy:submitter_affiliation"] = row["organization"]
 
     return newrec, bad_data_dict
 
 
-def add_embargo_info(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_embargo_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add access information to the new record.
 
     Adds any embargo dates based on the `embargoed` flag ("yes"/"no") and
@@ -945,9 +915,7 @@ def add_embargo_info(
     return newrec, bad_data_dict
 
 
-def add_titles(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_titles(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add title information to the new record.
 
     The CORE record included two title fields: 'title_unchanged' with the raw
@@ -998,9 +966,7 @@ def add_titles(
     return newrec, bad_data_dict
 
 
-def add_descriptions(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_descriptions(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add description information to the new record.
 
     The CORE record included two description fields: 'abstract_unchanged' with
@@ -1026,9 +992,7 @@ def add_descriptions(
     if len(normalized_desc) > 2:
         newrec["metadata"]["description"] = normalized_desc
         if normalized_desc != normalized_abstr and len(normalized_abstr) > 2:
-            newrec["metadata"].setdefault(
-                "additional_descriptions", []
-            ).append(
+            newrec["metadata"].setdefault("additional_descriptions", []).append(
                 {
                     "description": normalized_abstr,
                     "type": {"id": "other", "title": {"en": "Other"}},
@@ -1044,9 +1008,7 @@ def add_descriptions(
     return newrec, bad_data_dict
 
 
-def add_notes(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_notes(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add notes information to the new record.
 
     Uses the "notes_unchanged" field of the CORE record as the value for the
@@ -1068,9 +1030,7 @@ def add_notes(
     return newrec, bad_data_dict
 
 
-def add_identifiers(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_identifiers(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add identifier information to the new record.
 
     Adds the following identifiers to the new record:
@@ -1099,9 +1059,7 @@ def add_identifiers(
         if i and s
     ]
     for i in ids:
-        if i and not re.match(
-            r"^(url|http|handle|doi)\:?$|^n/?a$", i, re.IGNORECASE
-        ):
+        if i and not re.match(r"^(url|http|handle|doi)\:?$|^n/?a$", i, re.IGNORECASE):
             detected = detect_identifier_schemes(i)
             if len(detected) < 1:
                 detected = detect_identifier_schemes(f"https://{i}")
@@ -1376,10 +1334,7 @@ def add_language_info(
         lang1, lang2 = [], []
         if row["title"]:
             t = titlecase(row["title"])
-            lang1 = [
-                {"code": lang.lang, "prob": lang.prob}
-                for lang in detect_langs(t)
-            ]
+            lang1 = [{"code": lang.lang, "prob": lang.prob} for lang in detect_langs(t)]
         if row["abstract"]:
             try:
                 lang2 = [
@@ -1416,9 +1371,7 @@ def add_language_info(
     return newrec, bad_data_dict
 
 
-def add_edition_info(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_edition_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add edition information to the new record.
 
     Adds the edition of the CORE record to the new record as a custom field
@@ -1437,16 +1390,12 @@ def add_edition_info(
     # Edition
     # FIXME: There's some bad data here, like ISSNs
     if row["edition"]:
-        newrec["custom_fields"]["kcr:edition"] = normalize_string(
-            row["edition"]
-        )
+        newrec["custom_fields"]["kcr:edition"] = normalize_string(row["edition"])
 
     return newrec, bad_data_dict
 
 
-def add_date_info(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_date_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add date information to the new record.
 
     Adds the following date information to the new record:
@@ -1528,9 +1477,7 @@ def add_date_info(
     return newrec, bad_data_dict
 
 
-def add_groups_info(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_groups_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add information about Commons groups to the new record.
 
     Adds the following group information to the new record:
@@ -1555,9 +1502,7 @@ def add_groups_info(
         if row["group"] not in [None, [], ""]:
             row["group"] = [g for g in row["group"] if g not in [None, ""]]
         if row["group_ids"] not in [None, [], ""]:
-            row["group_ids"] = [
-                i for i in row["group_ids"] if i not in [None, ""]
-            ]
+            row["group_ids"] = [i for i in row["group_ids"] if i not in [None, ""]]
         assert len(row["group"]) == len(row["group_ids"])
         group_list = []
         if len(row["group"]) > 0:
@@ -1586,9 +1531,7 @@ def add_groups_info(
     return newrec, bad_data_dict
 
 
-def add_book_authors(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_book_authors(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add book author information to the new record.
 
     Args:
@@ -1611,9 +1554,7 @@ def add_book_authors(
     return newrec, bad_data_dict
 
 
-def add_volume_info(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_volume_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add volume information to the new record.
 
     Adds the volume of the CORE record to the new record as a custom field
@@ -1632,19 +1573,19 @@ def add_volume_info(
     # FIXME: distinguish volume meaning for ambiguous resource types
     if row["volume"]:
         if newrec["metadata"]["resource_type"]["id"] in article_types:
-            newrec["custom_fields"].setdefault("journal:journal", {})[
+            newrec["custom_fields"].setdefault("journal:journal", {})["volume"] = row[
                 "volume"
-            ] = row["volume"]
+            ]
         elif newrec["metadata"]["resource_type"]["id"] in book_types:
-            newrec["custom_fields"].setdefault("kcr:volumes", {})["volume"] = (
-                row["volume"]
-            )
+            newrec["custom_fields"].setdefault("kcr:volumes", {})["volume"] = row[
+                "volume"
+            ]
         else:
             # print(row['id'], newrec['metadata']['resource_type']['id'],
             # row['volume'])
-            newrec["custom_fields"].setdefault("kcr:volumes", {})["volume"] = (
-                row["volume"]
-            )
+            newrec["custom_fields"].setdefault("kcr:volumes", {})["volume"] = row[
+                "volume"
+            ]
     return newrec, bad_data_dict
 
 
@@ -1690,9 +1631,9 @@ def add_publication_details(
             else:
                 isbn_list.append(checked_i)
         if len(isbn_list) > 0:
-            newrec["custom_fields"].setdefault("imprint:imprint", {})[
-                "isbn"
-            ] = isbn_list[0]
+            newrec["custom_fields"].setdefault("imprint:imprint", {})["isbn"] = (
+                isbn_list[0]
+            )
             if len(isbn_list) > 1:
                 for i in isbn_list[1:]:
                     newrec["metadata"].setdefault("identifiers", []).append(
@@ -1772,9 +1713,7 @@ def add_book_journal_title(
     return newrec, bad_data_dict
 
 
-def add_pages(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_pages(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add page information to the new record.
 
     Adds the following page information to the new record:
@@ -1800,13 +1739,9 @@ def add_pages(
         if row["end_page"]:
             pages = f'{pages}-{row["end_page"]}'
         if newrec["metadata"]["resource_type"]["id"] in article_types:
-            newrec["custom_fields"].setdefault("journal:journal", {})[
-                "pages"
-            ] = pages
+            newrec["custom_fields"].setdefault("journal:journal", {})["pages"] = pages
         else:
-            newrec["custom_fields"].setdefault("imprint:imprint", {})[
-                "pages"
-            ] = pages
+            newrec["custom_fields"].setdefault("imprint:imprint", {})["pages"] = pages
         if newrec["metadata"]["resource_type"]["id"] not in [
             *book_types,
             *article_types,
@@ -1829,9 +1764,7 @@ def add_pages(
     return newrec, bad_data_dict
 
 
-def add_journal_info(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_journal_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add journal information to the new record.
 
     Adds the following journal information to the new record:
@@ -1868,9 +1801,7 @@ def add_journal_info(
         issue = re.sub(r"([Ii]ssue|[nN][Oo]?\.?)\s?", "", row["issue"])
         issue = re.sub(r"\((.*)\)", r"\1", issue)
         issue = re.sub(r"[\.,]$", "", issue)
-        newrec["custom_fields"].setdefault("journal:journal", {})[
-            "issue"
-        ] = issue
+        newrec["custom_fields"].setdefault("journal:journal", {})["issue"] = issue
 
     # FIXME: make issn a list
     if row["issn"]:
@@ -1883,9 +1814,7 @@ def add_journal_info(
 
         if valid_isbn(myissn):
             # print('isbn', row['issn'])
-            newrec["custom_fields"].setdefault("imprint:imprint", {})[
-                "isbn"
-            ] = myissn
+            newrec["custom_fields"].setdefault("imprint:imprint", {})["isbn"] = myissn
             _append_bad_data(
                 row["id"],
                 ("issn", "isbn in issn field", myissn),
@@ -1913,9 +1842,9 @@ def add_journal_info(
                 myissnx = re.sub(r"ISSN:? ?", "", myissnx)
                 try:
                     if issn.validate(myissnx):
-                        newrec["custom_fields"].setdefault(
-                            "journal:journal", {}
-                        )["issn"] = myissnx
+                        newrec["custom_fields"].setdefault("journal:journal", {})[
+                            "issn"
+                        ] = myissnx
                 except Exception:
                     # print('exception', i, row['issn'])
                     _append_bad_data(
@@ -1938,9 +1867,9 @@ def add_journal_info(
                 else:
                     i = sanitize_issn_string(i)
                     if issn.validate(i):
-                        newrec["metadata"].setdefault(
-                            "identifiers", []
-                        ).append({"identifier": i, "scheme": "issn"})
+                        newrec["metadata"].setdefault("identifiers", []).append(
+                            {"identifier": i, "scheme": "issn"}
+                        )
                     else:
                         _append_bad_data(
                             row["id"], ("issn", "malformed", i), bad_data_dict
@@ -1949,9 +1878,7 @@ def add_journal_info(
     return newrec, bad_data_dict
 
 
-def add_institution(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_institution(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add institution information to the new record.
 
     Args:
@@ -1974,8 +1901,8 @@ def add_institution(
                 row["institution"]
             )
         else:
-            newrec["custom_fields"]["kcr:sponsoring_institution"] = (
-                normalize_string(row["institution"])
+            newrec["custom_fields"]["kcr:sponsoring_institution"] = normalize_string(
+                row["institution"]
             )
         if newrec["metadata"]["resource_type"]["id"] not in [
             "textDocument-thesis",
@@ -1994,9 +1921,7 @@ def add_institution(
     return newrec, bad_data_dict
 
 
-def add_meeting_info(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_meeting_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add meeting information to the new record.
 
     Adds the following meeting information to the new record:
@@ -2034,9 +1959,7 @@ def add_meeting_info(
         )
     if row["conference_location"] or row["meeting_location"]:
         newrec["custom_fields"].setdefault("meeting:meeting", {})["place"] = (
-            normalize_string(
-                row["conference_location"] or row["meeting_location"]
-            )
+            normalize_string(row["conference_location"] or row["meeting_location"])
         )
     if row["conference_organization"] or row["meeting_organization"]:
         newrec["custom_fields"]["kcr:meeting_organization"] = normalize_string(
@@ -2172,9 +2095,7 @@ def add_subjects_keywords(
             "Urban studies",
         ]
         bad_subjects = {
-            "1178850:Transnationalism:topical": (
-                "1154884:Transnationalism:topical"
-            ),
+            "1178850:Transnationalism:topical": "1154884:Transnationalism:topical",
             "815177:Art, American:topical": "815895:Art, American:topical",
             "1205213:Cyprus:topical": "1205213:Cyprus:geographic",
             "1240495:Asia:topical": "1240495:Asia:geographic",
@@ -2193,9 +2114,7 @@ def add_subjects_keywords(
             "1411635:Criticism, interpretation, etc.:topical": (
                 "1411635:Criticism, interpretation, etc.:form"
             ),
-            "21st-century American literature": (
-                "807113:American literature:topical"
-            ),
+            "21st-century American literature": "807113:American literature:topical",
             "863509:Classsical literature:topical": (
                 "863509:Classical literature:topical"
             ),
@@ -2203,16 +2122,12 @@ def add_subjects_keywords(
             "Ancient law": "993683:Law--Antiquities:topical",
             "Apostle Paul": "288253:St. Paul:personal",
             "Art history": "815264:Art--History:topical",
-            "Australasian/Pacific literature": (
-                "821406:Australasian literature:topical"
-            ),
+            "Australasian/Pacific literature": "821406:Australasian literature:topical",
             "Aesthetic theory": "798702:Aesthetics:topical",
             "Book history": "836420:Books--History:topical",
             "Central Europe": "1244544:Central Europe:geographic",
             "Comics": "1921613:Comics (Graphic works):form",
-            "Contemporary history": (
-                "1865054:History of contemporary events:topical"
-            ),
+            "Contemporary history": "1865054:History of contemporary events:topical",
             "Cultural history": "885069:Culture--History:topical",
             "Cultural studies": "885059:Culture:topical",
             "Digital communication": "893634:Digital communications:topical",
@@ -2233,9 +2148,7 @@ def add_subjects_keywords(
                 "967235:Illumination of books and manuscripts:topical"
             ),
             "India": "1210276:India:geographic",
-            "Interdisciplinary studies": (
-                "976131:Interdisciplinary research:topical"
-            ),
+            "Interdisciplinary studies": "976131:Interdisciplinary research:topical",
             "Internet sociology": "1766793:Internet--Social aspects:topical",
             "Jack Kerouac": "52352:Kerouac, Jack, 1922-1969:personal",
             "James Joyce": "370728:Joyce, James:personal",
@@ -2244,36 +2157,26 @@ def add_subjects_keywords(
             "Latin American studies": "1245945:Latin America:geographic",
             "Library and information science": "997916:Library science:topical",
             "Literary theory": "1353577:Literature--Theory:topical",
-            "Literature and psychology": (
-                "1081551:Psychology and literature:topical"
-            ),
+            "Literature and psychology": "1081551:Psychology and literature:topical",
             "Manuscript studies": "1008230:Manuscripts:topical",
             "Medieval literature": "1000151:Literature, Medieval:topical",
             "Music history": "1030330:Music--History:topical",
             "Music performance": "1030398:Music--Performance:topical",
             "Poetics and poetry": "1067682:Poetics:topical",
-            "Political philosophy": (
-                "1060799:Philosophy--Political aspects:topical"
-            ),
-            "Portuguese culture": (
-                "1072404:Portuguese--Ethnic identity:topical"
-            ),
+            "Political philosophy": "1060799:Philosophy--Political aspects:topical",
+            "Portuguese culture": "1072404:Portuguese--Ethnic identity:topical",
             "Religious studies": "1093763:Religion:topical",
             "Shakespeare": "314312:Shakespeare, William, 1849-1931:personal",
-            "Social anthropology": (
-                "810233:Anthropology--Social aspects:topical"
-            ),
+            "Social anthropology": "810233:Anthropology--Social aspects:topical",
             "Sociology of aging": "800348:Aging--Social aspects:topical",
-            "Sociology of agriculture": (
-                "801646:Agriculture--Social aspects:topical"
-            ),
+            "Sociology of agriculture": "801646:Agriculture--Social aspects:topical",
             "Sociology of culture": "885083:Culture--Social aspects:topical",
             "Sociology of finance": (
                 "842573:Business enterprises--Finance--Social aspects:topical"
             ),
             "Stanley Cavell": "28565:Cavell, Stanley, 1926-2018:personal",
             "Translation": "1154795:Translating and interpreting:topical",
-            "Translation of poetry": ("1067745:Poetry--Translating:topical"),
+            "Translation of poetry": "1067745:Poetry--Translating:topical",
             "Venezuela": "1204166:Venezuela:geographic",
         }
         covered_subjects = []
@@ -2281,9 +2184,9 @@ def add_subjects_keywords(
             row["subject"] = row["subject"].values()
         for s in list(set(row["subject"])):
             if s in missing_subjects:
-                newrec["custom_fields"].setdefault(
-                    "kcr:user_defined_tags", []
-                ).append(s)
+                newrec["custom_fields"].setdefault("kcr:user_defined_tags", []).append(
+                    s
+                )
             else:
                 if s in bad_subjects.keys():
                     s = bad_subjects[s]
@@ -2308,7 +2211,7 @@ def add_subjects_keywords(
                     "Corporate Name": "corporate",
                     "Topic": "topical",
                     "Event": "event",
-                    "Form\/Genre": "formgenre",
+                    r"Form\/Genre": "formgenre",
                     "Form/Genre": "formgenre",
                     "Geographic": "geographic",
                     "Meeting": "meeting",
@@ -2329,9 +2232,7 @@ def add_subjects_keywords(
     return newrec, bad_data_dict
 
 
-def add_rights_info(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_rights_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add rights information to the new record.
 
     Adds the following rights information to the new record:
@@ -2362,9 +2263,7 @@ def add_rights_info(
     """
 
     if row["type_of_license"]:
-        license_id, license_name, license_url = licenses[
-            row["type_of_license"]
-        ]
+        license_id, license_name, license_url = licenses[row["type_of_license"]]
         newrec["metadata"].setdefault("rights", []).append(
             {
                 "id": license_id,
@@ -2375,9 +2274,7 @@ def add_rights_info(
     return newrec, bad_data_dict
 
 
-def add_file_info(
-    newrec: dict, row: dict, bad_data_dict: dict
-) -> tuple[dict, dict]:
+def add_file_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
     """Add file information to the new record.
 
     Args:
@@ -2447,54 +2344,28 @@ def serialize_json() -> tuple[list[dict], dict]:
                 newrec, bad_data_dict = add_legacy_commons_info(
                     newrec, row, bad_data_dict
                 )
-                newrec, bad_data_dict = add_groups_info(
-                    newrec, row, bad_data_dict
-                )
-                newrec, bad_data_dict = add_embargo_info(
-                    newrec, row, bad_data_dict
-                )
+                newrec, bad_data_dict = add_groups_info(newrec, row, bad_data_dict)
+                newrec, bad_data_dict = add_embargo_info(newrec, row, bad_data_dict)
 
                 # basic metadata
                 newrec, bad_data_dict = add_titles(newrec, row, bad_data_dict)
-                newrec, bad_data_dict = add_descriptions(
-                    newrec, row, bad_data_dict
-                )
+                newrec, bad_data_dict = add_descriptions(newrec, row, bad_data_dict)
                 newrec, bad_data_dict = add_notes(newrec, row, bad_data_dict)
-                newrec, bad_data_dict = _add_resource_type(
-                    newrec, row, bad_data_dict
-                )
-                newrec, bad_data_dict = add_identifiers(
-                    newrec, row, bad_data_dict
-                )
-                newrec, bad_data_dict = add_language_info(
-                    newrec, row, bad_data_dict
-                )
-                newrec, bad_data_dict = add_edition_info(
-                    newrec, row, bad_data_dict
-                )
-                newrec, bad_data_dict = _add_author_data(
-                    newrec, row, bad_data_dict
-                )
-                newrec, bad_data_dict = add_date_info(
-                    newrec, row, bad_data_dict
-                )
+                newrec, bad_data_dict = _add_resource_type(newrec, row, bad_data_dict)
+                newrec, bad_data_dict = add_identifiers(newrec, row, bad_data_dict)
+                newrec, bad_data_dict = add_language_info(newrec, row, bad_data_dict)
+                newrec, bad_data_dict = add_edition_info(newrec, row, bad_data_dict)
+                newrec, bad_data_dict = _add_author_data(newrec, row, bad_data_dict)
+                newrec, bad_data_dict = add_date_info(newrec, row, bad_data_dict)
                 newrec, bad_data_dict = add_subjects_keywords(
                     newrec, row, bad_data_dict
                 )
-                newrec, bad_data_dict = add_rights_info(
-                    newrec, row, bad_data_dict
-                )
+                newrec, bad_data_dict = add_rights_info(newrec, row, bad_data_dict)
 
                 # Info for chapters and articles
-                newrec, bad_data_dict = add_chapter_label(
-                    newrec, row, bad_data_dict
-                )
-                newrec, bad_data_dict = add_book_authors(
-                    newrec, row, bad_data_dict
-                )
-                newrec, bad_data_dict = add_volume_info(
-                    newrec, row, bad_data_dict
-                )
+                newrec, bad_data_dict = add_chapter_label(newrec, row, bad_data_dict)
+                newrec, bad_data_dict = add_book_authors(newrec, row, bad_data_dict)
+                newrec, bad_data_dict = add_volume_info(newrec, row, bad_data_dict)
                 newrec, bad_data_dict = add_publication_details(
                     newrec, row, bad_data_dict
                 )
@@ -2502,28 +2373,18 @@ def serialize_json() -> tuple[list[dict], dict]:
                     newrec, row, bad_data_dict
                 )
                 newrec, bad_data_dict = add_pages(newrec, row, bad_data_dict)
-                newrec, bad_data_dict = add_journal_info(
-                    newrec, row, bad_data_dict
-                )
+                newrec, bad_data_dict = add_journal_info(newrec, row, bad_data_dict)
 
                 # Info for dissertations and reports
-                newrec, bad_data_dict = add_institution(
-                    newrec, row, bad_data_dict
-                )
+                newrec, bad_data_dict = add_institution(newrec, row, bad_data_dict)
 
                 # conference/meeting info
-                newrec, bad_data_dict = add_meeting_info(
-                    newrec, row, bad_data_dict
-                )
+                newrec, bad_data_dict = add_meeting_info(newrec, row, bad_data_dict)
 
                 # Uploaded file details
-                newrec, bad_data_dict = add_file_info(
-                    newrec, row, bad_data_dict
-                )
+                newrec, bad_data_dict = add_file_info(newrec, row, bad_data_dict)
 
-                newrec["custom_fields"]["hclegacy:total_views"] = row[
-                    "total_views"
-                ]
+                newrec["custom_fields"]["hclegacy:total_views"] = row["total_views"]
                 if newrec["custom_fields"]["hclegacy:total_views"] in [
                     None,
                     "",

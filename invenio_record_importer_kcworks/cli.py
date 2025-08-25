@@ -347,7 +347,7 @@ def load_records(
         if not use_sourceids:
             named_params["nonconsecutive"] = [int(arg) for arg in records]
         else:
-            records = [arg.replace("\-", "-") for arg in records]  # noqa
+            records = [arg.replace("\\-", "-") for arg in records]  # noqa
             named_params["nonconsecutive"] = records
 
     RecordLoader().load_all(**named_params)
