@@ -1,5 +1,6 @@
 from flask import current_app as app
 from invenio_search.proxies import current_search_client
+from invenio_search.utils import prefix_index
 from opensearchpy.helpers.search import Search
 
 # def view_events_search(recid):
@@ -10,7 +11,6 @@ from opensearchpy.helpers.search import Search
 
 
 def view_events_search(recid, dt=None):
-
     # views_query = {
     #     "query": {
     #         "bool": {
@@ -22,11 +22,10 @@ def view_events_search(recid, dt=None):
     #     }
     # }
 
-    prefix = app.config.get("SEARCH_INDEX_PREFIX", "")
     search = (
         Search(
             using=current_search_client,
-            index=f"{prefix}events-stats-record-view",
+            index=prefix_index("events-stats-record-view"),
         )
         .filter({"term": {"country": "imported"}})
         .filter({"term": {"recid": recid}})
@@ -43,9 +42,7 @@ def view_events_search(recid, dt=None):
         )
         search.filter({"term": {"timestamp": dt}})
         terms = search.aggs.bucket("terms", "terms", field="unique_id")
-        terms.metric(
-            "top_hit", "top_hits", size=10, sort={"timestamp": "desc"}
-        )
+        terms.metric("top_hit", "top_hits", size=10, sort={"timestamp": "desc"})
         terms.metric(
             "unique_count",
             "cardinality",
@@ -59,7 +56,6 @@ def view_events_search(recid, dt=None):
 
 
 def download_events_search(file_id):
-
     # downloads_query = {
     #     "query": {
     #         "bool": {
@@ -71,11 +67,10 @@ def download_events_search(file_id):
     #     }
     # }
 
-    prefix = app.config.get("SEARCH_INDEX_PREFIX", "")
     search = (
         Search(
             using=current_search_client,
-            index=f"{prefix}events-stats-file-download",
+            index=prefix_index("events-stats-file-download"),
         )
         .filter({"term": {"country": "imported"}})
         .filter({"term": {"file_id": file_id}})
@@ -86,17 +81,16 @@ def download_events_search(file_id):
 
 
 def aggregations_search(record_id):
-    prefix = app.config.get("SEARCH_INDEX_PREFIX", "")
     views_search = Search(
         using=current_search_client,
-        index=f"{prefix}stats-record-view",
+        index=prefix_index("stats-record-view"),
     )
     views_search = views_search.filter({"term": {"recid": record_id}})
     views_response = list(views_search.scan())
 
     downloads_search = Search(
         using=current_search_client,
-        index=f"{prefix}stats-file-download",
+        index=prefix_index("stats-file-download"),
     )
     downloads_search = downloads_search.filter({"term": {"recid": record_id}})
     downloads_response = list(downloads_search.scan())

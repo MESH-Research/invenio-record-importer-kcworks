@@ -8,6 +8,7 @@
 # details.
 
 import os
+import sys
 from pathlib import Path
 
 # from traceback import format_exc
@@ -35,6 +36,7 @@ pytest_plugins = [
     "celery.contrib.pytest",
     "tests.fixtures.communities",
     "tests.fixtures.custom_fields",
+    "tests.fixtures.files",
     "tests.fixtures.records",
     "tests.fixtures.stats",
     "tests.fixtures.users",
@@ -42,11 +44,13 @@ pytest_plugins = [
     "tests.fixtures.vocabularies.community_types",
     "tests.fixtures.vocabularies.date_types",
     "tests.fixtures.vocabularies.descriptions",
+    "tests.fixtures.vocabularies.funding_and_awards",
     "tests.fixtures.vocabularies.languages",
     "tests.fixtures.vocabularies.licenses",
     "tests.fixtures.vocabularies.resource_types",
     "tests.fixtures.vocabularies.roles",
     "tests.fixtures.vocabularies.subjects",
+    "tests.fixtures.vocabularies.title_types",
 ]
 
 
@@ -123,6 +127,11 @@ test_config["FLASK_DEBUG"] = True
 test_config["LOGGING_FS_LEVEL"] = "DEBUG"
 test_config["INVENIO_LOGGING_FS_LEVEL"] = "DEBUG"
 test_config["LOGGING_FS_LOGFILE"] = str(log_file_path)
+
+# Ensure test-local helpers (including a shim kcworks package) take precedence
+helpers_path = Path(__file__).parent / "helpers"
+if str(helpers_path) not in sys.path:
+    sys.path.insert(0, str(helpers_path))
 
 # enable DataCite DOI provider
 test_config["DATACITE_ENABLED"] = True
@@ -273,8 +282,6 @@ def app(
     resource_type_v,
     description_type_v,
     language_v,
-    create_communities_custom_fields,
-    create_records_custom_fields,
 ):
     """Application with database and search."""
     current_queues.declare()
@@ -291,3 +298,129 @@ def app_config(app_config) -> dict:
 @pytest.fixture(scope="module")
 def create_app():
     return create_api
+
+
+@pytest.yield_fixture(scope="module")
+def location(database):
+    """Creates a simple default location for a test."""
+    import shutil
+    import tempfile
+
+    from invenio_files_rest.models import Location
+
+    uri = tempfile.mkdtemp()
+    location_obj = Location(name="pytest-location", uri=uri, default=True)
+
+    database.session.add(location_obj)
+    database.session.commit()
+
+    yield location_obj
+
+    shutil.rmtree(uri)
+
+
+# This is a namedtuple that holds all the fixtures we're likely to need
+# in a single test.
+from collections import namedtuple
+
+RunningApp = namedtuple(
+    "RunningApp",
+    [
+        "app",
+        "location",
+        "cache",
+        "affiliations_v",
+        "awards_v",
+        "community_type_v",
+        "contributors_role_v",
+        "creators_role_v",
+        "date_type_v",
+        "description_type_v",
+        "funders_v",
+        "language_v",
+        "licenses_v",
+        "resource_type_v",
+        "subject_v",
+        "title_type_v",
+        "create_communities_custom_fields",
+        "create_records_custom_fields",
+    ],
+)
+
+
+@pytest.fixture(scope="function")
+def running_app(
+    app,
+    location,
+    cache,
+    affiliations_v,
+    awards_v,
+    community_type_v,
+    contributors_role_v,
+    creators_role_v,
+    date_type_v,
+    description_type_v,
+    funders_v,
+    language_v,
+    licenses_v,
+    resource_type_v,
+    subject_v,
+    title_type_v,
+    create_stats_indices,
+    create_communities_custom_fields,
+    create_records_custom_fields,
+):
+    """Fixture providing an app with all typically needed test fixtures.
+
+    All of these fixtures are often needed together, so collecting them
+    under a semantic umbrella makes sense.
+    """
+    return RunningApp(
+        app,
+        location,
+        cache,
+        affiliations_v,
+        awards_v,
+        community_type_v,
+        contributors_role_v,
+        creators_role_v,
+        date_type_v,
+        description_type_v,
+        funders_v,
+        language_v,
+        licenses_v,
+        resource_type_v,
+        subject_v,
+        title_type_v,
+        create_communities_custom_fields,
+        create_records_custom_fields,
+    )
+
+
+@pytest.fixture(scope="function")
+def search_clear(search_clear):
+    """Clear search indices after test finishes (function scope).
+
+    The search_clear fixture should each time start by running
+    ```python
+    current_search.create()
+    current_search.put_templates()
+    ```
+    and then clear the indices during the fixture teardown. But
+    this doesn't catch the stats indices, so we need to add an
+    additional step to delete the stats indices and template manually.
+    Otherwise, the stats indices aren't cleared between tests.
+    """
+    # Clear identity cache before each test to prevent stale community role data
+    from invenio_communities.proxies import current_identities_cache
+
+    current_identities_cache.flush()
+
+    yield search_clear
+
+    # Delete stats indices and templates if they exist
+    # Without this we get data pollution between tests
+    from invenio_search.proxies import current_search_client
+
+    current_search_client.indices.delete("*stats*", ignore=[404])
+    current_search_client.indices.delete_template("*stats*", ignore=[404])

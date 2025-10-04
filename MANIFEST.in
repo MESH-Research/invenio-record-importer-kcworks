@@ -1,49 +1,34 @@
-include *.lock
-include Pipfile
-include *.sh
-include *.gitmodules
+include README.md
 include LICENSE
 include VERSION
-recursive-include dist *.gz
-recursive-include dist *.whl
-recursive-include invenio_record_importer_kcworks_kcworks *.DS_Store
-recursive-include invenio_record_importer_kcworks *.gitkeep
-recursive-include tests *.ipynb
+include pyproject.toml
+include uv.lock
+include run-tests.sh
+include CHANGES.md
+include CREATED_DATES_UPDATE_PLAN.md
+
+recursive-include invenio_record_importer_kcworks *.py
+recursive-include tests *.py
 recursive-include tests *.json
 recursive-include tests *.jsonl
-recursive-include tests *.py
+recursive-include tests *.ipynb
 recursive-include tests *.pdf
 recursive-include tests *.docx
-recursive-include invenio_record_importer_kcworks *.csv
-recursive-include invenio_record_importer_kcworks *.dockerignore
-recursive-include invenio_record_importer_kcworks *.html
-recursive-include invenio_record_importer_kcworks *.js
-recursive-include invenio_record_importer_kcworks *.json
-recursive-include invenio_record_importer_kcworks *.lock
-recursive-include invenio_record_importer_kcworks *.md
-recursive-include invenio_record_importer_kcworks *.py
-recursive-include invenio_record_importer_kcworks *.rst
-recursive-include invenio_record_importer_kcworks *.sh
-recursive-include invenio_record_importer_kcworks *.css
-recursive-include invenio_record_importer_kcworks *.png
-recursive-include invenio_record_importer_kcworks *.toml
-recursive-include invenio_record_importer_kcworks *.txt
-recursive-include invenio_record_importer_kcworks *.yaml
-recursive-include invenio_record_importer_kcworks *.yml
+recursive-include tests *.csv
+recursive-include tests *.jpg
+recursive-include tests *.jinja
 
-recursive-include invenio_record_importer_kcworks/dependencies LICENSE
-recursive-include invenio_record_importer_kcworks/dependencies *.gitmodules
+# Exclude all submodule contents from the sdist to avoid packaging nested repos
+recursive-exclude invenio_record_importer_kcworks/dependencies *
 
-inclusive-exclude invenio_record_importer_kcworks/dependencies .git-blame-ignore-revs
-inclusive-exclude invenio_record_importer_kcworks/dependencies .tx/config
-inclusive-exclude invenio_record_importer_kcworks/dependencies Pipfile
-recursive-include invenio_record_importer_kcworks/dependencies *.bat
-recursive-include invenio_record_importer_kcworks/dependencies *.editorconfig
-recursive-include invenio_record_importer_kcworks/dependencies *.in
-recursive-include invenio_record_importer_kcworks/dependencies *.ini
-recursive-include invenio_record_importer_kcworks/dependencies *.jinja
-recursive-include invenio_record_importer_kcworks/dependencies *.po
-recursive-include invenio_record_importer_kcworks/dependencies *.pot
-recursive-include invenio_record_importer_kcworks/dependencies *.prettierrc
-recursive-include invenio_record_importer_kcworks/dependencies *.xsl
-recursive-include invenio_record_importer_kcworks/dependencies Makefile
+# Exclude common build artifacts and temporary files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.pyd
+global-exclude __pycache__
+global-exclude .git*
+global-exclude .DS_Store
+global-exclude *.egg-info
+global-exclude build
+global-exclude dist
+global-exclude .venv

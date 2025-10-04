@@ -1,18 +1,18 @@
-# -*- coding: utf-8 -*-
-#
-# This file is part of the Invenio Record Importer package.
+# Part of invenio-record-importer-kcworks.
 # Copyright (C) 2024, MESH Research.
 #
 # Invenio Record Importer is free software; you can redistribute it
 # and/or modify it under the terms of the MIT License; see
 # LICENSE file for more details.
 
-from pprint import pformat
-from typing import Optional
+"""Helper module to manage Communities."""
 
+import time
+from pprint import pformat
+
+import arrow
 from flask import current_app as app
 from invenio_access.permissions import system_identity
-from invenio_communities.communities.records.api import Community
 from invenio_communities.communities.services.results import CommunityItem
 from invenio_communities.errors import CommunityDeletedError
 from invenio_communities.members.records.api import Member
@@ -37,6 +37,22 @@ from invenio_rdm_records.services.errors import (
     ReviewNotFoundError,
     ReviewStateError,
 )
+from invenio_records_resources.services.uow import (
+    RecordCommitOp,
+    RecordIndexOp,
+    unit_of_work,
+)
+from invenio_requests.errors import CannotExecuteActionError
+from invenio_requests.proxies import current_requests_service
+from invenio_search.proxies import current_search_client
+from invenio_search.utils import prefix_index
+from marshmallow.exceptions import ValidationError
+from opensearchpy.exceptions import ConnectionError, ConnectionTimeout, NotFoundError
+from opensearchpy.helpers.search import Search
+from sqlalchemy.exc import NoResultFound
+from sqlalchemy.orm.exc import StaleDataError
+from werkzeug.exceptions import UnprocessableEntity
+
 from invenio_record_importer_kcworks.errors import (
     CollectionDoesNotExistError,
     CommonsGroupServiceError,
@@ -45,23 +61,13 @@ from invenio_record_importer_kcworks.errors import (
     PublicationValidationError,
     RestrictedRecordPublicationError,
 )
-from invenio_records_resources.services.uow import (
-    RecordIndexOp,
-    unit_of_work,
-)
-from invenio_requests.errors import CannotExecuteActionError
-from invenio_requests.proxies import current_requests_service
-from invenio_search.proxies import current_search_client
-from marshmallow.exceptions import ValidationError
-from opensearchpy.exceptions import NotFoundError
-from sqlalchemy.orm.exc import NoResultFound, StaleDataError
-from werkzeug.exceptions import UnprocessableEntity
 
 
 class CommunityRecordHelper:
     """A collection of methods for working with community records."""
 
     def ___init__(self):
+        """Initialize CommunityRecordHelper."""
         pass
 
     @staticmethod
@@ -72,15 +78,15 @@ class CommunityRecordHelper:
         cannot submit records without review. If the record policy is set to
         'open', members of the community can submit records without review.
 
-        params:
+        Params:
             community_id: str: The id of the community to update
             record_policy: str: The new record policy to set. Must be one of
                                 'open' or 'closed'
 
-        raises:
+        Raises:
             AssertionError: If the record policy was not updated successfully
 
-        returns:
+        Returns:
             bool: True if the record policy was updated successfully
         """
         record_data = current_communities.service.read(
@@ -101,15 +107,15 @@ class CommunityRecordHelper:
         to become members of the community. If the member policy is
         set to 'open', people can request to become members of the community.
 
-        params:
+        Params:
             community_id: str: The id of the community to update
             member_policy: str: The new member policy to set. Must be one of
                                 'open' or 'closed'
 
-        raises:
+        Raises:
             AssertionError: If the member policy was not updated successfully
 
-        returns:
+        Returns:
             bool: True if the member policy was updated successfully
         """
         record_data = current_communities.service.read(
@@ -132,15 +138,15 @@ class CommunityRecordHelper:
         searches except to logged-in members and its landing page is not
         visible to everyone.
 
-        params:
+        Params:
             community_id: str: The id of the community to update
             visibility: str: The new visibility to set. Must be one of
                             'public' or 'restricted'
 
-        raises:
+        Raises:
             AssertionError: If the visibility was not updated successfully
 
-        returns:
+        Returns:
             bool: True if the visibility was updated successfully
         """
         record_data = current_communities.service.read(
@@ -162,16 +168,16 @@ class CommunityRecordHelper:
         determines whether the "members" tab of the community landing page
         is visible to the public or restricted to members of the community.
 
-        params:
+        Params:
             community_id: str: The id of the community to update
             visibility: str: The new member visibility to set. Must be one of
                             'public' or 'restricted'
 
-        raises:
+        Raises:
             AssertionError: If the member visibility was not updated
             successfully
 
-        returns:
+        Returns:
             bool: True if the member visibility was updated successfully
         """
         record_data = current_communities.service.read(
@@ -188,14 +194,14 @@ class CommunityRecordHelper:
     def set_review_policy(community_id: str, review_policy: bool):
         """Set the review policy for a community.
 
-        params:
+        Params:
             community_id: str: The id of the community to update
             review_policy: bool: The new review policy to set
 
-        raises:
+        Raises:
             AssertionError: If the review policy was not updated successfully
 
-        returns:
+        Returns:
             bool: True if the review policy was updated successfully
         """
         record_data = current_communities.service.read(
@@ -212,29 +218,29 @@ class CommunityRecordHelper:
     def add_member(community_id: str, member_id: int, role: str) -> dict:
         """Add a member to a community.
 
-        params:
+        Params:
             community_id: str: The id of the community to update. This
                 must be a UUID, not the community's slug.
             member_id: int: The id of the user to add as a member
             role: str: The role of the user to add to the community
 
-        raises:
+        Raises:
             CollectionDoesNotExistError: If the community does not exist
             AssertionError: If the member was not added successfully
             ValueError: If the role is invalid
 
-        returns:
+        Returns:
             dict: The member that was added
         """
         try:
             record_data = current_communities.service.read(
                 system_identity, community_id
             ).to_dict()
-        except Exception:
+        except Exception as e:
             raise CollectionDoesNotExistError(
                 f"Community {community_id} does not exist. Cannot add "
                 f"member {member_id}."
-            )
+            ) from e
 
         role_order = ["reader", "curator", "manager", "owner"]
         if role not in role_order:
@@ -247,8 +253,7 @@ class CommunityRecordHelper:
         existing_members = [m for m in community_members if m.user_id == member_id]
         existing_member = existing_members[0] if existing_members else None
         if existing_member is None or (
-            role_order.index(role)
-            > role_order.index(existing_member.role)  # type: ignore
+            role_order.index(role) > role_order.index(existing_member.role)  # type: ignore
         ):
             current_communities.service.members.add(
                 system_identity,
@@ -278,15 +283,15 @@ class CommunityRecordHelper:
     def add_owner(community_id: str, owner_id: int) -> dict:
         """Add an owner to a community.
 
-        params:
+        Params:
             community_id: str: The id of the community to update
             owner_id: int: The id of the user to add as an owner
 
-        raises:
+        Raises:
             CollectionDoesNotExistError: If the community does not exist
             AssertionError: If the owner was not added successfully
 
-        returns:
+        Returns:
             dict: The owner that was added
         """
         return CommunityRecordHelper.add_member(community_id, owner_id, "owner")
@@ -296,6 +301,7 @@ class CommunitiesHelper:
     """Helper class for working with communities during record import."""
 
     def __init__(self):
+        """Initialize CommunitiesHelper."""
         pass
 
     def look_up_community(
@@ -354,20 +360,20 @@ class CommunitiesHelper:
         of the CommunityItem.to_dict() method.)
         """
         # FIXME: idiosyncratic implementation detail from CORE migration
-        community_label = community_string.split(".")
-        if len(community_label) > 1 and community_label[1] == "msu":
-            community_label = community_label[1]
+        community_labels = community_string.split(".")
+        if len(community_labels) > 1 and community_labels[1] == "msu":
+            community_label: str = community_labels[1]  # type:ignore
         else:
-            community_label = community_label[0]
+            community_label: str = community_labels[0]  # type:ignore
 
         # FIXME: remnant of name change from CORE migration
         if community_label == "hcommons":
-            community_label = "kcommons"
+            community_label = "kcommons"  # type:ignore
 
         community_check = self.look_up_community(community_label, record_source)
         assert community_check is not None
 
-        return community_check.to_dict()
+        return community_check.to_dict()  # type:ignore
 
     def create_invenio_community(
         self, record_source: str, community_label: str
@@ -399,7 +405,7 @@ class CommunitiesHelper:
         )
         if result.data.get("errors"):
             raise RuntimeError(result)
-        return result.to_dict()
+        return result.to_dict()  # type:ignore
 
     @unit_of_work()
     def publish_record_to_community(
@@ -415,12 +421,12 @@ class CommunitiesHelper:
         is found, it is continued and accepted. Otherwise a new review request
         is created and accepted.
 
-        params:
+        Params:
             draft_id (str): the id of the draft record
             community_id (str): the id of the community to publish the record
                                 to (must be a UUID, not the community's slug)
 
-        returns:
+        Returns:
             dict: the result of the review acceptance action
         """
         # Attachment to community unnecessary if the record is already
@@ -520,8 +526,7 @@ class CommunitiesHelper:
                         "cancel",
                     )
                     app.logger.debug(
-                        f"cancel_existing_request: "
-                        f"{pformat(cancel_existing_request)}"
+                        f"cancel_existing_request: {pformat(cancel_existing_request)}"
                     )
             # If no existing review request, just continue
             except (ReviewNotFoundError, NoResultFound):
@@ -591,21 +596,21 @@ class CommunitiesHelper:
                                 "Missing parent metadata for record during "
                                 "community submission acceptance. Original "
                                 f"error message: {e.message}"
-                            )
+                            ) from None
                 else:
                     review_accepted = submitted_request
 
                 app.logger.debug("review_accepted")
                 assert review_accepted.data["status"] == "accepted"
 
-                return review_accepted.to_dict()
+                return review_accepted.to_dict()  # type:ignore
 
             # Catch validation errors when publishing the record
             except ValidationError as e:
                 app.logger.error(
-                    f"    failed to validate record for publication: " f"{e.messages}"
+                    f"    failed to validate record for publication: {e.messages}"
                 )
-                raise PublicationValidationError(e.messages)
+                raise PublicationValidationError(e.messages) from None
 
             # If the record is already published, we need to create/retrieve
             # and accept a 'community-inclusion' request instead
@@ -615,7 +620,8 @@ class CommunitiesHelper:
                 record_communities = current_rdm_records.record_communities_service
 
                 app.logger.debug(
-                    f"record before inclusion: {pformat(records_service.read(system_identity, id_=draft_id).id)}"
+                    "record before inclusion: "
+                    f"{pformat(records_service.read(system_identity, id_=draft_id).id)}"
                 )
 
                 # Try to create and submit a 'community-inclusion' request
@@ -653,9 +659,9 @@ class CommunitiesHelper:
                 # If it succeeded, continue with the new request
                 else:
                     request_id = (
-                        submitted_request["id"]
-                        if submitted_request.get("id")
-                        else submitted_request["request"]["id"]
+                        submitted_request["id"]  # type:ignore
+                        if submitted_request.get("id")  # type:ignore
+                        else submitted_request["request"]["id"]  # type:ignore
                     )
                 request_obj = current_requests_service.read(
                     system_identity, request_id
@@ -690,7 +696,7 @@ class CommunitiesHelper:
                         )
                 else:
                     review_accepted = request_obj
-                return review_accepted
+                return review_accepted  # type:ignore
 
     def add_record_to_group_collections(
         self, metadata_record: dict, record_source: str
@@ -706,14 +712,14 @@ class CommunitiesHelper:
         to the group on the remote service. Members of the remote group will
         receive role-based membership in the group collection.
 
-        params:
+        Params:
             metadata_record (dict): the metadata record to add to group
                 collections (this is assumed to be a published record)
             record_source (str): the string representation of the record's
                 source service, for use by invenio-group-collections-kcworks
                 in linking the record to the appropriate group collections
 
-        returns:
+        Returns:
             list: the list of group collections the record was added to
         """
         bad_groups = [
@@ -752,12 +758,7 @@ class CommunitiesHelper:
                 app.logger.debug(f"    linking to group_name: {group['group_name']}")
                 group_name = group["group_name"]
                 coll_record = None
-                # TODO: This is a hack to get the index name
-                prefix = app.config.get("SEARCH_INDEX_PREFIX")
-                if prefix:
-                    index = f"{prefix}communities"
-                else:
-                    index = "communities"
+                index = prefix_index("communities")
                 try:
                     coll_search = current_search_client.search(
                         index=index,
@@ -774,7 +775,7 @@ class CommunitiesHelper:
                             )
                         except NotFoundError:
                             app.logger.warning(
-                                f"    collection {h['_source']['id']} not " "found"
+                                f"    collection {h['_source']['id']} not found"
                             )
                         except CommunityDeletedError:
                             app.logger.warning(
@@ -789,13 +790,12 @@ class CommunitiesHelper:
                         app.logger.debug(pformat(metadata_record))
                         if len(coll_records) > 1:
                             raise MultipleActiveCollectionsError(
-                                f"    multiple active collections found "
-                                f"for {group_id}"
-                            )
+                                f"    multiple active collections found for {group_id}"
+                            ) from None
                         else:
                             raise CollectionNotFoundError(
-                                f"    no active collections found for " f'"{group_id}"'
-                            )
+                                f'    no active collections found for "{group_id}"'
+                            ) from None
                     coll_record = coll_records[0]
                     app.logger.debug(f"    found group collection {coll_record['id']}")
                 except CollectionNotFoundError:
@@ -814,7 +814,7 @@ class CommunitiesHelper:
                             raise CommonsGroupServiceError(
                                 f"Failed requesting group collection from API "
                                 f"{e.description}"
-                            )
+                            ) from None
                     except CommonsGroupNotFoundError:
                         message = (
                             f"Group {group_id} ({group_name})"
@@ -822,12 +822,12 @@ class CommunitiesHelper:
                             f"create a group collection..."
                         )
                         app.logger.warning(message)
-                        raise CommonsGroupNotFoundError(message)
+                        raise CommonsGroupNotFoundError(message) from None
                     except TimeoutError:
                         raise CommonsGroupServiceError(
                             f"Timed out while creating group collection "
                             f"for group {group_id} ({group_name})"
-                        )
+                        ) from None
                 if coll_record:
                     app.logger.debug(
                         f"Adding record to group collection {coll_record['id']}"
@@ -847,8 +847,7 @@ class CommunitiesHelper:
                 return added_to_collections
             else:
                 app.logger.info(
-                    f"Record {metadata_record['id']} not added to any "
-                    "group collections"
+                    f"Record {metadata_record['id']} not added to any group collections"
                 )
                 return []
         else:
@@ -858,9 +857,7 @@ class CommunitiesHelper:
     def _remove_from_extraneous_collections(
         self, metadata_record: dict, group_list: list
     ) -> None:
-        """Remove a record from any group collections that are not in the
-        group list.
-        """
+        """Remove a record from any group collections not in the group list."""
         group_ids = [g.get("group_identifier") for g in group_list]
         extraneous_collections = [
             c
@@ -870,8 +867,7 @@ class CommunitiesHelper:
         ]
         if extraneous_collections:
             app.logger.debug(
-                f"Removing record from extraneous collections "
-                f"{extraneous_collections}"
+                f"Removing record from extraneous collections {extraneous_collections}"
             )
             for c in extraneous_collections:
                 removed = current_community_records_service.delete(
@@ -880,3 +876,360 @@ class CommunitiesHelper:
                     {"records": [{"id": metadata_record["id"]}]},
                 )
                 app.logger.debug(f"Removed {removed}")
+
+    def check_opensearch_health(self) -> dict:
+        """Check OpenSearch cluster health.
+
+        Returns:
+            dict: Health check result with keys:
+                - is_healthy (bool): Whether the cluster is healthy
+                - reason (str): Explanation of health status
+                - status (str): Cluster status (green/yellow/red) if available
+        """
+        try:
+            health = current_search_client.cluster.health(timeout=5)
+            status = health.get("status", "unknown")
+
+            if status == "red":
+                return {
+                    "is_healthy": False,
+                    "reason": "Cluster status is RED",
+                    "status": status,
+                }
+            elif status == "yellow":
+                # Yellow is acceptable but log a warning
+                app.logger.warning("OpenSearch cluster status is YELLOW")
+                return {
+                    "is_healthy": True,
+                    "reason": "Cluster status is YELLOW (acceptable)",
+                    "status": status,
+                }
+            else:  # green
+                return {
+                    "is_healthy": True,
+                    "reason": "Cluster status is GREEN",
+                    "status": status,
+                }
+
+        except (ConnectionTimeout, ConnectionError) as e:
+            return {
+                "is_healthy": False,
+                "reason": f"OpenSearch not responsive: {str(e)}",
+                "status": "unreachable",
+            }
+        except Exception as e:
+            app.logger.error(f"Error checking OpenSearch health: {str(e)}")
+            return {
+                "is_healthy": False,
+                "reason": f"Health check error: {str(e)}",
+                "status": "error",
+            }
+
+    def find_communities_needing_created_date_update(self) -> list[dict]:
+        """Find all communities with kcr:commons_group_id that may need updating.
+
+        Queries the search index for all communities that represent migrated
+        group collections (identified by having a commons_group_id).
+
+        Returns:
+            list[dict]: List of communities to check, each dict contains:
+                {
+                    'id': str,  # community UUID
+                    'slug': str,  # community slug for logging
+                    'group_id': str,  # kcr:commons_group_id value
+                    'current_created': str  # current created timestamp
+                }
+        """
+        index = prefix_index("communities")
+
+        search = Search(using=current_search_client, index=index)
+        search = search.filter("exists", field="custom_fields.kcr:commons_group_id")
+
+        communities = []
+
+        app.logger.info("Scanning communities for created date updates...")
+        for hit in search.scan():
+            try:
+                community_id = hit.meta.id
+                slug = hit.slug if hasattr(hit, "slug") else "unknown"
+                group_id = hit.custom_fields.get("kcr:commons_group_id")
+                current_created = hit.created if hasattr(hit, "created") else None
+
+                if group_id and current_created:
+                    communities.append({
+                        "id": community_id,
+                        "slug": slug,
+                        "group_id": group_id,
+                        "current_created": current_created,
+                    })
+            except Exception as e:
+                app.logger.warning(
+                    f"Error processing community {hit.meta.id}: {str(e)}"
+                )
+                continue
+
+        app.logger.info(f"Found {len(communities)} communities to check")
+        return communities
+
+    def find_oldest_record_for_community(self, group_id: str) -> arrow.Arrow | None:
+        """Find the oldest record creation date for records in a community.
+
+        Searches for all records that have this group_id in their
+        hclegacy:groups_for_deposit array, filters for those with
+        hclegacy:record_creation_date, and returns the oldest date.
+
+        Since hclegacy:record_creation_date is mapped as a text field and cannot
+        be sorted in OpenSearch, this method fetches all matching records and
+        sorts them in application code.
+
+        Args:
+            group_id: The kcr:commons_group_id to search for
+
+        Returns:
+            arrow.Arrow: The oldest record creation date (floored to start of day),
+                        or None if no records found
+        """
+        if not group_id:
+            app.logger.warning(
+                "find_oldest_record_for_community called with empty group_id"
+            )
+            return None
+
+        index = prefix_index("rdmrecords")
+
+        search = Search(using=current_search_client, index=index)
+
+        # Use match filter (not term) for the group_identifier field
+        search = search.filter(
+            "match",
+            **{"custom_fields.hclegacy:groups_for_deposit.group_identifier": group_id}
+        )
+        search = search.filter(
+            "exists", field="custom_fields.hclegacy:record_creation_date"
+        )
+
+        # Note: We cannot sort on hclegacy:record_creation_date in OpenSearch
+        # because it's a text field. Instead, we fetch all records and sort
+        # in Python. Using scan() to handle communities with any number of records.
+
+        try:
+            records = []
+            for hit in search.scan():
+                creation_date = hit.custom_fields.get("hclegacy:record_creation_date")
+                if creation_date:
+                    records.append({"date": creation_date, "id": hit.meta.id})
+
+            if not records:
+                app.logger.info(
+                    f"No records with hclegacy:record_creation_date found for group {group_id}"
+                )
+                return None
+
+            # Sort in Python by date string (ISO format sorts correctly)
+            records.sort(key=lambda x: x["date"])
+
+            oldest_date = records[0]["date"]
+            # Return start of day
+            return arrow.get(oldest_date).floor("day")
+
+        except Exception as e:
+            app.logger.error(
+                f"Error finding oldest record for group {group_id}: {str(e)}"
+            )
+
+        return None
+
+    @unit_of_work()
+    def update_single_community_created_date(
+        self,
+        community_id: str,
+        new_created_date: arrow.Arrow,
+        uow=None,
+    ) -> bool:
+        """Update the created date for a single community.
+
+        Uses the Invenio unit of work pattern to ensure the database change
+        is committed and the search index is automatically updated.
+
+        Args:
+            community_id: UUID of the community to update
+            new_created_date: New created date as arrow.Arrow object
+            uow: Unit of work instance (injected by decorator)
+
+        Returns:
+            bool: True if updated, False if skipped (date already earlier)
+        """
+        # Read community
+        community = current_communities.service.read(
+            system_identity, id_=community_id
+        )._record
+
+        # Convert arrow date to datetime
+        new_dt = new_created_date.datetime
+
+        # Check if update is needed - only update if new date is earlier
+        current_created = arrow.get(community.model.created)
+        if new_created_date < current_created:
+            community.model.created = new_dt
+            uow.register(RecordCommitOp(community))
+            return True
+
+        return False
+
+    def update_community_created_dates(
+        self,
+        batch_size: int = 100,
+        dry_run: bool = False,
+        verbose: bool = False,
+    ) -> dict:
+        """Update created dates for communities based on their oldest record.
+
+        This is the main orchestration method that:
+        1. Finds all communities with kcr:commons_group_id
+        2. For each community, finds the oldest record
+        3. Updates the community's created date to start of that day
+        4. Performs health checks between batches
+        5. Tracks statistics and errors
+
+        Args:
+            batch_size: Number of communities to process before health check
+            dry_run: If True, log what would be done without making changes
+            verbose: If True, log detailed progress
+
+        Returns:
+            dict: Statistics about the operation
+                {
+                    'total_found': int,
+                    'updated': int,
+                    'skipped': int,
+                    'no_records': int,
+                    'errors': list[dict],
+                    'stopped_early': bool (optional),
+                    'stopped_at_community': int (optional)
+                }
+        """
+        communities = self.find_communities_needing_created_date_update()
+        stats = {
+            "total_found": len(communities),
+            "updated": 0,
+            "skipped": 0,
+            "no_records": 0,
+            "errors": [],
+        }
+
+        if stats["total_found"] == 0:
+            app.logger.info("No communities found needing created date updates")
+            return stats
+
+        app.logger.info(
+            f"Processing {stats['total_found']} communities in batches of {batch_size}"
+        )
+
+        # Process in batches
+        for i in range(0, len(communities), batch_size):
+            batch = communities[i : i + batch_size]
+            batch_num = (i // batch_size) + 1
+            total_batches = (len(communities) + batch_size - 1) // batch_size
+
+            app.logger.info(f"Processing batch {batch_num} of {total_batches}")
+
+            # Process each community in the batch
+            for community in batch:
+                try:
+                    # Find oldest record for this community
+                    oldest_date = self.find_oldest_record_for_community(
+                        community["group_id"]
+                    )
+
+                    if oldest_date is None:
+                        stats["no_records"] += 1  # type:ignore
+                        if verbose:
+                            app.logger.info(
+                                f"No records found for community {community['slug']}"
+                            )
+                        continue
+
+                    if dry_run:
+                        current = arrow.get(community["current_created"])
+                        if oldest_date < current:
+                            stats["updated"] += 1  # type:ignore
+                            app.logger.info(
+                                f"[DRY RUN] Would update {community['slug']} "
+                                f"from {current.format('YYYY-MM-DD')} to "
+                                f"{oldest_date.format('YYYY-MM-DD')}"
+                            )
+                        else:
+                            stats["skipped"] += 1  # type:ignore
+                            if verbose:
+                                app.logger.info(
+                                    f"[DRY RUN] Would skip {community['slug']} "
+                                    f"(current date {current.format('YYYY-MM-DD')} "
+                                    "is already earlier)"
+                                )
+                    else:
+                        updated = self.update_single_community_created_date(
+                            community["id"], oldest_date
+                        )
+                        if updated:
+                            stats["updated"] += 1  # type:ignore
+                            if verbose:
+                                current = arrow.get(community["current_created"])
+                                app.logger.info(
+                                    f"Updated community {community['slug']} "
+                                    f"from {current.format('YYYY-MM-DD')} to "
+                                    f"{oldest_date.format('YYYY-MM-DD')}"
+                                )
+                        else:
+                            stats["skipped"] += 1  # type:ignore
+                            if verbose:
+                                app.logger.info(
+                                    f"Skipped community {community['slug']} "
+                                    f"(current date is already earlier)"
+                                )
+
+                except Exception as e:
+                    app.logger.error(
+                        f"Error updating community {community['slug']}: {str(e)}"
+                    )
+                    stats["errors"].append({  # type:ignore
+                        "community_id": community["id"],
+                        "slug": community["slug"],
+                        "group_id": community.get("group_id", "unknown"),
+                        "error": str(e),
+                    })
+
+            # Health check after each batch (except the last one)
+            if i + batch_size < len(communities):
+                health = self.check_opensearch_health()
+
+                if not health["is_healthy"]:
+                    app.logger.warning(
+                        f"OpenSearch health check failed: {health['reason']}. "
+                        f"Pausing for 30 seconds..."
+                    )
+                    time.sleep(30)
+
+                    # Check again after pause
+                    health = self.check_opensearch_health()
+                    if not health["is_healthy"]:
+                        app.logger.error(
+                            f"OpenSearch still unhealthy after pause: "
+                            f"{health['reason']}. Stopping updates. Processed "
+                            f"{i + len(batch)} of {len(communities)} communities."
+                        )
+                        stats["stopped_early"] = True
+                        stats["stopped_at_community"] = i + len(batch)
+                        break
+                elif verbose:
+                    app.logger.info(f"OpenSearch health: {health['status']}")
+
+                # Small delay between batches to avoid overwhelming the cluster
+                time.sleep(1)
+
+        app.logger.info(
+            f"Community created date update complete: "
+            f"{stats['updated']} updated, {stats['skipped']} skipped, "
+            f"{stats['no_records']} no records, {len(stats['errors'])} errors"  # type:ignore
+        )
+
+        return stats

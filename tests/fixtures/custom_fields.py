@@ -213,7 +213,7 @@ test_config_fields["COMMUNITIES_CUSTOM_FIELDS_UI"] = [
 ]
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def create_records_custom_fields(app):
     available_fields = app.config.get("RDM_CUSTOM_FIELDS")
     namespaces = set(app.config.get("RDM_NAMESPACES").keys())
@@ -229,19 +229,28 @@ def create_records_custom_fields(app):
             f"Custom record fields configuration is not valid. {e.description}"
         )
     properties = Mapping.properties_for_fields(None, available_fields)
+    print(f"DEBUG: Registering {len(properties)} record custom field properties")
+    print(f"DEBUG: Properties: {properties}")
     try:
         mycls = current_rdm_records.records_service.config.record_cls
+        index_name = build_alias_name(mycls.index._name)
+        print(f"DEBUG: Putting mappings on index: {index_name}")
         rdm_records_index = dsl.Index(
-            build_alias_name(mycls.index._name),
-            using=current_search_client,
+            index_name,
+            using=current_search_client,  # type: ignore
         )
         rdm_records_index.put_mapping(body={"properties": properties})
+        print(f"DEBUG: Successfully put mappings on {index_name}")
+
+        # Verify the mapping was applied
+        mapping = rdm_records_index.get_mapping()
+        print(f"DEBUG: Current mapping for {index_name}: {mapping}")
     except search_engine.RequestError as e:
         print("An error occured while creating custom records fields.")
-        print(e.info["error"]["reason"])
+        print(e)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def create_communities_custom_fields(app):
     """Creates one or all custom fields for communities.
 
@@ -262,12 +271,10 @@ def create_communities_custom_fields(app):
 
     try:
         communities_index = dsl.Index(
-            build_alias_name(
-                current_communities.service.config.record_cls.index._name
-            ),
-            using=current_search_client,
+            build_alias_name(current_communities.service.config.record_cls.index._name),
+            using=current_search_client,  # type: ignore
         )
         communities_index.put_mapping(body={"properties": properties})
     except search_engine.RequestError as e:
         print("An error occured while creating custom fields.")
-        print(e.info["error"]["reason"])
+        print(e)

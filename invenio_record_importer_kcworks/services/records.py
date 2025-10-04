@@ -1,16 +1,19 @@
 #! /usr/bin/env python
-# -*- coding: utf-8 -*-
-#
+# Part of invenio-record-importer-kcworks
 # Copyright (C) 2023-2024 Mesh Research
 #
 # invenio-record-importer-kcworks is free software; you can redistribute it
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
-from datetime import datetime, timezone
-from pprint import pformat
-from typing import Any, Optional
+"""Helper class to perform operations on Records."""
 
+import datetime
+import time
+from pprint import pformat
+from typing import Any
+
+import arrow
 from flask import current_app as app
 from invenio_access.permissions import system_identity
 from invenio_access.utils import get_identity
@@ -34,6 +37,19 @@ from invenio_rdm_records.services.errors import (
     ReviewNotFoundError,
 )
 from invenio_rdm_records.services.pids.providers.base import PIDProvider
+from invenio_records.systemfields.relations.errors import InvalidRelationValue
+from invenio_records_resources.services.uow import (
+    RecordCommitOp,
+    UnitOfWork,
+    unit_of_work,
+)
+from invenio_search import current_search_client
+from invenio_search.utils import prefix_index
+from marshmallow.exceptions import ValidationError
+from opensearchpy.exceptions import ConnectionError, ConnectionTimeout
+from opensearchpy.helpers.search import Search
+from sqlalchemy.exc import NoResultFound
+
 from invenio_record_importer_kcworks.errors import (
     DraftDeletionFailedError,
     ExistingRecordNotUpdatedError,
@@ -49,27 +65,17 @@ from invenio_record_importer_kcworks.services.users import UsersHelper
 from invenio_record_importer_kcworks.utils.utils import (
     compare_metadata,
 )
-from invenio_records.systemfields.relations.errors import InvalidRelationValue
-from invenio_records_resources.services.uow import (
-    RecordCommitOp,
-    UnitOfWork,
-    unit_of_work,
-)
-from invenio_search import current_search_client
-from invenio_search.utils import prefix_index
-from marshmallow.exceptions import ValidationError
-from sqlalchemy.orm.exc import NoResultFound
 
 
 class RecordsHelper:
-    """
-    A helper class for working with Invenio records during record imports.
+    """A helper class for working with Invenio records during record imports.
 
     Includes public methods for creating/updating records from metadata and for
     deleting records.
     """
 
     def __init__(self):
+        """Initialize the RecordsHelper."""
         pass
 
     @staticmethod
@@ -77,9 +83,7 @@ class RecordsHelper:
         record_id: str,
         new_owners: list[User],
     ) -> Owner:
-        """
-        Change the owner of the specified record to a new user.
-        """
+        """Change the owner of the specified record to a new user."""
         app.logger.debug(f"Changing ownership of record {record_id}")
 
         record = records_service.read(id_=record_id, identity=system_identity)._record
@@ -100,9 +104,7 @@ class RecordsHelper:
     def _find_existing_users(
         submitted_owners: list[dict], user_system: str = "knowledgeCommons"
     ) -> tuple[list[User], list[dict]]:
-        """
-        Find the users in the submitted_owners list that already exist in the
-        submitted_data.
+        """Find the users in the submitted_owners list matching submitted_data.
 
         Tries to find the user by email, then by kcworks username (username with
         'kcworks' idp string), then by simple kc username.
@@ -116,7 +118,7 @@ class RecordsHelper:
         """
         existing_users = []
         missing_owners = []
-        for index, owner in enumerate(submitted_owners):
+        for _index, owner in enumerate(submitted_owners):
             app.logger.debug(f"finding account for owner: {pformat(owner)}")
             app.logger.debug(f"owner: {pformat(owner.get('identifiers'))}")
             existing_user = None
@@ -131,11 +133,11 @@ class RecordsHelper:
                 None,
             )
             # FIXME: Look up using other identifiers
-            other_user_ids = [
-                d.get("identifier")
-                for d in owner.get("identifiers", [])
-                if d.get("scheme") != "kc_username"
-            ]
+            # other_user_ids = [
+            #     d.get("identifier")
+            #     for d in owner.get("identifiers", [])
+            #     if d.get("scheme") != "kc_username"
+            # ]
             try:
                 if user_id:
                     app.logger.debug(f"finding user for id: {user_id}")
@@ -183,14 +185,13 @@ class RecordsHelper:
         draft_id: str,
         submitted_data: dict,
         user_id: int,
-        submitted_owners: list[dict] = [],
+        submitted_owners: list[dict] | None = None,
         user_system: str = "knowledgeCommons",
         collection_id: str = "",
-        existing_record: Optional[dict] = None,
+        existing_record: dict | None = None,
         notify_record_owners: bool = True,
     ) -> dict[str, Any]:
-        """
-        Assign the ownership of the record.
+        """Assign the ownership of the record.
 
         Assigns ownership to the users specified in the submitted_owners list.
         If no users are specified, assigns ownership to the user specified by
@@ -220,6 +221,7 @@ class RecordsHelper:
                 the owner will not be added to any collection.
             notify_record_owners: whether to notify the owners of the record of
                 the work's creation. Defaults to True.
+
         Returns:
             A dict with the following keys:
             - owner_id: the ID of the user that was assigned ownership to the record
@@ -239,7 +241,7 @@ class RecordsHelper:
 
         # Find existing users and owners without accounts
         owners_with_accounts, missing_owners = RecordsHelper._find_existing_users(
-            submitted_owners
+            submitted_owners  # type:ignore
         )
         new_owners.extend(owners_with_accounts)
 
@@ -329,11 +331,11 @@ class RecordsHelper:
                             draft_id,
                         )
 
-            except AttributeError:
+            except AttributeError as e:
                 raise OwnershipChangeFailedError(
                     f"Error changing ownership of the record. Could not "
                     f"assign ownership to {new_owner}"
-                )
+                ) from e
 
         if new_grant_holders:
             app.logger.debug(f"new_grant_holders: {pformat(new_grant_holders)}")
@@ -359,16 +361,14 @@ class RecordsHelper:
                 grant_holder = [
                     g for g in new_grant_holders if str(g.id) == grant["subject"]["id"]
                 ][0]
-                new_grants.append(
-                    {
-                        "subject": {
-                            "id": str(grant_holder.id),
-                            "type": "user",
-                            "email": grant_holder.email,
-                        },
-                        "permission": "manage",
-                    }
-                )
+                new_grants.append({
+                    "subject": {
+                        "id": str(grant_holder.id),
+                        "type": "user",
+                        "email": grant_holder.email,
+                    },
+                    "permission": "manage",
+                })
 
                 # Add the member to the appropriate group collection
                 if collection_id:
@@ -398,8 +398,7 @@ class RecordsHelper:
 
     @staticmethod
     def _coerce_types(metadata: dict) -> dict:
-        """
-        Coerce metadata values to the correct types.
+        """Coerce metadata values to the correct types.
 
         This is necessary for integer fields, since the metadata
         is stored as a JSON string and so all values are strings.
@@ -417,8 +416,7 @@ class RecordsHelper:
 
     @staticmethod
     def _validate_timestamp(timestamp: str) -> bool:
-        """
-        Validate if a string is a valid UTC timestamp.
+        """Validate if a string is a valid UTC timestamp.
 
         The timestamp can be in formats:
         - 'YYYY-MM-DDTHH:mm:ssZ' (ISO 8601 with Z for UTC)
@@ -427,12 +425,12 @@ class RecordsHelper:
         try:
             # Try ISO 8601 format with Z timezone indicator
             if timestamp.endswith("Z"):
-                dt = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
+                dt = datetime.datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
                 # Convert to UTC timezone
-                dt = dt.replace(tzinfo=timezone.utc)
+                dt = dt.replace(tzinfo=datetime.UTC)
             else:
                 # Try format with microseconds and timezone offset
-                dt = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%f%z")
+                dt = datetime.datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%f%z")
 
             # Verify it's UTC
             return str(dt.tzinfo) == "UTC"
@@ -445,11 +443,10 @@ class RecordsHelper:
         self,
         metadata: dict,
         no_updates: bool = False,
-        created_timestamp_override: Optional[str] = None,
-        uow: Optional[UnitOfWork] = None,
+        created_timestamp_override: str | None = None,
+        uow: UnitOfWork | None = None,
     ) -> dict:
-        """
-        Create a new Invenio record from the provided dictionary of metadata.
+        """Create a new Invenio record from the provided dictionary of metadata.
 
         If no record with the same DOI exists, a new draft record is created
         and left unpublished. If a record with the same DOI does exist, we
@@ -465,7 +462,7 @@ class RecordsHelper:
             no_updates (bool): whether to update an existing record with the
                 same DOI if it exists (default: False)
 
-        returns:
+        Returns:
             dict: a dictionary containing the status of the record creation
                 and the record data. The keys are
 
@@ -499,15 +496,10 @@ class RecordsHelper:
                     f"{doi_for_query[1]}'"
                 )
 
-                prefix = app.config.get("SEARCH_INDEX_PREFIX", "")
-                if prefix:
-                    index = f"{prefix}rdmrecords"
-                else:
-                    index = "rdmrecords"
+                index = prefix_index("rdmrecords")
                 same_doi = current_search_client.search(
                     index=index,
-                    q=f'pids.doi.identifier:"{doi_for_query[0]}/'
-                    f'{doi_for_query[1]}"',
+                    q=f'pids.doi.identifier:"{doi_for_query[0]}/{doi_for_query[1]}"',
                 )
                 app.logger.debug(f"same_doi: {pformat(same_doi)}")
             except Exception as e:
@@ -555,7 +547,7 @@ class RecordsHelper:
                             # same DOI??
                             pass
                 raw_recs = published_recs + draft_recs
-                recs = []
+                recs: list[dict] = []
                 # deduplicate based on invenio record id and prefer published
                 # records over drafts
                 for r in raw_recs:
@@ -590,8 +582,7 @@ class RecordsHelper:
                         for r in recs
                     ]
                     app.logger.info(
-                        "found more than one existing record with same "
-                        f"DOI: {rec_list}"
+                        f"found more than one existing record with same DOI: {rec_list}"
                     )
                     app.logger.info("deleting extra records...")
                     for r in recs[1:]:
@@ -605,7 +596,7 @@ class RecordsHelper:
                             raise DraftDeletionFailedError(
                                 f"Draft deletion failed because PID for "
                                 f"record {r['id']} was unregistered: {str(e)}"
-                            )
+                            ) from None
                         except Exception as e:
                             if r["is_published"] and not r["is_draft"]:
                                 app.logger.error(
@@ -615,7 +606,7 @@ class RecordsHelper:
                                 raise DraftDeletionFailedError(
                                     f"Draft deletion failed for published "
                                     f"record {r['id']} with same DOI: {str(e)}"
-                                )
+                                ) from None
                             else:
                                 app.logger.info(
                                     f"could not delete draft record "
@@ -730,7 +721,7 @@ class RecordsHelper:
                                 )
                                 if not result._record.files.bucket:
                                     result._record.files.create_bucket()
-                                    uow.register(RecordCommitOp(result._record))
+                                    uow.register(RecordCommitOp(result._record))  # type:ignore
 
                                 return {
                                     "status": "updated_draft",
@@ -780,7 +771,7 @@ class RecordsHelper:
                                             f"Validation error when trying to "
                                             f"update existing record: "
                                             f"{pformat(errors)}"
-                                        )
+                                        ) from None
                                 app.logger.info(
                                     f"updated new draft of published: "
                                     f"{pformat(result.to_dict())}"
@@ -834,7 +825,7 @@ class RecordsHelper:
         except InvalidRelationValue as e:
             raise PublicationValidationError(
                 f"Validation error while creating new record: {str(e)}"
-            )
+            ) from e
         result_recid = result._record.id
         app.logger.debug(f"new draft record recid: {result_recid}")
         app.logger.debug(f"new draft record: {pformat(result.to_dict())}")
@@ -856,8 +847,7 @@ class RecordsHelper:
         }
 
     def _apply_artificial_created_date(self, result, created_timestamp_override, uow):
-        """
-        Set the artificial created date on the record model.
+        """Set the artificial created date on the record model.
 
         This updates only the record model's created timestamp. Event updating
         is handled separately in _override_created_timestamp after the record
@@ -867,10 +857,9 @@ class RecordsHelper:
         uow.register(RecordCommitOp(result._record))
 
     def delete_invenio_record(
-        self, record_id: str, record_type: Optional[str] = None
+        self, record_id: str, record_type: str | None = None
     ) -> bool:
-        """
-        Delete an Invenio record with the provided Id
+        """Delete an Invenio record with the provided Id.
 
         params:
             record_id (str): the id string for the Invenio record
@@ -880,13 +869,13 @@ class RecordsHelper:
         request, this function first deletes any existing review request for
         the draft record.
 
-        returns:
+        Returns:
             bool: True if the record was deleted, False otherwise
 
         """
         result = None
         app.logger.info(
-            f"deleting {record_type if record_type else ''} record " f"{record_id}..."
+            f"deleting {record_type if record_type else ''} record {record_id}..."
         )
 
         def inner_delete_draft(record_id: str) -> dict:
@@ -909,20 +898,18 @@ class RecordsHelper:
                     )
                 else:
                     raise e
-            return result
+            return result  # type:ignore
 
         try:
             reviews = records_service.review.read(system_identity, id_=record_id)
             if reviews:
                 # FIXME: What if there are multiple reviews?
                 app.logger.debug(
-                    f"deleting review request for draft record " f"{record_id}..."
+                    f"deleting review request for draft record {record_id}..."
                 )
                 records_service.review.delete(system_identity, id_=record_id)
         except ReviewNotFoundError:
-            app.logger.info(
-                f"no review requests found for draft record " f"{record_id}..."
-            )
+            app.logger.info(f"no review requests found for draft record {record_id}...")
 
         if record_type == "draft":
             result = inner_delete_draft(record_id)
@@ -936,11 +923,10 @@ class RecordsHelper:
             except PIDUnregistered:  # this draft not published
                 result = inner_delete_draft(record_id)
 
-        return result
+        return result  # type:ignore
 
-    def delete_records_from_invenio(record_ids, visible, reason, note):
-        """
-        Delete the selected records from the invenioRDM instance.
+    def delete_records_from_invenio(self, record_ids, visible, reason, note):
+        """Delete the selected records from the invenioRDM instance.
 
         FIXME: Amalgamate with delete_invenio_record
         """
@@ -990,3 +976,300 @@ class RecordsHelper:
             deleted_records[record_id] = deleted
 
         return deleted_records
+
+    def check_opensearch_health(self) -> dict:
+        """Check OpenSearch cluster health.
+
+        Returns:
+            dict: Health check result with keys:
+                - is_healthy (bool): Whether the cluster is healthy
+                - reason (str): Explanation of health status
+                - status (str): Cluster status (green/yellow/red) if available
+        """
+        try:
+            health = current_search_client.cluster.health(timeout=5)
+            status = health.get("status", "unknown")
+
+            if status == "red":
+                return {
+                    "is_healthy": False,
+                    "reason": "Cluster status is RED",
+                    "status": status,
+                }
+            elif status == "yellow":
+                # Yellow is acceptable but log a warning
+                app.logger.warning("OpenSearch cluster status is YELLOW")
+                return {
+                    "is_healthy": True,
+                    "reason": "Cluster status is YELLOW (acceptable)",
+                    "status": status,
+                }
+            else:  # green
+                return {
+                    "is_healthy": True,
+                    "reason": "Cluster status is GREEN",
+                    "status": status,
+                }
+
+        except (ConnectionTimeout, ConnectionError) as e:
+            return {
+                "is_healthy": False,
+                "reason": f"OpenSearch not responsive: {str(e)}",
+                "status": "unreachable",
+            }
+        except Exception as e:
+            app.logger.error(f"Error checking OpenSearch health: {str(e)}")
+            return {
+                "is_healthy": False,
+                "reason": f"Health check error: {str(e)}",
+                "status": "error",
+            }
+
+    def find_records_needing_created_date_update(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict]:
+        """Find all records that have hclegacy:record_creation_date and need updating.
+
+        Queries the search index for records with the legacy creation date field,
+        then compares with the current created date to determine which need updating.
+
+        Args:
+            start_date: ISO format date string - only include records created after this
+            end_date: ISO format date string - only include records created before this
+
+        Returns:
+            list[dict]: List of records needing update, each dict contains:
+                {
+                    'id': str,  # record UUID
+                    'current_created': str,  # current created timestamp
+                    'new_created': str,  # hclegacy:record_creation_date value
+                    'pid': str  # record PID for logging
+                }
+        """
+        index = prefix_index("rdmrecords")
+
+        search = Search(using=current_search_client, index=index)
+        search = search.filter(
+            "exists", field="custom_fields.hclegacy:record_creation_date"
+        )
+
+        if start_date:
+            search = search.filter("range", created={"gte": start_date})
+        if end_date:
+            search = search.filter("range", created={"lte": end_date})
+
+        records_needing_update = []
+
+        app.logger.info("Scanning records for created date updates...")
+        for hit in search.scan():
+            try:
+                # hit.meta.id is the document ID (UUID in the index)
+                # The PID is in the document's "id" field
+                uuid = hit.meta.id
+                pid = hit.id if hasattr(hit, "id") else hit.get("id", "unknown")
+                current_created = hit.created if hasattr(hit, "created") else None
+                new_created = (
+                    hit.custom_fields.get("hclegacy:record_creation_date")
+                    if hasattr(hit, "custom_fields")
+                    else None
+                )
+
+                if new_created and current_created:
+                    # Compare dates - only add if they're different
+                    current_dt = arrow.get(current_created)
+                    new_dt = arrow.get(new_created)
+
+                    if current_dt != new_dt:
+                        records_needing_update.append({
+                            "id": pid,  # Use PID, not UUID
+                            "uuid": uuid,
+                            "current_created": current_created,
+                            "new_created": new_created,
+                            "pid": pid,
+                        })
+            except Exception as e:
+                app.logger.warning(f"Error processing record {hit.meta.id}: {str(e)}")
+                continue
+
+        app.logger.info(f"Found {len(records_needing_update)} records needing update")
+        return records_needing_update
+
+    @unit_of_work()
+    def update_single_record_created_date(
+        self,
+        record_id: str,
+        new_created_date: str,
+        uow: UnitOfWork | None = None,
+    ) -> bool:
+        """Update the created date for a single record.
+
+        Uses the Invenio unit of work pattern to ensure the database change
+        is committed and the search index is automatically updated.
+
+        Args:
+            record_id: UUID of the record to update
+            new_created_date: New created timestamp in ISO format with timezone
+            uow: Unit of work instance (injected by decorator)
+
+        Returns:
+            bool: True if updated, False if skipped (dates already match)
+
+        Raises:
+            ValueError: If timestamp format is invalid
+        """
+        # Validate timestamp
+        if not RecordsHelper._validate_timestamp(new_created_date):
+            raise ValueError(f"Invalid timestamp format: {new_created_date}")
+
+        # Read record
+        record = records_service.read(system_identity, id_=record_id)._record
+
+        # Check if update is needed - compare as arrow objects to handle timezone
+        current_created = arrow.get(record.model.created)
+        new_created = arrow.get(new_created_date)
+        if current_created == new_created:
+            return False
+
+        # Update the model's created timestamp
+        record.model.created = new_created_date
+        uow.register(RecordCommitOp(record))  # type:ignore
+
+        return True
+
+    def update_record_created_dates(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        batch_size: int = 100,
+        dry_run: bool = False,
+        verbose: bool = False,
+    ) -> dict:
+        """Update created dates for all records with hclegacy:record_creation_date.
+
+        This is the main orchestration method that:
+        1. Finds all records needing updates
+        2. Processes them in batches
+        3. Updates each record's created date
+        4. Performs health checks between batches
+        5. Tracks statistics and errors
+
+        Args:
+            start_date: ISO format date - only process records created after this
+            end_date: ISO format date - only process records created before this
+            batch_size: Number of records to process before health check
+            dry_run: If True, log what would be done without making changes
+            verbose: If True, log detailed progress
+
+        Returns:
+            dict: Statistics about the operation
+                {
+                    'total_found': int,
+                    'updated': int,
+                    'skipped': int,
+                    'errors': list[dict],
+                    'stopped_early': bool (optional),
+                    'stopped_at_record': int (optional)
+                }
+        """
+        records = self.find_records_needing_created_date_update(start_date, end_date)
+        stats: dict[str, int | list] = {
+            "total_found": len(records),
+            "updated": 0,
+            "skipped": 0,
+            "errors": [],
+        }
+
+        if stats["total_found"] == 0:
+            app.logger.info("No records found needing created date updates")
+            return stats
+
+        app.logger.info(
+            f"Processing {stats['total_found']} records in batches of {batch_size}"
+        )
+
+        # Process in batches
+        for i in range(0, len(records), batch_size):
+            batch = records[i : i + batch_size]
+            batch_num = (i // batch_size) + 1
+            total_batches = (len(records) + batch_size - 1) // batch_size
+
+            app.logger.info(f"Processing batch {batch_num} of {total_batches}")
+
+            # Process each record in the batch
+            for record in batch:
+                try:
+                    if dry_run:
+                        app.logger.info(
+                            f"[DRY RUN] Would update record {record['pid']} "
+                            f"from {record['current_created']} to "
+                            f"{record['new_created']}"
+                        )
+                        stats["updated"] += 1  # type:ignore
+                    else:
+                        updated = self.update_single_record_created_date(
+                            record["id"], record["new_created"]
+                        )
+                        if updated:
+                            stats["updated"] += 1  # type:ignore
+                            if verbose:
+                                app.logger.info(
+                                    f"Updated record {record['pid']} "
+                                    f"from {record['current_created']} to "
+                                    f"{record['new_created']}"
+                                )
+                        else:
+                            stats["skipped"] += 1  # type:ignore
+                            if verbose:
+                                app.logger.info(
+                                    f"Skipped record {record['pid']} "
+                                    "(dates already match)"
+                                )
+
+                except Exception as e:
+                    app.logger.error(
+                        f"Error updating record "
+                        f"{record.get('pid', record['id'])}: {str(e)}"
+                    )
+                    stats["errors"].append({  # type:ignore
+                        "record_id": record["id"],
+                        "pid": record.get("pid", "unknown"),
+                        "error": str(e),
+                    })
+
+            # Health check after each batch (except the last one)
+            if i + batch_size < len(records):
+                health = self.check_opensearch_health()
+
+                if not health["is_healthy"]:
+                    app.logger.warning(
+                        f"OpenSearch health check failed: {health['reason']}. "
+                        f"Pausing for 30 seconds..."
+                    )
+                    time.sleep(30)
+
+                    # Check again after pause
+                    health = self.check_opensearch_health()
+                    if not health["is_healthy"]:
+                        app.logger.error(
+                            f"OpenSearch still unhealthy after pause: "
+                            f"{health['reason']}. Stopping updates. Processed "
+                            f"{i + len(batch)} of {len(records)} records."
+                        )
+                        stats["stopped_early"] = True
+                        stats["stopped_at_record"] = i + len(batch)
+                        break
+                elif verbose:
+                    app.logger.info(f"OpenSearch health: {health['status']}")
+
+                # Small delay between batches to avoid overwhelming the cluster
+                time.sleep(1)
+
+        app.logger.info(
+            f"Record created date update complete: "
+            f"{stats['updated']} updated, {stats['skipped']} skipped, "
+            f"{len(stats['errors'])} errors"  # type:ignore
+        )
+
+        return stats
