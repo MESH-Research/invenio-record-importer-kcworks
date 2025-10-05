@@ -929,7 +929,7 @@ def create_aggregations(start_date, end_date, verbose):
     print("\a")
 
 
-@cli.command(name="update_created_dates")
+@cli.command(name="update-created-dates")
 @click.option(
     "--records-only",
     is_flag=True,
