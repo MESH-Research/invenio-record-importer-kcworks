@@ -1,6 +1,6 @@
 [project]
 name = "invenio-record-importer-kcworks"
-version = "0.3.0-alpha1"
+version = "0.4.0"
 description = "Bulk import records into a InvenioRDM instance configured for Knowledge Commons Works"
 readme = "README.md"
 license = "MIT"
@@ -152,7 +152,7 @@ ignore = [
 # package-data = {"sample" = ["*.dat"]}
 
 [tool.bumpver]
-current_version = "0.3.0-alpha1"
+current_version = "0.4.0"
 version_pattern = "MAJOR.MINOR.PATCH[-TAGNUM]"
 commit_message = "bump version {old_version} -> {new_version}"
 tag_message = "{new_version}"
