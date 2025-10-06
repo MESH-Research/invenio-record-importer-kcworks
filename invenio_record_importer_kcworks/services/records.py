@@ -1025,7 +1025,7 @@ class RecordsHelper:
                     'new_publication_date': str | None,  # new publication_date
                 }
         """
-        index = prefix_index("rdmrecords")
+        index = prefix_index("rdmrecords-records")
 
         search = Search(using=current_search_client, index=index)
         search = search.filter(
@@ -1068,7 +1068,7 @@ class RecordsHelper:
                         update_data["new_created"] = new_created
                     pub_date_gap = arrow.get(new_created) - arrow.get(current_publication_date)
                     if previously_published == "not-published" and (
-                        pub_date_gap.days > 1
+                        abs(pub_date_gap.days) > 1
                     ):
                         try:
                             new_publication_date = arrow.get(new_created).format(
@@ -1118,8 +1118,12 @@ class RecordsHelper:
         Raises:
             ValueError: If timestamp format is invalid
         """
-        if not RecordsHelper._validate_timestamp(new_created_date):
-            raise ValueError(f"Invalid timestamp format: {new_created_date}")
+        if new_created_date and not RecordsHelper._validate_timestamp(new_created_date):
+            raise ValueError("Invalid timestamp format for created date: "
+                             f"{new_created_date}")
+        if new_publication_date and not RecordsHelper._validate_timestamp(new_publication_date):
+            raise ValueError("Invalid timestamp format for publication date: "
+                             f"{new_publication_date}")
 
         record = records_service.read(system_identity, id_=record_id)._record
 
