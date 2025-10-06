@@ -249,6 +249,9 @@ def compare_metadata(A: dict, B: dict) -> dict:
             # to things like titles
             if "en" in list(a.keys()):
                 a = {k: v for k, v in a.items() if k == "en"}
+            # Check if both dictionaries have the same keys
+            if set(a.keys()) != set(b.keys()):
+                return False
             return all(deep_compare(a[k], b[k]) for k in a.keys())
 
     def obj_list_compare(list_name, key, a, b, comparators):
