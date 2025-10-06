@@ -132,7 +132,12 @@ class RecordLoader:
             except (NoResultFound, DraftNotCreatedError):
                 record = records_service.read(system_identity, id_=draft_id)._record
 
-            record.model.created = created_timestamp_override
+            parsed_timestamp = RecordsHelper._parse_timestamp(created_timestamp_override)
+            if parsed_timestamp:
+                record.model.created = parsed_timestamp
+            else:
+                app.logger.error(f"Failed to parse timestamp: {created_timestamp_override}")
+                return
             uow.register(RecordCommitOp(record))
 
             # Update events in the stats-community-events index

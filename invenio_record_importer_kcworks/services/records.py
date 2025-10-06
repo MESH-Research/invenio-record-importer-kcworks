@@ -22,9 +22,6 @@ from invenio_accounts.proxies import current_accounts
 from invenio_db import db
 from invenio_i18n.proxies import current_i18n
 from invenio_pidstore.errors import PIDDoesNotExistError, PIDUnregistered
-from invenio_rdm_records.proxies import (
-    current_rdm_records,
-)
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_rdm_records.records.api import RDMRecord
 from invenio_rdm_records.records.systemfields.access.owners import Owner
@@ -47,6 +44,7 @@ from invenio_search import current_search_client
 from invenio_search.utils import prefix_index
 from marshmallow.exceptions import ValidationError
 from opensearchpy.exceptions import ConnectionError, ConnectionTimeout
+from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
 from sqlalchemy.exc import NoResultFound
 
@@ -341,14 +339,16 @@ class RecordsHelper:
                 grant_holder = [
                     g for g in new_grant_holders if str(g.id) == grant["subject"]["id"]
                 ][0]
-                new_grants.append({
-                    "subject": {
-                        "id": str(grant_holder.id),
-                        "type": "user",
-                        "email": grant_holder.email,
-                    },
-                    "permission": "manage",
-                })
+                new_grants.append(
+                    {
+                        "subject": {
+                            "id": str(grant_holder.id),
+                            "type": "user",
+                            "email": grant_holder.email,
+                        },
+                        "permission": "manage",
+                    }
+                )
 
                 # Add the member to the appropriate group collection
                 if collection_id:
@@ -392,6 +392,23 @@ class RecordsHelper:
         return metadata
 
     @staticmethod
+    def _parse_timestamp(timestamp: str) -> datetime.datetime | None:
+        """Parse a string timestamp into a datetime object using arrow.
+
+        Arrow can handle various timestamp formats including:
+        - 'YYYY-MM-DDTHH:mm:ssZ' (ISO 8601 with Z for UTC)
+        - 'YYYY-MM-DDTHH:mm:ss.SSSSSS+00:00' (with microseconds and explicit timezone)
+        - And many other common formats
+        """
+        try:
+            # Parse with arrow and convert to UTC
+            dt = arrow.get(timestamp).to("UTC").datetime
+            return dt
+        except (ValueError, arrow.parser.ParserError) as e:
+            app.logger.error(f"error parsing timestamp {timestamp}: {str(e)}")
+            return None
+
+    @staticmethod
     def _validate_timestamp(timestamp: str) -> bool:
         """Validate if a string is a valid UTC timestamp.
 
@@ -399,21 +416,7 @@ class RecordsHelper:
         - 'YYYY-MM-DDTHH:mm:ssZ' (ISO 8601 with Z for UTC)
         - 'YYYY-MM-DDTHH:mm:ss.SSSSSS+00:00' (with microseconds and explicit timezone)
         """
-        try:
-            # Try ISO 8601 format with Z timezone indicator
-            if timestamp.endswith("Z"):
-                dt = datetime.datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
-                # Convert to UTC timezone
-                dt = dt.replace(tzinfo=datetime.UTC)
-            else:
-                # Try format with microseconds and timezone offset
-                dt = datetime.datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%f%z")
-
-            # Verify it's UTC
-            return str(dt.tzinfo) == "UTC"
-        except ValueError as e:
-            app.logger.error(f"error validating timestamp {timestamp}: {str(e)}")
-            return False
+        return RecordsHelper._parse_timestamp(timestamp) is not None
 
     @unit_of_work()
     def create_invenio_record(
@@ -543,7 +546,10 @@ class RecordsHelper:
                         q=f"id:{rec_ids[0]}",
                     )._results[0]
                     if (
-                        existing_draft_hit.to_dict()["pids"]["doi"]["identifier"]
+                        existing_draft_hit.to_dict()
+                        .get("pids", {})
+                        .get("doi", {})
+                        .get("identifier")
                         != my_doi
                     ):
                         recs.append(existing_draft_hit.to_dict())
@@ -818,8 +824,12 @@ class RecordsHelper:
         is handled separately in _override_created_timestamp after the record
         is added to the community.
         """
-        result._record.model.created = created_timestamp_override
-        uow.register(RecordCommitOp(result._record))
+        parsed_timestamp = RecordsHelper._parse_timestamp(created_timestamp_override)
+        if parsed_timestamp:
+            result._record.model.created = parsed_timestamp
+            uow.register(RecordCommitOp(result._record))
+        else:
+            app.logger.error(f"Failed to parse timestamp: {created_timestamp_override}")
 
     def delete_invenio_record(
         self, record_id: str, record_type: str | None = None
@@ -898,7 +908,7 @@ class RecordsHelper:
             admin_identity = get_identity(
                 current_accounts.datastore.get_user(admin_email)
             )
-            service = current_rdm_records.records_service
+            service = records_service
             record = service.read(id_=record_id, identity=system_identity)._record
             siblings = list(RDMRecord.get_records_by_parent(record.parent))
             # remove the 0th (latest) version to leave the previous version(s):
@@ -996,6 +1006,8 @@ class RecordsHelper:
 
         Queries the search index for records with the legacy creation date field,
         then compares with the current created date to determine which need updating.
+        Also identifies records that need publication_date updates when they have
+        hclegacy:previously_published set to "not-published".
 
         Args:
             start_date: ISO format date string - only include records created after this
@@ -1007,7 +1019,10 @@ class RecordsHelper:
                     'id': str,  # record UUID
                     'current_created': str,  # current created timestamp
                     'new_created': str,  # hclegacy:record_creation_date value
-                    'pid': str  # record PID for logging
+                    'pid': str,  # record PID for logging
+                    'needs_publication_date_update': bool,  # True if needs publication_date update
+                    'current_publication_date': str | None,  # current publication_date
+                    'new_publication_date': str | None,  # new publication_date
                 }
         """
         index = prefix_index("rdmrecords")
@@ -1027,30 +1042,51 @@ class RecordsHelper:
         app.logger.info("Scanning records for created date updates...")
         for hit in search.scan():
             try:
-                # hit.meta.id is the document ID (UUID in the index)
-                # The PID is in the document's "id" field
-                uuid = hit.meta.id
-                pid = hit.id if hasattr(hit, "id") else hit.get("id", "unknown")
-                current_created = hit.created if hasattr(hit, "created") else None
-                new_created = (
-                    hit.custom_fields.get("hclegacy:record_creation_date")
-                    if hasattr(hit, "custom_fields")
-                    else None
+                uuid = hit.meta.id  # document ID (UUID in the index)
+                pid = hit.get("id", "unknown")  # document's "id" field
+                current_created: str = hit["created"]
+                new_created: str | None = hit.get("custom_fields", {}).get(
+                    "hclegacy:record_creation_date"
                 )
+                previously_published: str | None = hit.get("custom_fields", {}).get(
+                    "hclegacy:previously_published"
+                )
+                current_publication_date: str = hit["metadata"]["publication_date"]
+                new_publication_date: str | None = None
 
                 if new_created and current_created:
-                    # Compare dates - only add if they're different
-                    current_dt = arrow.get(current_created)
-                    new_dt = arrow.get(new_created)
-
-                    if current_dt != new_dt:
-                        records_needing_update.append({
-                            "id": pid,  # Use PID, not UUID
-                            "uuid": uuid,
-                            "current_created": current_created,
-                            "new_created": new_created,
-                            "pid": pid,
-                        })
+                    update_data: dict[str, str | None] = {
+                        "id": pid,  # Use PID, not UUID
+                        "uuid": uuid,
+                        "current_created": current_created,
+                        "new_created": None,
+                        "pid": pid,
+                        "current_publication_date": current_publication_date,
+                        "new_publication_date": new_publication_date,
+                    }
+                    if arrow.get(current_created) != arrow.get(new_created):
+                        update_data["new_created"] = new_created
+                    pub_date_gap = arrow.get(new_created).diff(
+                        arrow.get(current_publication_date)
+                    )
+                    if previously_published == "not-published" and (
+                        pub_date_gap.days > 1
+                    ):
+                        try:
+                            new_publication_date = arrow.get(new_created).format(
+                                "YYYY-MM-DD"
+                            )
+                            update_data["new_publication_date"] = new_publication_date
+                        except Exception as e:
+                            app.logger.warning(
+                                f"Error parsing publication date for record "
+                                f"{pid}: {str(e)}"
+                            )
+                    if (
+                        update_data["new_created"]
+                        or update_data["new_publication_date"]
+                    ):
+                        records_needing_update.append(update_data)
             except Exception as e:
                 app.logger.warning(f"Error processing record {hit.meta.id}: {str(e)}")
                 continue
@@ -1062,17 +1098,20 @@ class RecordsHelper:
     def update_single_record_created_date(
         self,
         record_id: str,
-        new_created_date: str,
+        new_created_date: str | None,
+        new_publication_date: str | None,
         uow: UnitOfWork | None = None,
     ) -> bool:
         """Update the created date for a single record.
 
         Uses the Invenio unit of work pattern to ensure the database change
         is committed and the search index is automatically updated.
+        Also updates metadata.publication_date if new_publication_date is provided.
 
         Args:
             record_id: UUID of the record to update
             new_created_date: New created timestamp in ISO format with timezone
+            new_publication_date: New publication_date in YYYY-MM-DD format
             uow: Unit of work instance (injected by decorator)
 
         Returns:
@@ -1081,24 +1120,24 @@ class RecordsHelper:
         Raises:
             ValueError: If timestamp format is invalid
         """
-        # Validate timestamp
         if not RecordsHelper._validate_timestamp(new_created_date):
             raise ValueError(f"Invalid timestamp format: {new_created_date}")
 
-        # Read record
         record = records_service.read(system_identity, id_=record_id)._record
 
-        # Check if update is needed - compare as arrow objects to handle timezone
-        current_created = arrow.get(record.model.created)
-        new_created = arrow.get(new_created_date)
-        if current_created == new_created:
-            return False
+        if new_created_date:
+            record.model.created = new_created_date
 
-        # Update the model's created timestamp
-        record.model.created = new_created_date
-        uow.register(RecordCommitOp(record))  # type:ignore
+        if new_publication_date:
+            current_publication_date = record["metadata"]["publication_date"]
+            if current_publication_date != new_publication_date:
+                record["metadata"]["publication_date"] = new_publication_date
 
-        return True
+        if new_created_date or new_publication_date:
+            uow.register(RecordCommitOp(record))  # type:ignore
+            return True
+
+        return False
 
     def update_record_created_dates(
         self,
@@ -1159,28 +1198,48 @@ class RecordsHelper:
 
             app.logger.info(f"Processing batch {batch_num} of {total_batches}")
 
-            # Process each record in the batch
+            batch_updated_pids: list[
+                str
+            ] = []  # Track PIDs of records actually updated in this batch
             for record in batch:
                 try:
                     if dry_run:
-                        app.logger.info(
+                        log_message = (
                             f"[DRY RUN] Would update record {record['pid']} "
                             f"from {record['current_created']} to "
                             f"{record['new_created']}"
                         )
+                        if record.get("new_publication_date"):
+                            log_message += (
+                                f" and publication_date from "
+                                f"{record.get('current_publication_date', 'None')} "
+                                f"to {record.get('new_publication_date', 'None')}"
+                            )
+                        app.logger.info(log_message)
                         stats["updated"] += 1  # type:ignore
+                        batch_updated_pids.append(record["pid"])
                     else:
                         updated = self.update_single_record_created_date(
-                            record["id"], record["new_created"]
+                            record["id"],
+                            record["new_created"],
+                            record["new_publication_date"],
                         )
                         if updated:
                             stats["updated"] += 1  # type:ignore
+                            batch_updated_pids.append(record["pid"])
                             if verbose:
-                                app.logger.info(
+                                log_message = (
                                     f"Updated record {record['pid']} "
                                     f"from {record['current_created']} to "
                                     f"{record['new_created']}"
                                 )
+                                if record["new_publication_date"]:
+                                    log_message += (
+                                        f" and publication_date from "
+                                        f"{record['current_publication_date']} "
+                                        f"to {record['new_publication_date']}"
+                                    )
+                                app.logger.info(log_message)
                         else:
                             stats["skipped"] += 1  # type:ignore
                             if verbose:
@@ -1194,11 +1253,30 @@ class RecordsHelper:
                         f"Error updating record "
                         f"{record.get('pid', record['id'])}: {str(e)}"
                     )
-                    stats["errors"].append({  # type:ignore
-                        "record_id": record["id"],
-                        "pid": record.get("pid", "unknown"),
-                        "error": str(e),
-                    })
+                    stats["errors"].append(
+                        {  # type:ignore
+                            "record_id": record["id"],
+                            "pid": record.get("pid", "unknown"),
+                            "error": str(e),
+                        }
+                    )
+
+            # Reindex updated records after each batch
+            if batch_updated_pids:
+                app.logger.info(
+                    f"Reindexing {len(batch_updated_pids)} updated records..."
+                )
+                try:
+                    records_q = Q("terms", id=batch_updated_pids)
+                    records_service.reindex(
+                        identity=system_identity,
+                        search_query=records_q,
+                    )
+                    app.logger.info(
+                        f"Successfully reindexed {len(batch_updated_pids)} records"
+                    )
+                except Exception as e:
+                    app.logger.error(f"Error reindexing records: {str(e)}")
 
             # Health check after each batch (except the last one)
             if i + batch_size < len(records):
