@@ -273,11 +273,10 @@ def compare_metadata(A: dict, B: dict) -> dict:
                 for k in comparators:
                     if not (
                         deep_compare(
-                            _normalize_punctuation(i[k]),
-                            _normalize_punctuation(i_2[k]),
+                            _normalize_punctuation(i.get(k)),
+                            _normalize_punctuation(i_2.get(k)),
                         )
                     ):
-                        if VERBOSE:
                         same = False
                 if not same:
                     out.setdefault("A", []).append(i_2)
