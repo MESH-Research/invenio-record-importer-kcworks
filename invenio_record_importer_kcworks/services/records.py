@@ -1066,9 +1066,7 @@ class RecordsHelper:
                     }
                     if arrow.get(current_created) != arrow.get(new_created):
                         update_data["new_created"] = new_created
-                    pub_date_gap = arrow.get(new_created).diff(
-                        arrow.get(current_publication_date)
-                    )
+                    pub_date_gap = arrow.get(new_created) - arrow.get(current_publication_date)
                     if previously_published == "not-published" and (
                         pub_date_gap.days > 1
                     ):
