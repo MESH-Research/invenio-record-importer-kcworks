@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-# -*- coding: utf-8 -*-
 #
 # Copyright (C) 2023 MESH Research
 #
@@ -7,9 +6,7 @@
 # modify it under the terms of the MIT License; see LICENSE file for more
 # details.
 
-"""
-Utility functions for core-migrate
-"""
+"""Utility functions for core-migrate."""
 
 import json
 import random
@@ -17,7 +14,7 @@ import re
 import string
 import unicodedata
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any
 
 import requests
 from flask import current_app as app
@@ -36,13 +33,11 @@ def api_request(
     args: str = "",
     token: str = "",
     params: dict[str, str] = {},
-    json_dict: Optional[Union[dict[str, str], list[dict]]] = {},
-    file_data: Optional[bytes] = None,
+    json_dict: dict[str, str] | list[dict] = {},
+    file_data: bytes | None = None,
     protocol: str = "",
 ) -> dict:
-    """
-    Make an api request and return the response
-    """
+    """Make an api request and return the response."""
     if not server:
         server = app.config.get("APP_UI_URL")
     if not token:
@@ -90,7 +85,7 @@ def api_request(
     ):
         raise requests.HTTPError(
             f"Failed to decode JSON response from API request to {api_url}"
-        )
+        ) from None
 
     result_dict = {
         "status_code": response.status_code,
@@ -106,17 +101,22 @@ def api_request(
 
 
 class IndexHelper:
+    """A helper class for working with OpenSearch domains."""
 
     def __init__(self, client=current_search_client):
+        """Initialize the IndexHelper instance."""
         self.client = client
 
     def list_indices(self):
+        """List indices in search domain."""
         return self.client.indices.get_alias().keys()
 
     def delete_index(self, index):
+        """Delete a search index."""
         return self.client.indices.delete(index)
 
-    def drop_event_indices(self, index_strings: list = []):
+    def drop_event_indices(self, index_strings: list | None = None):
+        """Delete the usage event indices."""
         if not index_strings:
             index_strings = [
                 "kcworks-events-stats-record-view",
@@ -127,7 +127,11 @@ class IndexHelper:
             if any(s for s in index_strings if s in i):
                 self.delete_index(i)
 
-    def empty_indices():
+    def empty_indices(self):
+        """Old utility method.
+
+        # FIXME: deprecate
+        """
         views_query = {
             "query": {
                 "exists": {
@@ -162,18 +166,18 @@ class IndexHelper:
 
 
 def generate_random_string(length):
-    """
-    Generate a random string of lowercase letters and integer numbers.
-    """
+    """Generate a random string of lowercase letters and integer numbers."""
     res = "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
     return res
 
 
 def generate_password(length):
+    """Generate a hashed password."""
     return hash_password(generate_random_string(48))
 
 
-def flatten_list(list_of_lists, flat_list=[]):
+def flatten_list(list_of_lists, flat_list=None):
+    """Flatten a list of lists."""
     if not list_of_lists:
         return flat_list
     else:
@@ -186,7 +190,8 @@ def flatten_list(list_of_lists, flat_list=[]):
     return flat_list
 
 
-def valid_isbn(isbn: str) -> Union[bool, str]:
+def valid_isbn(isbn: str) -> bool | str:
+    """Check isbn for validity."""
     if is_isbn10(isbn) or (is_isbn13(isbn)):
         return isbn
     elif is_isbn10(clean(isbn)) or is_isbn13(clean(isbn)):
@@ -196,8 +201,7 @@ def valid_isbn(isbn: str) -> Union[bool, str]:
 
 
 def valid_date(datestring: str) -> bool:
-    """
-    Return true if the supplied string is a valid iso8601 date.
+    """Return true if the supplied string is a valid iso8601 date.
 
     If it is, then this will also generally be valid for w3c and for LOC's
     Extended Date Time Format Level 0. The latter also requires hyphens
@@ -221,8 +225,7 @@ def valid_date(datestring: str) -> bool:
 
 
 def compare_metadata(A: dict, B: dict) -> dict:
-    """
-    Compare two Invenio records and return a dictionary of differences.
+    """Compare two Invenio records and return a dictionary of differences.
 
     param A: The first record to compare (typically the existing record
              prior to migration)
@@ -231,7 +234,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
     rtype: dict
     """
     VERBOSE = False
-    output = {"A": {}, "B": {}}
+    output: dict[str, dict] = {"A": {}, "B": {}}
 
     def deep_compare(a, b):
         if type(a) in [str, int, float, bool]:
@@ -339,7 +342,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
             output["B"]["access"] = B["access"]
 
     if "pids" in B.keys():
-        pids_diff = {"A": {}, "B": {}}
+        pids_diff: dict[str, dict] = {"A": {}, "B": {}}
         if B["pids"]["doi"] != A["pids"]["doi"]:
             pids_diff["A"] = {"doi": A["pids"]["doi"]}
             pids_diff["B"] = {"doi": B["pids"]["doi"]}
@@ -348,7 +351,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
             output["B"]["pids"] = pids_diff["B"]
 
     if "metadata" in B.keys():
-        meta_diff = {"A": {}, "B": {}}
+        meta_diff: dict[str, dict] = {"A": {}, "B": {}}
         meta_a = A["metadata"]
         meta_b = B["metadata"]
 
@@ -488,7 +491,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
     if "custom_fields" in B.keys():
         custom_a = A["custom_fields"]
         custom_b = B["custom_fields"]
-        custom_diff = {"A": {}, "B": {}}
+        custom_diff: dict[str, dict] = {"A": {}, "B": {}}
 
         simple_fields = [
             "hclegacy:collection",
@@ -700,8 +703,7 @@ def _normalize_punctuation(mystring) -> str:
 
 
 def _clean_backslashes_and_spaces(mystring: str) -> str:
-    """
-    Remove unwanted characters from a string and return it.
+    """Remove unwanted characters from a string and return it.
 
     Removes backslashes escaping quotation marks, and
     converts multiple spaces to single spaces. Also converts
@@ -717,6 +719,7 @@ def _clean_backslashes_and_spaces(mystring: str) -> str:
 
 
 def update_nested_dict(original, update):
+    """Update a nested dictionary's values."""
     for key, value in update.items():
         if isinstance(value, dict):
             original[key] = update_nested_dict(original.get(key, {}), value)
@@ -727,11 +730,8 @@ def update_nested_dict(original, update):
     return original
 
 
-def replace_value_in_nested_dict(
-    d: dict, path: str, new_value: Any
-) -> Union[dict, bool]:
-    """
-    Replace a in a nested dictionary based on a bar-separated path string.
+def replace_value_in_nested_dict(d: dict, path: str, new_value: Any) -> dict | bool:
+    """Replace a in a nested dictionary based on a bar-separated path string.
 
     Numbers in the path are treated as list indices.
 
