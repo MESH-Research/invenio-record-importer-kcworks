@@ -160,6 +160,12 @@ def serialize_command_wrapper():
     default=False,
     help="Stop loading records if an error is encountered",
 )
+@click.option(
+    "--all-or-none",
+    is_flag=True,
+    default=False,
+    help="If set, roll back all records if any record fails. If not set (default), continue importing other records even if some fail.",
+)
 @with_appcontext
 def load_records(
     records: list,
@@ -173,6 +179,7 @@ def load_records(
     clean_filenames: bool,
     verbose: bool,
     stop_on_error: bool,
+    all_or_none: bool,
 ):
     """Load serialized exported records into InvenioRDM.
 
@@ -324,6 +331,7 @@ def load_records(
         "clean_filenames": clean_filenames,
         "verbose": verbose,
         "stop_on_error": stop_on_error,
+        "all_or_none": all_or_none,
     }
     if len(records) > 0 and "-" in records[0]:
         if use_sourceids:
