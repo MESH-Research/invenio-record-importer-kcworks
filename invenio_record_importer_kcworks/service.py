@@ -89,8 +89,6 @@ class RecordImporterService(Service):
         # load_community_needs(identity)
 
         community = CommunitiesHelper().look_up_community(community_id)._record
-        app.logger.debug(f"Importing records with community: {pformat(community.id)}")
-
         self.require_permission(
             identity,
             "import_records",

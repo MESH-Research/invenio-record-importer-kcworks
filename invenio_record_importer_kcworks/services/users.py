@@ -102,7 +102,6 @@ class UsersHelper:
         community_record = current_communities.service.read(
             system_identity, id_=community_id
         )
-        app.logger.debug(f"community_record: {pformat(community_record.to_dict())}")
         collection_config = import_config.get(
             community_record.to_dict().get("slug"), None
         )

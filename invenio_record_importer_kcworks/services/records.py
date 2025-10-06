@@ -119,8 +119,6 @@ class RecordsHelper:
         existing_users = []
         missing_owners = []
         for _index, owner in enumerate(submitted_owners):
-            app.logger.debug(f"finding account for owner: {pformat(owner)}")
-            app.logger.debug(f"owner: {pformat(owner.get('identifiers'))}")
             existing_user = None
             user_email = owner.get("email")
             user_id = owner.get("user")
@@ -140,24 +138,17 @@ class RecordsHelper:
             # ]
             try:
                 if user_id:
-                    app.logger.debug(f"finding user for id: {user_id}")
                     existing_user = current_accounts.datastore.get_user_by_id(
                         int(user_id)
                     )
-                    app.logger.debug(f"found user for id: {existing_user}")
                 elif user_email:
                     existing_user = current_accounts.datastore.get_user_by_email(
                         user_email
                     )
-                app.logger.debug(f"found user for email: {existing_user}")
             except NoResultFound:
-                app.logger.debug(f"no user found for email: {user_email}")
                 pass
             if not existing_user and user_username:
                 try:
-                    app.logger.debug(
-                        f"finding user for username with idp: {user_username}"
-                    )
                     existing_user = current_accounts.datastore.find_user(
                         username=f"{user_system.lower()}-{user_username}",
                     )
@@ -165,9 +156,6 @@ class RecordsHelper:
                     pass
             if not existing_user and user_username:
                 try:
-                    app.logger.debug(
-                        f"finding user for simple username: {user_username}"
-                    )
                     existing_user = current_accounts.datastore.find_user(
                         username=user_username,
                     )
@@ -321,9 +309,6 @@ class RecordsHelper:
                     )
 
                     if notify_record_owners:
-                        app.logger.debug(
-                            f"Sending welcome email to {new_owner.email}..."
-                        )
                         UsersHelper().send_welcome_email(
                             new_owner.email,
                             new_owner,
@@ -338,7 +323,6 @@ class RecordsHelper:
                 ) from e
 
         if new_grant_holders:
-            app.logger.debug(f"new_grant_holders: {pformat(new_grant_holders)}")
             new_grants_result = records_service.access.bulk_create_grants(
                 system_identity,
                 draft_id,
@@ -352,12 +336,8 @@ class RecordsHelper:
                     ]
                 },
             )
-            app.logger.debug(f"created {len(new_grant_holders)} access grants")
-            app.logger.debug(f"new_grants: {pformat(new_grants_result)}")
             assert len(new_grants_result) == len(new_grant_holders)
             for grant in new_grants_result:
-                app.logger.debug(f"grant: {pformat(grant)}")
-                app.logger.debug(f"new_grant_holders: {pformat(new_grant_holders)}")
                 grant_holder = [
                     g for g in new_grant_holders if str(g.id) == grant["subject"]["id"]
                 ][0]
@@ -379,9 +359,6 @@ class RecordsHelper:
                     )
 
                     if notify_record_owners:
-                        app.logger.debug(
-                            f"Sending welcome email to {grant_holder.email}..."
-                        )
                         UsersHelper().send_welcome_email(
                             grant_holder.email,
                             grant_holder,
@@ -618,7 +595,6 @@ class RecordsHelper:
                 # Check for differences in metadata
                 if existing_metadata:
                     differences = compare_metadata(existing_metadata, metadata)
-                    app.logger.debug(f"differences: {differences}")
                     if differences:
                         app.logger.info(
                             "existing record with same DOI has different"
@@ -651,12 +627,6 @@ class RecordsHelper:
                             existing_metadata, update_payload
                         )
                         if new_comparison:
-                            app.logger.debug(
-                                f"existing record: "
-                                f"{pformat(new_comparison['A'])}"
-                                "new record:"
-                                f" {pformat(new_comparison['B'])}"
-                            )
                             raise ExistingRecordNotUpdatedError(
                                 "    metadata still does not match migration "
                                 "source after update attempt..."
@@ -813,9 +783,6 @@ class RecordsHelper:
                             "status": f"unchanged_existing_{record_type}",
                             "record_uuid": existing_record_id,
                         }
-                        app.logger.debug(
-                            f"metadata for existing record: {pformat(result)}"
-                        )
                         return result
 
         # Make draft and publish
@@ -827,8 +794,6 @@ class RecordsHelper:
                 f"Validation error while creating new record: {str(e)}"
             ) from e
         result_recid = result._record.id
-        app.logger.debug(f"new draft record recid: {result_recid}")
-        app.logger.debug(f"new draft record: {pformat(result.to_dict())}")
 
         # If we want to override the created timestamp, we need to do it
         # manually here because normal record api objects operations don't
@@ -904,9 +869,6 @@ class RecordsHelper:
             reviews = records_service.review.read(system_identity, id_=record_id)
             if reviews:
                 # FIXME: What if there are multiple reviews?
-                app.logger.debug(
-                    f"deleting review request for draft record {record_id}..."
-                )
                 records_service.review.delete(system_identity, id_=record_id)
         except ReviewNotFoundError:
             app.logger.info(f"no review requests found for draft record {record_id}...")

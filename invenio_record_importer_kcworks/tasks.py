@@ -79,8 +79,6 @@ def send_security_email(
     msg = Message(subject, sender=sender, recipients=recipients)
     msg.body = txt_body
     msg.html = html_body
-    app.logger.debug(f"sending security email to {recipients}...")
-    app.logger.debug(f"msg: {msg}")
 
     mail = app.extensions.get("mail")
     if mail:

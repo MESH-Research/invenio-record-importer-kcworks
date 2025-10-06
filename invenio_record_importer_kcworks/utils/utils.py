@@ -125,7 +125,6 @@ class IndexHelper:
         indices = self.list_indices()
         for i in indices:
             if any(s for s in index_strings if s in i):
-                app.logger.debug(f"deleting {i}")
                 self.delete_index(i)
 
     def empty_indices():
@@ -152,12 +151,10 @@ class IndexHelper:
             "2013-12",
             "2016-10",
         ]:
-            app.logger.debug(f"checking for old views records in index {t}...")
             old_formatted = current_search_client.search(
                 index=f"kcworks-events-stats-record-view-{t}", body=views_query
             )
             for hit in old_formatted["hits"]["hits"]:
-                app.logger.debug(f"deleting {hit['_id']}")
                 current_search_client.delete(
                     index=f"kcworks-events-stats-record-view-{t}",
                     id=hit["_id"],
@@ -255,11 +252,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
             return all(deep_compare(a[k], b[k]) for k in a.keys())
 
     def obj_list_compare(list_name, key, a, b, comparators):
-        VERBOSE = False
-        if VERBOSE:
-            app.logger.debug(f"comparing {list_name} &&&&&&")
-            app.logger.debug(a.get(list_name))
-            app.logger.debug(b.get(list_name))
+        """Compare two lists of objects."""
         out = {}
         if list_name not in a.keys():
             a[list_name] = []
@@ -285,7 +278,6 @@ def compare_metadata(A: dict, B: dict) -> dict:
                         )
                     ):
                         if VERBOSE:
-                            app.logger.debug(f"{k} is different: {i} != {i_2}")
                         same = False
                 if not same:
                     out.setdefault("A", []).append(i_2)
@@ -294,12 +286,6 @@ def compare_metadata(A: dict, B: dict) -> dict:
             out.setdefault("A", []).append(a[list_name])
             out.setdefault("B", []).append(b[list_name])
 
-        if VERBOSE:
-            app.logger.debug(f"comparing {list_name} &&&&&&")
-        if VERBOSE:
-            app.logger.debug(a[list_name])
-        if VERBOSE:
-            app.logger.debug(b[list_name])
         return out
 
     def compare_people(list_a, list_b):

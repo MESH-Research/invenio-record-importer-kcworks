@@ -316,15 +316,11 @@ class CommunitiesHelper:
         community_check = current_communities.service.read(
             system_identity, id_=community_string
         )
-        app.logger.debug(f"community_check: {pformat(community_check)}")
         if not community_check:
             community_check = current_communities.service.search(
                 system_identity, q=f"slug:{community_string}"
             )
             if community_check.total == 0:
-                app.logger.debug(
-                    "Community", community_string, "does not exist. Creating..."
-                )
                 # FIXME: use group-collections to create the community
                 # so that we import community metadata
                 community_check = self.create_invenio_community(
@@ -486,9 +482,6 @@ class CommunitiesHelper:
                     "    cancelling existing review request for the record "
                     f"to the community...: {existing_review.id}"
                 )
-                app.logger.debug(
-                    f"existing_review: {pformat(existing_review.to_dict())}"
-                )
                 # if (
                 #     existing_review.to_dict()["receiver"].get("community")
                 #     == community_id
@@ -498,10 +491,8 @@ class CommunitiesHelper:
                 #         " (already for the community)..."
                 #     )
                 if not existing_review.data["is_open"]:
-                    app.logger.debug("   existing review request is not open, deleting")
                     try:
                         records_service.review.delete(system_identity, id_=draft_id)
-                        app.logger.debug("   existing review request deleted")
                     except (
                         NotFoundError,
                         CannotExecuteActionError,
@@ -514,19 +505,12 @@ class CommunitiesHelper:
                         draft_record.parent.review = None
                         uow.register(ParentRecordCommitOp(draft_record.parent))
                         uow.register(RecordIndexOp(draft_record))
-                        app.logger.debug(
-                            "   existing review request was already deleted, "
-                            "manually removed from record metadata"
-                        )
                 else:
                     request_id = existing_review.id
                     cancel_existing_request = current_requests_service.execute_action(
                         system_identity,
                         request_id,
                         "cancel",
-                    )
-                    app.logger.debug(
-                        f"cancel_existing_request: {pformat(cancel_existing_request)}"
                     )
             # If no existing review request, just continue
             except (ReviewNotFoundError, NoResultFound):
@@ -575,10 +559,6 @@ class CommunitiesHelper:
                         submitted_request.id,
                         "submit",
                     )
-                    app.logger.debug(
-                        f"submitted_request: {pformat(submitted_request.to_dict())}"
-                    )
-                app.logger.debug("submitted to community")
 
                 if submitted_request.data["status"] != "accepted":
                     try:
@@ -600,7 +580,6 @@ class CommunitiesHelper:
                 else:
                     review_accepted = submitted_request
 
-                app.logger.debug("review_accepted")
                 assert review_accepted.data["status"] == "accepted"
 
                 return review_accepted.to_dict()  # type:ignore
@@ -619,10 +598,6 @@ class CommunitiesHelper:
                 app.logger.debug("   record is already published")
                 record_communities = current_rdm_records.record_communities_service
 
-                app.logger.debug(
-                    "record before inclusion: "
-                    f"{pformat(records_service.read(system_identity, id_=draft_id).id)}"
-                )
 
                 # Try to create and submit a 'community-inclusion' request
                 requests, errors = record_communities.add(
@@ -631,7 +606,6 @@ class CommunitiesHelper:
                     {"communities": [{"id": community_id}]},
                 )
                 submitted_request = requests[0] if requests else None
-                app.logger.debug(pformat(submitted_request))
 
                 # If that failed because the record is already included in the
                 # community, skip accepting the request (unnecessary)
@@ -653,9 +627,6 @@ class CommunitiesHelper:
                     app.logger.debug(pformat(errors))
                     record = record_communities.record_cls.pid.resolve(draft_id)
                     request_id = record_communities._exists(community_id, record)
-                    app.logger.debug(
-                        f"submitted inclusion request: {pformat(request_id)}"
-                    )
                 # If it succeeded, continue with the new request
                 else:
                     request_id = (
@@ -754,8 +725,6 @@ class CommunitiesHelper:
             ]
             for group in group_list:
                 group_id = group["group_identifier"]
-                app.logger.debug(f"    linking to group_id: {group_id}")
-                app.logger.debug(f"    linking to group_name: {group['group_name']}")
                 group_name = group["group_name"]
                 coll_record = None
                 index = prefix_index("communities")
@@ -787,7 +756,6 @@ class CommunitiesHelper:
                     try:
                         assert len(coll_records) == 1
                     except AssertionError:
-                        app.logger.debug(pformat(metadata_record))
                         if len(coll_records) > 1:
                             raise MultipleActiveCollectionsError(
                                 f"    multiple active collections found for {group_id}"
@@ -797,16 +765,13 @@ class CommunitiesHelper:
                                 f'    no active collections found for "{group_id}"'
                             ) from None
                     coll_record = coll_records[0]
-                    app.logger.debug(f"    found group collection {coll_record['id']}")
                 except CollectionNotFoundError:
                     try:
-                        app.logger.debug("    creating group collection...")
                         coll_record = collections_service.create(
                             system_identity,
                             group_id,
                             record_source,
                         )
-                        app.logger.debug("   created group collection...")
                     except UnprocessableEntity as e:
                         if e.description and (
                             "Something went wrong requesting group" in e.description
@@ -829,15 +794,11 @@ class CommunitiesHelper:
                             f"for group {group_id} ({group_name})"
                         ) from None
                 if coll_record:
-                    app.logger.debug(
-                        f"Adding record to group collection {coll_record['id']}"
-                    )
                     add_result = self.publish_record_to_community(
                         metadata_record["id"],
                         coll_record["id"],
                     )
                     added_to_collections.append(add_result)
-                    app.logger.debug(f"Added to group collection {coll_record['id']}")
             if added_to_collections:
                 self._remove_from_extraneous_collections(metadata_record, group_list)
                 app.logger.info(
@@ -866,16 +827,12 @@ class CommunitiesHelper:
             and c.get("custom_fields", {}).get("kcr:commons_group_id") not in group_ids
         ]
         if extraneous_collections:
-            app.logger.debug(
-                f"Removing record from extraneous collections {extraneous_collections}"
-            )
             for c in extraneous_collections:
                 removed = current_community_records_service.delete(
                     system_identity,
                     c["id"],
                     {"records": [{"id": metadata_record["id"]}]},
                 )
-                app.logger.debug(f"Removed {removed}")
 
     def check_opensearch_health(self) -> dict:
         """Check OpenSearch cluster health.

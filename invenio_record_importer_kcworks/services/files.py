@@ -200,7 +200,6 @@ class FilesHelper:
                     "...file key existed on record but was empty and was "
                     "removed. This probably indicates a prior failed upload."
                 )
-                app.logger.debug(pformat(removed_file))
                 return True
             except Exception as e:
                 app.logger.error(f"failed to unlock files for record {draft_id}...")
@@ -486,7 +485,6 @@ class FilesHelper:
                 "...file key existed on record but was empty and was "
                 "removed. This probably indicates a prior failed upload."
             )
-            app.logger.debug(pformat(removed_file))
 
             return True
         else:

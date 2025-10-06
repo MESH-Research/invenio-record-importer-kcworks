@@ -170,12 +170,10 @@ class RecordLoader:
                                 }
                             }
                         }
-                        app.logger.error(f"Search query: {pformat(search_query)}")
                         search_result = current_search_client.search(
                             index=prefix_index("stats-community-events"),
                             body=search_query,
                         )
-                        app.logger.error(f"Search result: {pformat(search_result)}")
 
                         for hit in search_result["hits"]["hits"]:
                             event_id = hit["_id"]
@@ -189,15 +187,6 @@ class RecordLoader:
                                 index=prefix_index("stats-community-events"),
                                 id=event_id,
                                 body=update_body,
-                            )
-                            app.logger.error(f"Updated event: {pformat(updated_event)}")
-                            app.logger.error(
-                                f"Updating event {event_id}: "
-                                f"{pformat(event_source)}"
-                            )
-                            app.logger.error(
-                                f"Updated event {event_id} with created_date: "
-                                f"{created_timestamp_override}"
                             )
 
                     # Refresh the index after all updates to ensure they're searchable
@@ -340,7 +329,6 @@ class RecordLoader:
             "",
         )
         for key, val in overrides.items():
-            app.logger.debug(f"updating metadata key {key} with value {val}")
             updated_data = replace_value_in_nested_dict(import_data, key, val)
             if isinstance(updated_data, dict):
                 import_data = updated_data
@@ -1115,8 +1103,6 @@ class RecordLoader:
             bookmark_override=arrow.get(start_date).naive,
             eager=True,
         )
-        app.logger.debug("    created usage aggregations...")
-        app.logger.debug(pformat(aggregations))
 
         return aggregations
 
@@ -1243,14 +1229,6 @@ class RecordLoader:
                 if f.filename.split("/")[-1]
                 in record_metadata.get("files", {}).get("entries", {}).keys()
             ]
-            app.logger.debug(
-                f"current files for record {current_record_index}: "
-                f"{pformat(current_files)}"
-            )
-            app.logger.debug(f"all files: {pformat(files)}")
-            app.logger.debug(
-                f"entries: {pformat(record_metadata.get('files', {}).get('entries', {}))}"  # noqa: E501
-            )
 
             try:
                 result = LoaderResult(
