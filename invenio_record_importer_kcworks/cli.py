@@ -1,6 +1,4 @@
-#! /usr/bin/env python
-# -*- coding: utf-8 -*-
-#
+# Part of invenio-record-importer-kcworks
 # Copyright (C) 2023-2024 Mesh Research
 #
 # invenio-record-importer-kcworks is free software; you can redistribute it
@@ -8,8 +6,7 @@
 # more details.
 
 
-"""
-Functions to convert and migrate legacy CORE deposits to InvenioRDM
+"""Functions to convert and migrate legacy CORE deposits to InvenioRDM.
 
 Relies on the following environment variables:
 
@@ -28,17 +25,18 @@ knowledge_commons_works directory.
 """
 
 from pprint import pformat, pprint
-from typing import Optional
 
 import arrow
 import click
 from flask import current_app as app
 from flask.cli import with_appcontext
 from halo import Halo
+
 from invenio_record_importer_kcworks.record_loader import (
     RecordLoader,
 )
 from invenio_record_importer_kcworks.serializer import serialize_json
+from invenio_record_importer_kcworks.services.communities import CommunitiesHelper
 from invenio_record_importer_kcworks.services.records import RecordsHelper
 from invenio_record_importer_kcworks.services.serialization import (
     SerializationService,
@@ -48,19 +46,22 @@ from invenio_record_importer_kcworks.services.stats.stats import (
     StatsFabricator,
 )
 from invenio_record_importer_kcworks.services.users import UsersHelper
+from invenio_record_importer_kcworks.tasks import (
+    update_community_created_dates_task,
+    update_record_created_dates_task,
+)
 
 
 @click.group()
 def cli():
+    """Main cli command group."""
     pass
 
 
 @cli.command(name="serialize")
 @with_appcontext
 def serialize_command_wrapper():
-    """
-    Serialize all exported legacy CORE deposits as JSON that Invenio can ingest
-    """
+    """Serialize all exported legacy CORE deposits as JSON that Invenio can ingest."""
     serialize_json()
 
 
@@ -167,22 +168,19 @@ def load_records(
     use_sourceids: bool,
     scheme: str,
     aggregate: bool,
-    start_date: Optional[str],
-    end_date: Optional[str],
+    start_date: str | None,
+    end_date: str | None,
     clean_filenames: bool,
     verbose: bool,
     stop_on_error: bool,
 ):
-    """
-    Load serialized exported records into InvenioRDM.
-
+    """Load serialized exported records into InvenioRDM.
 
     If RECORDS is not specified, all records will be loaded. Otherwise,
     RECORDS should be a list of positional arguments specifying which records
     to load.
 
     Examples:
-
         To load records 1, 2, 3, and 5, run:
 
             invenio importer load 1 2 3 5
@@ -210,7 +208,6 @@ def load_records(
             invenio importer load --aggregate
 
     Notes:
-
         This program must be run from the base knowledge_commons_works
         directory. It will look for the exported records in the directory
         specified by the RECORD_IMPORTER_DATA_DIR environment variable.
@@ -255,7 +252,6 @@ def load_records(
         file.
 
     Args:
-
         records (list, optional): A list of the provided positional arguments
             specifying which records to load. Defaults to [].
 
@@ -315,7 +311,6 @@ def load_records(
             encountered. Defaults to False.
 
     Returns:
-
         None
     """
     named_params = {
@@ -334,7 +329,7 @@ def load_records(
         if use_sourceids:
             print("Error: Cannot use source ids with ranges.")
             app.logger.error(
-                "Ranges can only be specified using record indices, not source" " ids."
+                "Ranges can only be specified using record indices, not source ids."
             )
             return
         named_params["start_index"], named_params["stop_index"] = records[0].split("-")
@@ -393,8 +388,7 @@ def load_records(
 )
 @with_appcontext
 def read_records(records, scheme, raw_input, use_sourceids, field_path) -> None:
-    """
-    Read serialized records or raw input from the source file or original data.
+    """Read serialized records or raw input from the source file or original data.
 
     params:
         records: list
@@ -447,9 +441,7 @@ def read_records(records, scheme, raw_input, use_sourceids, field_path) -> None:
 @click.option(
     "-e",
     "--email",
-    help=(
-        "The email address of the user to create. This must be the same " "Required."
-    ),
+    help=("The email address of the user to create. This must be the same Required."),
 )
 @click.option(
     "-o",
@@ -488,8 +480,7 @@ def create_user(
     full_name: str,
     community_owner: list,
 ) -> None:
-    """
-    Create a new user in InvenioRDM linked to an external service.
+    """Create a new user in InvenioRDM linked to an external service.
 
     This function does not just create a new user in the Invenio database,
     but also links the user's account to an external service as a SAML
@@ -552,9 +543,7 @@ def create_user(
             print_community_owner(community_owner, create_response["communities_owned"])
 
     def print_community_owner(community_owner, communities_owned):
-        print(
-            f"User {email} has been assigned as owner of the " "following communities:"
-        )
+        print(f"User {email} has been assigned as owner of the following communities:")
         for community_id in community_owner:
             matches = [
                 c
@@ -588,15 +577,14 @@ def create_user(
 @cli.command(name="count")
 @with_appcontext
 def count_objects():
-    """
-    Count the number of objects in the JSON file for import.
+    """Count the number of objects in the JSON file for import.
 
     The file location is specified by the RECORD_IMPORTER_SERIALIZED_PATH
     config variable.
     """
     serialized_path = app.config.get("RECORD_IMPORTER_SERIALIZED_PATH")
     try:
-        with open(serialized_path, "r") as file:
+        with open(serialized_path) as file:
             lines_count = sum(1 for line in file)
             print(f"Total objects in {serialized_path}: {lines_count}")
     except FileNotFoundError:
@@ -626,9 +614,7 @@ def count_objects():
 )
 @with_appcontext
 def delete_records(records, visible, reason, note):
-    """
-    Delete one or more records from InvenioRDM by record id.
-    """
+    """Delete one or more records from InvenioRDM by record id."""
     print("Starting to delete records")
     results = RecordsHelper().delete_records_from_invenio(
         records, visible, reason, note
@@ -717,8 +703,7 @@ def create_stats(
     date_field: str,
     verbose: bool,
 ) -> None:
-    """
-    Create events necessary for legacy usage statistics for imported records.
+    """Create events necessary for legacy usage statistics for imported records.
 
     This operation is idempotent, so it can be run multiple times without
     causing errors or creating duplicate events. Each time it will simply
@@ -767,7 +752,7 @@ def create_stats(
             events are created. Otherwise, no information will be printed
             until all the stats events are created.
 
-    returns:
+    Returns:
         None
     """
     print("Creating synthetic stats events from db records...")
@@ -841,8 +826,7 @@ def create_stats(
 # )
 @with_appcontext
 def create_aggregations(start_date, end_date, verbose):
-    """
-    Create usage stats aggregations for all records.
+    """Create usage stats aggregations for all records.
 
     This is a very time-consuming operation, but the operations are run as
     background tasks so as not to interfere with other operations. It can,
@@ -882,7 +866,7 @@ def create_aggregations(start_date, end_date, verbose):
             aggregations are created. Otherwise, no information will be printed
             until all the stats aggregations are created.
 
-    returns:
+    Returns:
         None
     """
     print("Creating usage stats aggregations...")
@@ -942,6 +926,235 @@ def create_aggregations(start_date, end_date, verbose):
 
     print("All done creating usage stats aggregations!")
     # Make alert sound to signal end of loading process
+    print("\a")
+
+
+@cli.command(name="update-created-dates")
+@click.option(
+    "--records-only",
+    is_flag=True,
+    default=False,
+    help="Only update record created dates, not communities",
+)
+@click.option(
+    "--communities-only",
+    is_flag=True,
+    default=False,
+    help="Only update community created dates, not records",
+)
+@click.option(
+    "--start-date",
+    default=None,
+    help=(
+        "Only update records created after this date (YYYY-MM-DD format). "
+        "Only applies to records, not communities."
+    ),
+)
+@click.option(
+    "--end-date",
+    default=None,
+    help=(
+        "Only update records created before this date (YYYY-MM-DD format). "
+        "Only applies to records, not communities."
+    ),
+)
+@click.option(
+    "--batch-size",
+    default=100,
+    type=int,
+    help="Number of records/communities to process in each batch",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Show what would be updated without making changes",
+)
+@click.option(
+    "--background",
+    is_flag=True,
+    default=False,
+    help="Run the update as a background Celery task",
+)
+@click.option(
+    "-v",
+    "--verbose",
+    is_flag=True,
+    default=False,
+    help="Print detailed progress information",
+)
+@with_appcontext
+def update_created_dates(
+    records_only: bool,
+    communities_only: bool,
+    start_date: str | None,
+    end_date: str | None,
+    batch_size: int,
+    dry_run: bool,
+    background: bool,
+    verbose: bool,
+):
+    r"""Update created dates for migrated records and communities.
+
+    This command updates the 'created' timestamp for:
+    1. Records with custom_fields.hclegacy:record_creation_date
+    2. Communities based on their oldest record's creation date
+
+    Records are always updated before communities to ensure accurate data.
+
+    \b
+    Examples:
+
+        Update all records and communities:
+
+            invenio importer update_created_dates
+
+        Update only records created in 2020:
+
+            invenio importer update_created_dates --records-only \\
+                --start-date 2020-01-01 --end-date 2020-12-31
+
+        Update only communities:
+
+            invenio importer update_created_dates --communities-only
+
+        Run in background as Celery task:
+
+            invenio importer update_created_dates --background
+
+        Dry run to see what would be updated:
+
+            invenio importer update_created_dates --dry-run --verbose
+    """
+    # Validate mutually exclusive options
+    if records_only and communities_only:
+        click.echo("Error: Cannot use both --records-only and --communities-only")
+        return
+
+    # Validate date formats
+    if start_date:
+        try:
+            arrow.get(start_date)
+        except arrow.parser.ParserError:
+            click.echo(f"Error: Invalid start-date format: {start_date}")
+            click.echo("Expected format: YYYY-MM-DD")
+            return
+
+    if end_date:
+        try:
+            arrow.get(end_date)
+        except arrow.parser.ParserError:
+            click.echo(f"Error: Invalid end-date format: {end_date}")
+            click.echo("Expected format: YYYY-MM-DD")
+            return
+
+    if background:
+        click.echo("Starting background tasks...")
+
+        tasks = []
+
+        if not communities_only:
+            click.echo("Queuing record update task...")
+            task = update_record_created_dates_task.delay(
+                start_date=start_date,
+                end_date=end_date,
+                batch_size=batch_size,
+                dry_run=dry_run,
+                verbose=verbose,
+            )
+            tasks.append(("records", task))
+            click.echo(f"Record update task queued: {task.id}")
+
+        if not records_only:
+            click.echo("Queuing community update task...")
+            task = update_community_created_dates_task.delay(
+                batch_size=batch_size,
+                dry_run=dry_run,
+                verbose=verbose,
+            )
+            tasks.append(("communities", task))
+            click.echo(f"Community update task queued: {task.id}")
+
+        click.echo("\nTasks queued successfully!")
+        click.echo("Monitor progress with: celery -A invenio_app.celery inspect active")
+        for name, task in tasks:
+            click.echo(f"  {name}: {task.id}")
+
+        return
+
+    # Run in foreground
+    if not communities_only:
+        click.echo("=" * 70)
+        click.echo("Updating record created dates...")
+        click.echo("=" * 70)
+
+        records_helper = RecordsHelper()
+        records_stats = records_helper.update_record_created_dates(
+            start_date=start_date,
+            end_date=end_date,
+            batch_size=batch_size,
+            dry_run=dry_run,
+            verbose=verbose,
+        )
+
+        click.echo("\nRecord Update Results:")
+        click.echo(f"  Total found: {records_stats['total_found']}")
+        click.echo(f"  Updated: {records_stats['updated']}")
+        click.echo(f"  Skipped: {records_stats['skipped']}")
+        click.echo(f"  Errors: {len(records_stats['errors'])}")
+
+        if records_stats.get("stopped_early"):
+            click.echo(
+                f"  WARNING: Stopped early at record "
+                f"{records_stats['stopped_at_record']} "
+                f"due to OpenSearch health issues"
+            )
+
+        if records_stats["errors"]:
+            click.echo("\nErrors:")
+            for error in records_stats["errors"][:10]:  # Show first 10
+                click.echo(f"  - {error['pid']}: {error['error']}")
+            if len(records_stats["errors"]) > 10:
+                click.echo(f"  ... and {len(records_stats['errors']) - 10} more")
+
+    if not records_only:
+        click.echo("\n" + "=" * 70)
+        click.echo("Updating community created dates...")
+        click.echo("=" * 70)
+
+        communities_helper = CommunitiesHelper()
+        communities_stats = communities_helper.update_community_created_dates(
+            batch_size=batch_size,
+            dry_run=dry_run,
+            verbose=verbose,
+        )
+
+        click.echo("\nCommunity Update Results:")
+        click.echo(f"  Total found: {communities_stats['total_found']}")
+        click.echo(f"  Updated: {communities_stats['updated']}")
+        click.echo(f"  Skipped: {communities_stats['skipped']}")
+        click.echo(f"  No records: {communities_stats['no_records']}")
+        click.echo(f"  Errors: {len(communities_stats['errors'])}")
+
+        if communities_stats.get("stopped_early"):
+            click.echo(
+                f"  WARNING: Stopped early at community "
+                f"{communities_stats['stopped_at_community']} "
+                f"due to OpenSearch health issues"
+            )
+
+        if communities_stats["errors"]:
+            click.echo("\nErrors:")
+            for error in communities_stats["errors"][:10]:
+                click.echo(f"  - {error['slug']}: {error['error']}")
+            if len(communities_stats["errors"]) > 10:
+                click.echo(f"  ... and {len(communities_stats['errors']) - 10} more")
+
+    click.echo("\n" + "=" * 70)
+    click.echo("Update complete!")
+    click.echo("=" * 70)
+
+    # Alert sound
     print("\a")
 
 

@@ -1,3 +1,4 @@
+import arrow
 import pytest
 from flask import current_app
 from invenio_rdm_records.resources.stats.event_builders import (
@@ -10,6 +11,7 @@ from invenio_record_importer_kcworks.services.stats.aggregations import (
     StatAggregatorOverridable,
 )
 from invenio_search.proxies import current_search, current_search_client
+from invenio_search.utils import prefix_index
 from invenio_stats.contrib.event_builders import build_file_unique_id
 from invenio_stats.processors import EventsIndexer, anonymize_user, flag_robots
 from invenio_stats.queries import TermsQuery
@@ -36,9 +38,7 @@ test_config_stats["STATS_REGISTER_INDEX_TEMPLATES"] = True
 
 test_config_stats["STATS_EVENTS"] = {
     "file-download": {
-        "templates": (
-            "invenio_record_importer_kcworks.services.search.index_templates.stats.file_download"
-        ),
+        "templates": ("kcworks.services.search.index_templates.stats.file_download"),
         # "templates": "invenio_rdm_records.records.stats.templates."
         # "events.file_download",
         "event_builders": [
@@ -55,9 +55,7 @@ test_config_stats["STATS_EVENTS"] = {
         },
     },
     "record-view": {
-        "templates": (
-            "invenio_record_importer_kcworks.services.search.index_templates.stats.record_view"
-        ),
+        "templates": ("kcworks.services.search.index_templates.stats.record_view"),
         # "templates": "invenio_rdm_records.records.stats.templates."
         # "events.record_view",
         "event_builders": [
@@ -79,7 +77,7 @@ test_config_stats["STATS_EVENTS"] = {
 test_config_stats["STATS_AGGREGATIONS"] = {
     "file-download-agg": {
         "templates": (
-            "invenio_record_importer_kcworks.services.search.index_templates.stats.aggr_file_download"
+            "kcworks.services.search.index_templates.stats.aggr_file_download"
         ),
         # "templates": "invenio_rdm_records.records.stats.templates."
         # "aggregations.aggr_file_download",
@@ -107,9 +105,7 @@ test_config_stats["STATS_AGGREGATIONS"] = {
         },
     },
     "record-view-agg": {
-        "templates": (
-            "invenio_record_importer_kcworks.services.search.index_templates.stats.aggr_record_view"
-        ),
+        "templates": ("kcworks.services.search.index_templates.stats.aggr_record_view"),
         # "templates": "invenio_rdm_records.records.stats.templates."
         # "aggregations.aggr_record_view",
         "cls": StatAggregatorOverridable,
@@ -130,9 +126,7 @@ test_config_stats["STATS_AGGREGATIONS"] = {
                     {"precision_threshold": 1000},
                 ),
             },
-            "query_modifiers": [
-                lambda query, **_: query.filter("term", via_api=False)
-            ],
+            "query_modifiers": [lambda query, **_: query.filter("term", via_api=False)],
         },
     },
 }
@@ -140,34 +134,60 @@ test_config_stats["STATS_AGGREGATIONS"] = {
 
 @pytest.fixture(scope="function")
 def create_stats_indices(app):
-
     configs = {
         **test_config_stats["STATS_EVENTS"],
         **test_config_stats["STATS_AGGREGATIONS"],
     }
     template_paths = [c["templates"] for c in configs.values()]
     templates = {}
-    try:
-        results = []
-        for template_path in template_paths:
-            results.append(current_search.register_templates(template_path))
-        for result in results:
-            for index_name, index_template in result.items():
-                templates[index_name] = index_template
-        for index_name, index_template in templates.items():
-            current_search._put_template(
-                index_name,
-                index_template,
-                current_search_client.indices.put_index_template,
-                ignore=None,
-            )
-    except Exception as e:
-        current_app.logger.error(
-            "An error occured while creating stats indices."
+
+    results = []
+    for template_path in template_paths:
+        print(f"Registering template from path: {template_path}")
+        result = current_search.register_templates(template_path)
+        print(f"Result from register_templates: {result}")
+        if result is None:
+            print(f"WARNING: register_templates returned None for {template_path}")
+            continue
+        results.append(result)
+    for result in results:
+        for index_name, index_template in result.items():
+            print(f"Adding template for index: {index_name}")
+            templates[index_name] = index_template
+    for index_name, index_template in templates.items():
+        print(f"Putting template for index: {index_name}")
+        current_search._put_template(
+            index_name,
+            index_template,
+            current_search_client.indices.put_index_template,
+            ignore=None,
         )
-        current_app.logger.error(e)
-        print("An error occured while creating stats indices.")
-        print(e)
+    print(f"Successfully registered {len(templates)} templates")
+
+    # Create the actual indices with mappings from templates so queries don't fail
+    current_month = arrow.utcnow().format("YYYY-MM")
+
+    # Create time-based indices that match the template patterns
+    indices_to_create = [
+        prefix_index(f"stats-record-view-{current_month}"),
+        prefix_index(f"stats-file-download-{current_month}"),
+    ]
+
+    for index_name in indices_to_create:
+        if not current_search_client.indices.exists(index=index_name):
+            # Index will be created automatically with mappings from the template
+            # Just index a dummy document to trigger creation, then delete it
+            try:
+                current_search_client.index(
+                    index=index_name,
+                    id="dummy",
+                    body={"timestamp": arrow.utcnow().isoformat()},
+                )
+                current_search_client.delete(index=index_name, id="dummy")
+                current_search_client.indices.refresh(index=index_name)
+                print(f"Created index with mappings: {index_name}")
+            except Exception as e:
+                print(f"Warning: Could not create index {index_name}: {e}")
 
 
 test_config_stats["STATS_QUERIES"] = {
@@ -259,6 +279,4 @@ AllowAllPermission = type(
     {"can": lambda self: True, "allows": lambda *args: True},
 )()
 
-test_config_stats["STATS_PERMISSION_FACTORY"] = (
-    permissions_policy_lookup_factory
-)
+test_config_stats["STATS_PERMISSION_FACTORY"] = permissions_policy_lookup_factory

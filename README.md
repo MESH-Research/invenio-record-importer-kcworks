@@ -1,8 +1,8 @@
 # INVENIO RECORD IMPORTER for Knowledge Commons Works
 
-Version 0.3.0-alpha1
+Version 0.4.0
 
-*ALPHA QUALITY SOFTWARE - USE AT OWN RISK*
+_ALPHA QUALITY SOFTWARE - USE AT OWN RISK_
 
 The focus for this module has shifted from the CLI used to migrate records from the legacy Humanities Commons CORE repository to an API endpoint that can be used to import records from any source. The CLI interface has not yet been updated to work with the logic behind the API endpoint, and is currently broken. The API endpoint, however, is fully functional and documentation can be found [here](https://mesh-research.github.io/knowledge-commons-works/api.html#streamlined-import-api).
 
@@ -41,6 +41,7 @@ To install for development of this module, clone the repository and run
 ```shell
 pipenv install -e .
 ```
+
 from within the repository.
 
 ## Setup
@@ -61,17 +62,17 @@ Fetching of user data and creation of group collections relies on these packages
 
 The importer relies on several environment variables. These can be set in the `invenio.cfg` file of the InvenioRDM instance, or in a `.env` file in the base directory of the InvenioRDM instance. If they are set in the `.env` file they must be prefixed with `INVENIO_`.
 
-| Variable name                   | Required | Description                                                                                                                                                        |
-| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| RECORD_IMPORTER_ADMIN_EMAIL                     | Y | The email address of the admin user in the InvenioRDM instance. This defaults to the global ADMIN_EMAIL Flask environment variable.                                                                                                     |
-| RECORD_IMPORTER_DATA_DIR       | Y | The folder where the file with serialized metadata records can be found, named `records-for-import.json`                                                           |
-| RECORD_IMPORTER_FILES_LOCATION | N | The folder where the files for upload withe the new deposits may be found. It defaults to a subfolder of the RECORD_IMPORTER_DATA_DIR directory.                                                                                         |
-| RECORD_IMPORTER_LOGS_LOCATION   | N | The full path to the local directory where the record import log files will be written. It defaults to the `logs` folder of the `invenio-record-importer-kcworks` modules.                                                                                          |
-| RECORD_IMPORTER_OVERRIDES_FOLDER | N | The full path to the local directory where the overrides files can be found. It defaults to the `overrides` subfolder of the folder at RECORD_IMPORTER_DATA_DIR.                                                                                       |
-| RECORD_IMPORTER_CREATED_LOG_PATH | N | The full path to the local file where the created records log will be written. It defaults to the `record_importer_created_records.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
-| RECORD_IMPORTER_FAILED_LOG_PATH | N | The full path to the local file where the failed records log will be written. It defaults to the `record_importer_failed_records.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
-| RECORD_IMPORTER_SERIALIZED_PATH | N | The full path to the local file where the serialized records will be written. It defaults to the `record_importer_serialized_records.jsonl` file in the RECORD_IMPORTER_DATA_DIR folder.                                                                                       |
-| RECORD_IMPORTER_SERIALIZED_FAILED_PATH | N | The full path to the local file where the serialized failed records will be written. It defaults to the `record_importer_failed_serialized.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.                                                                                       |
+| Variable name                          | Required | Description                                                                                                                                                                                         |
+| -------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RECORD_IMPORTER_ADMIN_EMAIL            | Y        | The email address of the admin user in the InvenioRDM instance. This defaults to the global ADMIN_EMAIL Flask environment variable.                                                                 |
+| RECORD_IMPORTER_DATA_DIR               | Y        | The folder where the file with serialized metadata records can be found, named `records-for-import.json`                                                                                            |
+| RECORD_IMPORTER_FILES_LOCATION         | N        | The folder where the files for upload withe the new deposits may be found. It defaults to a subfolder of the RECORD_IMPORTER_DATA_DIR directory.                                                    |
+| RECORD_IMPORTER_LOGS_LOCATION          | N        | The full path to the local directory where the record import log files will be written. It defaults to the `logs` folder of the `invenio-record-importer-kcworks` modules.                          |
+| RECORD_IMPORTER_OVERRIDES_FOLDER       | N        | The full path to the local directory where the overrides files can be found. It defaults to the `overrides` subfolder of the folder at RECORD_IMPORTER_DATA_DIR.                                    |
+| RECORD_IMPORTER_CREATED_LOG_PATH       | N        | The full path to the local file where the created records log will be written. It defaults to the `record_importer_created_records.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.         |
+| RECORD_IMPORTER_FAILED_LOG_PATH        | N        | The full path to the local file where the failed records log will be written. It defaults to the `record_importer_failed_records.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder.           |
+| RECORD_IMPORTER_SERIALIZED_PATH        | N        | The full path to the local file where the serialized records will be written. It defaults to the `record_importer_serialized_records.jsonl` file in the RECORD_IMPORTER_DATA_DIR folder.            |
+| RECORD_IMPORTER_SERIALIZED_FAILED_PATH | N        | The full path to the local file where the serialized failed records will be written. It defaults to the `record_importer_failed_serialized.jsonl` file in the RECORD_IMPORTER_LOGS_LOCATION folder. |
 
 The required folders must of course be created before the importer is run. The importer will not create these folders if they do not exist. The various log files and serialized records files will be created by the importer if they do not already exist.
 
@@ -89,11 +90,11 @@ This command serializes metadata records for import into InvenioRDM. It reads re
 
 ### Command-line flags
 
-| Flag                           | Short flag | Description                                                                                                                     |
-| ------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| --start-index INTEGER          | -s         | The index of the first record to serialize (1-based). Defaults to 1.                                                             |
-| --end-index INTEGER            | -e         | The index of the last record to serialize (inclusive). If not provided, will serialize to the end of the input file.            |
-| --verbose / --no-verbose       | -v / -q    | Enable or disable verbose output. Defaults to False.                                                                             |
+| Flag                     | Short flag | Description                                                                                                          |
+| ------------------------ | ---------- | -------------------------------------------------------------------------------------------------------------------- |
+| --start-index INTEGER    | -s         | The index of the first record to serialize (1-based). Defaults to 1.                                                 |
+| --end-index INTEGER      | -e         | The index of the last record to serialize (inclusive). If not provided, will serialize to the end of the input file. |
+| --verbose / --no-verbose | -v / -q    | Enable or disable verbose output. Defaults to False.                                                                 |
 
 ### Metadata repair
 
@@ -121,12 +122,12 @@ A list of the provided positional arguments specifying which records to read. De
 
 ### Command-line flags
 
-| Flag                           | Short flag | Description                                                                                                                     |
-| ------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| --raw_input (bool, optional)           | -r | If True, print the raw metadata for the specified records as it exists prior to serialization. Defaults to False.                                                   |
-| --use-sourceids (bool, optional) | -s | If True, the positional arguments are interpreted as ids in the source system instead of positional indices. By default these ids are interpreted as DOI identifiers. If a different id scheme is desired, this may be set using the `--scheme` flag. Defaults to False. |
-| --scheme (str, optional) | -m | The identifier scheme to use for the records when the --use-sourceids flag is True. Defaults to "doi". |
-| --field-path (str, optional) | -f | The dot-separated path to a specific metadata field to be printed. If not specified, the entire record will be printed. |
+| Flag                             | Short flag | Description                                                                                                                                                                                                                                                              |
+| -------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| --raw_input (bool, optional)     | -r         | If True, print the raw metadata for the specified records as it exists prior to serialization. Defaults to False.                                                                                                                                                        |
+| --use-sourceids (bool, optional) | -s         | If True, the positional arguments are interpreted as ids in the source system instead of positional indices. By default these ids are interpreted as DOI identifiers. If a different id scheme is desired, this may be set using the `--scheme` flag. Defaults to False. |
+| --scheme (str, optional)         | -m         | The identifier scheme to use for the records when the --use-sourceids flag is True. Defaults to "doi".                                                                                                                                                                   |
+| --field-path (str, optional)     | -f         | The dot-separated path to a specific metadata field to be printed. If not specified, the entire record will be printed.                                                                                                                                                  |
 
 ## Loader usage
 
@@ -150,18 +151,18 @@ If a range is specified in the RECORDS by linking two integers with a hyphen, th
 
 ### Command-line flags
 
-| Flag                           | Short flag | Description                                                                                                                     |
-| ------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| --no-updates                   | -n         | If set, do not update existing records where a record with the same DOI already exists. Defaults to False.                       |
-| --retry-failed                 | -r         | If set, try to load in all previously failed records that have not already been repaired successfully. Defaults to False.        |
-| --use-sourceids                | -s         | If set, the positional arguments are interpreted as ids in the source system instead of positional indices. Defaults to False.   |
-| --scheme TEXT                  | -m         | The identifier scheme to use for the records when the --use-sourceids flag is True. Defaults to "hclegacy-pid".                  |
-| --aggregate                    | -a         | If set, run Invenio's usage statistics aggregation after importing the records. Defaults to False.                               |
-| --start_date TEXT              |            | The start date for the usage statistics aggregation. Must be in the format "YYYY-MM-DD". Defaults to None.                       |
-| --end_date TEXT                |            | The end date for the usage statistics aggregation. Must be in the format "YYYY-MM-DD". Defaults to None.                         |
-| --clean_filenames              | -c         | If set, clean the filenames of the files to be uploaded. Defaults to False.                                                      |
-| --verbose / --no-verbose       | -v / -q    | Enable or disable verbose output. Defaults to False.                                                                             |
-| --stop_on_error / --no-stop_on_error | -e / -E | If set, stop the loading process if an error is encountered. Defaults to False.                                                |
+| Flag                                 | Short flag | Description                                                                                                                    |
+| ------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| --no-updates                         | -n         | If set, do not update existing records where a record with the same DOI already exists. Defaults to False.                     |
+| --retry-failed                       | -r         | If set, try to load in all previously failed records that have not already been repaired successfully. Defaults to False.      |
+| --use-sourceids                      | -s         | If set, the positional arguments are interpreted as ids in the source system instead of positional indices. Defaults to False. |
+| --scheme TEXT                        | -m         | The identifier scheme to use for the records when the --use-sourceids flag is True. Defaults to "hclegacy-pid".                |
+| --aggregate                          | -a         | If set, run Invenio's usage statistics aggregation after importing the records. Defaults to False.                             |
+| --start_date TEXT                    |            | The start date for the usage statistics aggregation. Must be in the format "YYYY-MM-DD". Defaults to None.                     |
+| --end_date TEXT                      |            | The end date for the usage statistics aggregation. Must be in the format "YYYY-MM-DD". Defaults to None.                       |
+| --clean_filenames                    | -c         | If set, clean the filenames of the files to be uploaded. Defaults to False.                                                    |
+| --verbose / --no-verbose             | -v / -q    | Enable or disable verbose output. Defaults to False.                                                                           |
+| --stop_on_error / --no-stop_on_error | -e / -E    | If set, stop the loading process if an error is encountered. Defaults to False.                                                |
 
 ### Examples:
 
@@ -208,7 +209,7 @@ The format of the overrides file should be as follows:
 
 Note that the metadata field names should be path strings with steps separated by a pipe character. So if you want to update the "title" subfield of the top-level "metadata", the path string should be "metadata|title". If one level in the metadata hierarchy is a list/array, a number may be included in the string indicating which index in the list should be updated. So to update the "date" subfield of the list of "dates" in the "metadata" field, we would use the path string "metadata|dates|1|date".
 
-Whatever value is provided for each path string will *entirely replace* the value at that point in the metadata hierarchy. So if I update "metadata|dates" I will need to provide the *entire list* of dates, even if there are items that should remain the same. If I only want to update one item I must specify it with a more specific path string like "metadata|dates|0".
+Whatever value is provided for each path string will _entirely replace_ the value at that point in the metadata hierarchy. So if I update "metadata|dates" I will need to provide the _entire list_ of dates, even if there are items that should remain the same. If I only want to update one item I must specify it with a more specific path string like "metadata|dates|0".
 
 Note that in some cases field names are namespaced by the schema they belong to. For example, the "file_location" field is in the "hclegacy" schema, so the path string for this field would be "custom_fields|hclegacy:file_location".
 
@@ -254,17 +255,17 @@ This operation is idempotent, so it can be run multiple times without causing er
 
 #### Command-line flags
 
-| Flag                           | Short flag | Description                                                                                                                     |
-| ------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| --start-date TEXT              | -s         | The start date for generating events. Must be in the format "YYYY-MM-DD". Defaults to "2013-01-01".                              |
-| --end-date TEXT                | -e         | The end date for generating events. Must be in the format "YYYY-MM-DD". Defaults to the current date.                            |
-| --verbose        | -v         | Enable or disable verbose output. Defaults to False.                                                                             |
-| --record-ids     | -r         | A comma-separated list of record ids to create usage statistics for. If not specified, all records from the specified source will be used. |
-| --record-source  | -S         | The source of the records to create usage statistics for. Defaults to 'knowledgeCommons'. |
-| --from-db        | -d         | If True, the usage statistics will be created from the database. Defaults to False. |
-| --downloads-field | -D         | The field in each record to use for the number of downloads. Defaults to 'hclegacy:total_downloads'. |
-| --views-field    | -V         | The field in each record to use for the number of record views. Defaults to 'hclegacy:total_views'. |
-| --date-field     | -t         | The field in each record to use for the record creation date. Defaults to 'metadata.publication_date'. |
+| Flag              | Short flag | Description                                                                                                                                |
+| ----------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| --start-date TEXT | -s         | The start date for generating events. Must be in the format "YYYY-MM-DD". Defaults to "2013-01-01".                                        |
+| --end-date TEXT   | -e         | The end date for generating events. Must be in the format "YYYY-MM-DD". Defaults to the current date.                                      |
+| --verbose         | -v         | Enable or disable verbose output. Defaults to False.                                                                                       |
+| --record-ids      | -r         | A comma-separated list of record ids to create usage statistics for. If not specified, all records from the specified source will be used. |
+| --record-source   | -S         | The source of the records to create usage statistics for. Defaults to 'knowledgeCommons'.                                                  |
+| --from-db         | -d         | If True, the usage statistics will be created from the database. Defaults to False.                                                        |
+| --downloads-field | -D         | The field in each record to use for the number of downloads. Defaults to 'hclegacy:total_downloads'.                                       |
+| --views-field     | -V         | The field in each record to use for the number of record views. Defaults to 'hclegacy:total_views'.                                        |
+| --date-field      | -t         | The field in each record to use for the record creation date. Defaults to 'metadata.publication_date'.                                     |
 
 ##### Explanation of flags:
 
@@ -285,7 +286,6 @@ This operation is idempotent, so it can be run multiple times without causing er
 - `--views-field`: This flag sets the field in each record to use for the number of record views. If the --from-db flag is True, the field should be found in the database record metadata. If the --from-db flag is False, the field should be found in the record data object read from the import file. Defaults to 'hclegacy:total_views'.
 
 - `--date-field`: This flag sets the field in each record to use for the record creation date. If the --from-db flag is True, the field should be found in the database record metadata. If the --from-db flag is False, the field should be found in the record data object read from the import file. Defaults to 'metadata.publication_date'.
-
 
 ### Aggregations Command
 
@@ -308,7 +308,7 @@ The `start-date` and `end-date` parameters allow for specification of a
 range of dates for which to create aggregations. A start date is required.
 If it is not provided in the cli call, the start date will be taken from
 the RECORD_IMPORTER_START_DATE config variable. If that is not set, an
-will be raised.  An end date is optional. If not end date is
+will be raised. An end date is optional. If not end date is
 specified, the current date is used.
 
 !NOTE: Currently this operation is intensive on memory and search index
@@ -316,14 +316,13 @@ resources and can fail as a result. If you are aggregating a large
 number of stats events this can be mitigated by running the operation
 for smaller time ranges sequentially.
 
-
 #### Command-line flags
 
-| Flag                           | Short flag | Description                                                                                                                     |
-| ------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| --start-date TEXT              | -s         | The start date for aggregating events. Must be in the format "YYYY-MM-DD". If not provided, will aggregate all events.           |
-| --end-date TEXT                | -e         | The end date for aggregating events. Must be in the format "YYYY-MM-DD". If not provided, will aggregate up to the current date. |
-| --verbose / --no-verbose       | -v / -q    | Enable or disable verbose output. Defaults to False.                                                                             |
+| Flag                     | Short flag | Description                                                                                                                      |
+| ------------------------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| --start-date TEXT        | -s         | The start date for aggregating events. Must be in the format "YYYY-MM-DD". If not provided, will aggregate all events.           |
+| --end-date TEXT          | -e         | The end date for aggregating events. Must be in the format "YYYY-MM-DD". If not provided, will aggregate up to the current date. |
+| --verbose / --no-verbose | -v / -q    | Enable or disable verbose output. Defaults to False.                                                                             |
 
 ##### Explanation of flags:
 

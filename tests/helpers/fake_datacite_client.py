@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# Borrowed from invenio-rdm-records
 #
 # Copyright (C) 2022 Northwestern University.
 #
@@ -89,6 +89,17 @@ class FakeDataCiteRESTClient:
         """
         return Mock()
 
+    def show_doi(self, doi):
+        """Show a previously hidden DOI ... not.
+
+        This DOI will no
+        longer be found in DataCite Search
+
+        :param doi: DOI to hide e.g. 10.12345/1.
+        :return:
+        """
+        return Mock()
+
     def check_doi(self, doi):
         """Check doi structure.
 
@@ -102,10 +113,8 @@ class FakeDataCiteRESTClient:
             if prefix != self.prefix:
                 # Provided a DOI with the wrong prefix
                 raise ValueError(
-                    "Wrong DOI {0} prefix provided, it should be "
-                    "{1} as defined in the rest client".format(
-                        prefix, self.prefix
-                    )
+                    f"Wrong DOI {prefix} prefix provided, it should be "
+                    f"{self.prefix} as defined in the rest client"
                 )
         else:
             doi = f"{self.prefix}/{doi}"
