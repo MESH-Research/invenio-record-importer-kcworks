@@ -1043,15 +1043,24 @@ class RecordsHelper:
         for hit in search.scan():
             try:
                 uuid = hit.meta.id  # document ID (UUID in the index)
-                pid = hit.get("id", "unknown")  # document's "id" field
-                current_created: str = hit["created"]
-                new_created: str | None = hit.get("custom_fields", {}).get(
-                    "hclegacy:record_creation_date"
-                )
-                previously_published: str | None = hit.get("custom_fields", {}).get(
-                    "hclegacy:previously_published"
-                )
-                current_publication_date: str = hit["metadata"]["publication_date"]
+                pid = getattr(hit, "id", "unknown")  # document's "id" field
+                current_created: str = hit.created
+                
+                custom_fields = hit.get("custom_fields", {})
+                
+                # Use dictionary access for fields with colons (can't use .get() due to 
+                # __getattr__ limitation)
+                try:
+                    new_created = custom_fields["hclegacy:record_creation_date"]
+                except KeyError:
+                    new_created = None
+                    
+                try:
+                    previously_published = custom_fields["hclegacy:previously_published"]
+                except KeyError:
+                    previously_published = None
+                
+                current_publication_date: str = hit.metadata.publication_date
                 new_publication_date: str | None = None
 
                 if new_created and current_created:

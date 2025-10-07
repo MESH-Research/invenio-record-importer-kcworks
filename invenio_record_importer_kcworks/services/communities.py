@@ -909,7 +909,13 @@ class CommunitiesHelper:
             try:
                 community_id = hit.meta.id
                 slug = hit.slug if hasattr(hit, "slug") else "unknown"
-                group_id = hit.custom_fields.get("kcr:commons_group_id")
+                
+                # Use bracket access for fields with colons
+                try:
+                    group_id = hit.custom_fields["kcr:commons_group_id"]
+                except KeyError:
+                    group_id = None
+                    
                 current_created = hit.created if hasattr(hit, "created") else None
 
                 if group_id and current_created:
@@ -972,7 +978,12 @@ class CommunitiesHelper:
         try:
             records = []
             for hit in search.scan():
-                creation_date = hit.custom_fields.get("hclegacy:record_creation_date")
+                # Use bracket access for fields with colons
+                try:
+                    creation_date = hit.custom_fields["hclegacy:record_creation_date"]
+                except KeyError:
+                    creation_date = None
+                    
                 if creation_date:
                     records.append({"date": creation_date, "id": hit.meta.id})
 
