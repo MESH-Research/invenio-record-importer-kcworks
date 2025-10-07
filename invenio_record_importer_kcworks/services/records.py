@@ -41,10 +41,10 @@ from invenio_records_resources.services.uow import (
     unit_of_work,
 )
 from invenio_search import current_search_client
+from invenio_search.engine import dsl
 from invenio_search.utils import prefix_index
 from marshmallow.exceptions import ValidationError
 from opensearchpy.exceptions import ConnectionError, ConnectionTimeout
-from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
 from sqlalchemy.exc import NoResultFound
 
@@ -339,16 +339,14 @@ class RecordsHelper:
                 grant_holder = [
                     g for g in new_grant_holders if str(g.id) == grant["subject"]["id"]
                 ][0]
-                new_grants.append(
-                    {
-                        "subject": {
-                            "id": str(grant_holder.id),
-                            "type": "user",
-                            "email": grant_holder.email,
-                        },
-                        "permission": "manage",
-                    }
-                )
+                new_grants.append({
+                    "subject": {
+                        "id": str(grant_holder.id),
+                        "type": "user",
+                        "email": grant_holder.email,
+                    },
+                    "permission": "manage",
+                })
 
                 # Add the member to the appropriate group collection
                 if collection_id:
@@ -1045,21 +1043,23 @@ class RecordsHelper:
                 uuid = hit.meta.id  # document ID (UUID in the index)
                 pid = getattr(hit, "id", "unknown")  # document's "id" field
                 current_created: str = hit.created
-                
+
                 custom_fields = hit.get("custom_fields", {})
-                
-                # Use dictionary access for fields with colons (can't use .get() due to 
+
+                # Use dictionary access for fields with colons (can't use .get() due to
                 # __getattr__ limitation)
                 try:
                     new_created = custom_fields["hclegacy:record_creation_date"]
                 except KeyError:
                     new_created = None
-                    
+
                 try:
-                    previously_published = custom_fields["hclegacy:previously_published"]
+                    previously_published = custom_fields[
+                        "hclegacy:previously_published"
+                    ]
                 except KeyError:
                     previously_published = None
-                
+
                 current_publication_date: str = hit.metadata.publication_date
                 new_publication_date: str | None = None
 
@@ -1075,7 +1075,9 @@ class RecordsHelper:
                     }
                     if arrow.get(current_created) != arrow.get(new_created):
                         update_data["new_created"] = new_created
-                    pub_date_gap = arrow.get(new_created) - arrow.get(current_publication_date)
+                    pub_date_gap = arrow.get(new_created) - arrow.get(
+                        current_publication_date
+                    )
                     if previously_published == "not-published" and (
                         abs(pub_date_gap.days) > 1
                     ):
@@ -1128,11 +1130,15 @@ class RecordsHelper:
             ValueError: If timestamp format is invalid
         """
         if new_created_date and not RecordsHelper._validate_timestamp(new_created_date):
-            raise ValueError("Invalid timestamp format for created date: "
-                             f"{new_created_date}")
-        if new_publication_date and not RecordsHelper._validate_timestamp(new_publication_date):
-            raise ValueError("Invalid timestamp format for publication date: "
-                             f"{new_publication_date}")
+            raise ValueError(
+                f"Invalid timestamp format for created date: {new_created_date}"
+            )
+        if new_publication_date and not RecordsHelper._validate_timestamp(
+            new_publication_date
+        ):
+            raise ValueError(
+                f"Invalid timestamp format for publication date: {new_publication_date}"
+            )
 
         record = records_service.read(system_identity, id_=record_id)._record
 
@@ -1264,13 +1270,11 @@ class RecordsHelper:
                         f"Error updating record "
                         f"{record.get('pid', record['id'])}: {str(e)}"
                     )
-                    stats["errors"].append(
-                        {  # type:ignore
-                            "record_id": record["id"],
-                            "pid": record.get("pid", "unknown"),
-                            "error": str(e),
-                        }
-                    )
+                    stats["errors"].append({  # type:ignore
+                        "record_id": record["id"],
+                        "pid": record.get("pid", "unknown"),
+                        "error": str(e),
+                    })
 
             # Reindex updated records after each batch
             if batch_updated_pids:
@@ -1278,7 +1282,11 @@ class RecordsHelper:
                     f"Reindexing {len(batch_updated_pids)} updated records..."
                 )
                 try:
-                    records_q = Q("terms", id=batch_updated_pids)
+                    # Use opensearch_dsl Q instead of opensearchpy Q because
+                    # opensearch_dsl.search.Search.query() (used by invenio_search) 
+                    # expects hashable query objects for internal dictionary lookups, 
+                    # but opensearchpy Q objects are unhashable
+                    records_q = dsl.Q("terms", id=batch_updated_pids)
                     records_service.reindex(
                         identity=system_identity,
                         search_query=records_q,
