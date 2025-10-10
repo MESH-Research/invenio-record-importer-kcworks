@@ -1285,7 +1285,7 @@ class RecordsHelper:
                     # Use opensearch_dsl Q instead of opensearchpy Q because
                     # opensearch_dsl.search.Search.query() (used by invenio_search) 
                     # expects hashable query objects for internal dictionary lookups, 
-                    # but opensearchpy Q objects are unhashable
+                    # but opensearchpy Q objects raise a hashing error.
                     records_q = dsl.Q("terms", id=batch_updated_pids)
                     records_service.reindex(
                         identity=system_identity,
