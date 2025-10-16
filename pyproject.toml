@@ -53,8 +53,6 @@ dependencies = [
   ]
 
 [tool.uv.sources]
-invenio-group-collections-kcworks = {path = "invenio_record_importer_kcworks/dependencies/invenio-group-collections-kcworks", editable = true}
-invenio-remote-user-data-kcworks = {path = "invenio_record_importer_kcworks/dependencies/invenio-remote-user-data-kcworks", editable = true}
 
 [project.urls]
 "Homepage" = "https://github.com/Knowledge-Commons-Works/invenio-record-importer-kcworks"
