@@ -416,6 +416,395 @@ class RecordsHelper:
         """
         return RecordsHelper._parse_timestamp(timestamp) is not None
 
+    def _find_existing_records_by_doi(self, metadata: dict, my_doi: str, same_doi: dict) -> list[dict]:
+        """Find existing records with the same DOI.
+
+        Returns:
+            tuple[list[dict], str]: the existing records and the DOI
+        """
+        draft_recs = []
+        published_recs = []
+        rec_ids = [r["_source"]["id"] for r in same_doi["hits"]["hits"]]
+        for rec_id in rec_ids:
+            try:
+                published_rec = records_service.read(
+                    system_identity, id_=rec_id
+                ).to_dict()
+                if published_rec["pids"]["doi"]["identifier"] != my_doi:
+                    published_doi = published_rec["pids"]["doi"]["identifier"]
+                    print(
+                        f"published rec doi for {rec_id} ("
+                        f"{published_doi}) does not actually match "
+                        f"doi for new record ({my_doi}). "
+                        "draft was corrupted."
+                    )
+                    pass  # Don't use this record
+                else:
+                    published_recs.append(published_rec)
+            except PIDUnregistered:
+                draft_recs.append(
+                    records_service.read_draft(
+                        system_identity, id_=rec_id
+                    ).to_dict()
+                )
+            except KeyError:
+                try:
+                    # FIXME: indicates missing published record for
+                    # registered PID; we try to delete PID locally
+                    # and ignore the corrupted draft
+                    provider = PIDProvider("base", client=None, pid_type="doi")
+                    stranded_pid = provider.get(
+                        metadata["pids"]["doi"]["identifier"]
+                    )
+                    stranded_pid.status = "N"
+                    stranded_pid.delete()
+                except NoResultFound:
+                    # FIXME: happens for duplicate record ID with
+                    # same DOI??
+                    pass
+        raw_recs = published_recs + draft_recs
+        recs: list[dict] = []
+        # deduplicate based on invenio record id and prefer published
+        # records over drafts
+        for r in raw_recs:
+            if r["id"] not in [p["id"] for p in recs]:
+                recs.append(r)
+
+        app.logger.info(
+            f"found {same_doi['hits']['total']['value']} existing"
+            " records with same DOI..."
+        )
+        # check for corrupted draft with different DOI and add to recs
+        # so that we can delete it
+        try:
+            existing_draft_hit = records_service.search_drafts(
+                system_identity,
+                q=f"id:{rec_ids[0]}",
+            )._results[0]
+            if (
+                existing_draft_hit.to_dict()
+                .get("pids", {})
+                .get("doi", {})
+                .get("identifier")
+                != my_doi
+            ):
+                recs.append(existing_draft_hit.to_dict())
+        except IndexError:
+            pass
+        return recs
+
+    def _delete_extra_records(self, recs: list[dict], uow: UnitOfWork | None = None) -> None:
+        """Delete extra records with the same DOI.
+
+        Returns:
+            None
+        """
+        rec_list = [
+            (
+                r["id"],
+                ("published" if r["is_published"] else "draft"),
+            )
+            for r in recs
+        ]
+        app.logger.info(
+            f"found more than one existing record with same DOI: {rec_list}"
+        )
+        app.logger.info("deleting extra records...")
+        for r in recs[1:]:
+            try:
+                self.delete_invenio_record(r["id"], record_type="draft")
+            except PIDUnregistered as e:
+                app.logger.error(
+                    f"error deleting extra record with same "
+                    f"DOI: {r['id']} was unregistered: {str(e)}"
+                )
+                raise DraftDeletionFailedError(
+                    f"Draft deletion failed because PID for "
+                    f"record {r['id']} was unregistered: {str(e)}"
+                ) from None
+            except Exception as e:
+                if r["is_published"] and not r["is_draft"]:
+                    app.logger.error(
+                        f"error deleting extra published "
+                        f"record {r['id']} with same DOI: {str(e)}"
+                    )
+                    raise DraftDeletionFailedError(
+                        f"Draft deletion failed for published "
+                        f"record {r['id']} with same DOI: {str(e)}"
+                    ) from None
+                else:
+                    app.logger.info(
+                        f"could not delete draft record "
+                        f"{r['id']} with same DOI. It will be "
+                        "cleaned up by the system later."
+                    )
+                    pass
+
+    def _update_existing_record(
+        self, 
+        differences: dict, 
+        existing_metadata: dict, 
+        metadata: dict, 
+        no_updates: bool, 
+        uow: UnitOfWork | None = None
+        ) -> dict | None:
+        """Update an existing record with the new metadata.
+
+        Returns:
+            dict: the updated record
+        """
+        app.logger.info(
+            "existing record with same DOI has different"
+            f" metadata: existing record: {differences['A']}"
+            f"; new record: {differences['B']}"
+        )
+        if no_updates:
+            raise NoUpdates(
+                "no_updates flag is set, so not updating "
+                "existing record with changed metadata..."
+            )
+        update_payload = existing_metadata.copy()
+        for key, val in differences["B"].items():
+            if key in [
+                "access",
+                "custom_fields",
+                "files",
+                "metadata",
+                "pids",
+            ]:
+                for k2 in val.keys():
+                    if val[k2] is None:
+                        update_payload.setdefault(key, {}).pop(k2)
+                    else:
+                        update_payload.setdefault(key, {})[k2] = (
+                            metadata[key][k2]
+                        )
+        app.logger.info("updating existing record with new metadata...")
+        new_comparison = compare_metadata(
+            existing_metadata, update_payload
+        )
+        if new_comparison:
+            raise ExistingRecordNotUpdatedError(
+                "    metadata still does not match migration "
+                "source after update attempt..."
+            )
+        else:
+            update_payload = {
+                k: v
+                for k, v in update_payload.items()
+                if k
+                in [
+                    "access",
+                    "custom_fields",
+                    "files",
+                    "metadata",
+                    "pids",
+                ]
+            }
+            # TODO: Check whether this is the right way
+            # to update
+            if existing_metadata["files"].get("enabled") and (
+                len(existing_metadata["files"]["entries"].keys()) > 0
+            ):
+                # update_draft below will copy files from the
+                # existing draft's file manager over to the new
+                # draft's file manager. We need *some* files in
+                # the metadata here to avoid a validation
+                # error, but it will be overwritten by the
+                # files in the file manager. We have to use
+                # the existing draft's files here to avoid
+                # problems setting the default files for the
+                # new draft in
+                # BaseRecordFilesComponent.update_draft
+                app.logger.info("existing record has files attached...")
+                update_payload["files"] = existing_metadata["files"]
+                # update_payload["files"] = metadata["files"]
+                print(
+                    f"update_payload['files']: "
+                    f"{pformat(update_payload['files'])}"
+                )
+            # Invenio validator will reject other
+            # rights metadata values from existing records
+            if existing_metadata["metadata"].get("rights"):
+                existing_metadata["metadata"]["rights"] = [
+                    {"id": r["id"]}
+                    for r in existing_metadata["metadata"]["rights"]
+                ]
+            app.logger.info(
+                "metadata updated to match migration source"
+            )
+            try:
+                # If there is an existing draft for a
+                # published record, or an unpublished draft,
+                # we update the draft
+                result = records_service.update_draft(
+                    system_identity,
+                    id_=existing_metadata["id"],
+                    data=update_payload,
+                )
+                app.logger.info(
+                    "continuing with existing draft record"
+                    " (new metadata)..."
+                )
+                if not result._record.files.bucket:
+                    result._record.files.create_bucket()
+                    uow.register(RecordCommitOp(result._record))  # type:ignore
+
+                return {
+                    "status": "updated_draft",
+                    "record_data": result.to_dict(),
+                    "record_uuid": result._record.id,
+                }
+            except (PIDDoesNotExistError, NoResultFound):
+                # If there is no existing draft for the
+                # published record, we create a new draft
+                # to edit
+                app.logger.info(
+                    "creating new draft of published "
+                    "record or recovering unpublished draft..."
+                )
+                create_draft_result = records_service.edit(
+                    system_identity,
+                    id_=existing_metadata["id"],
+                )
+                app.logger.info(
+                    "updating new draft of published "
+                    "record with new metadata..."
+                )
+                result = records_service.update_draft(
+                    system_identity,
+                    id_=create_draft_result.id,
+                    data=update_payload,
+                )
+                result = records_service.update_draft(
+                    system_identity,
+                    id_=create_draft_result.id,
+                    data=update_payload,
+                )
+                if result.to_dict().get("errors"):
+                    # NOTE: some validation errors don't
+                    # prevent the update and aren't indicative
+                    # of actual problems
+                    errors = [
+                        e
+                        for e in result.to_dict()["errors"]
+                        if e.get("field") != "metadata.rights.0.icon"
+                        and e.get("messages") != ["Unknown field."]
+                        and "Missing uploaded files"
+                        not in e.get("messages")[0]
+                    ]
+                    if errors:
+                        raise UpdateValidationError(
+                            f"Validation error when trying to "
+                            f"update existing record: "
+                            f"{pformat(errors)}"
+                        ) from None
+                app.logger.info(
+                    f"updated new draft of published: "
+                    f"{pformat(result.to_dict())}"
+                )
+                return {
+                    "status": "updated_published",
+                    "record_data": result.to_dict(),
+                    "record_uuid": result._record.id,
+                }
+
+    def _recover_identical_existing_record(
+        self, 
+        existing_metadata: dict, 
+        uow: UnitOfWork | None = None
+        ) -> dict | None:
+        """Recover an existing record with the same DOI and identical metadata.
+
+        Returns:
+            dict: the recovered record
+        """
+        record_type = (
+            "draft"
+            if existing_metadata["status"] != "published"
+            else "published"
+        )
+        app.logger.info(
+            f"continuing with existing {record_type} "
+            "record (same metadata)..."
+        )
+        existing_record_id = ""
+        try:
+            existing_record_hit = records_service.search_drafts(
+                system_identity,
+                q=f"id:{existing_metadata['id']}",
+            )._results[0]
+            print(
+                f"existing_record_hit draft: "
+                f"{pformat(existing_record_hit.to_dict()['pids'])}"  # noqa: E501
+            )
+            existing_record_id = existing_record_hit.to_dict()["uuid"]
+        except IndexError:
+            existing_record_hit = records_service.read(
+                system_identity, id_=existing_metadata["id"]
+            )
+            existing_record_id = existing_record_hit.id
+        result = {
+            "record_data": existing_metadata,
+            "status": f"unchanged_existing_{record_type}",
+            "record_uuid": existing_record_id,
+        }
+        return result
+
+    def _get_existing_record(
+        self, 
+        metadata: dict, 
+        no_updates: bool, 
+        uow: UnitOfWork | None = None
+        ) -> dict | None:
+        """Get an existing record with the same DOI.
+
+        Returns:
+            dict: the existing record
+        """
+        if "pids" in metadata.keys() and "doi" in metadata["pids"].keys():
+            incoming_doi = metadata["pids"]["doi"]["identifier"]
+            doi_for_query = incoming_doi.split("/")
+            # TODO: Can we flag presence of deleted records here somehow?
+            try:
+                print(f"searching for existing record with DOI: {incoming_doi}")
+                print(
+                    f"query: q=f'pids.doi.identifier:{doi_for_query[0]}/"
+                    f"{doi_for_query[1]}'"
+                )
+
+                index = prefix_index("rdmrecords")
+                same_doi_results = current_search_client.search(
+                    index=index,
+                    q=f'pids.doi.identifier:"{doi_for_query[0]}/{doi_for_query[1]}"',
+                )
+                app.logger.debug(f"same_doi_results: {pformat(same_doi_results)}")
+            except Exception as e:
+                app.logger.error("error checking for existing record with same DOI:")
+                raise e
+
+            if same_doi_results["hits"]["total"]["value"] > 0:
+                same_doi_recs = self._find_existing_records_by_doi(
+                    metadata, incoming_doi, same_doi_results
+                )
+
+                if len(same_doi_recs) > 1:
+                    self._delete_extra_records(same_doi_recs, uow=uow)
+
+                existing_metadata = same_doi_recs[0] if len(same_doi_recs) > 0 else None
+
+                if existing_metadata:
+                    differences = compare_metadata(existing_metadata, metadata)
+                    if differences:
+                        return self._update_existing_record(
+                            differences, existing_metadata, metadata, no_updates, uow=uow
+                        )
+                    else:
+                        return self._recover_identical_existing_record(
+                            existing_metadata, uow=uow
+                        )
+        return None
+
     @unit_of_work()
     def create_invenio_record(
         self,
@@ -463,331 +852,9 @@ class RecordsHelper:
         app.logger.debug(pformat(metadata))
 
         # Check for existing record with same DOI
-        if "pids" in metadata.keys() and "doi" in metadata["pids"].keys():
-            my_doi = metadata["pids"]["doi"]["identifier"]
-            doi_for_query = my_doi.split("/")
-            # TODO: Can we flag presence of deleted records here somehow?
-            try:
-                print(f"searching for existing record with DOI: {my_doi}")
-                print(
-                    f"query: q=f'pids.doi.identifier:{doi_for_query[0]}/"
-                    f"{doi_for_query[1]}'"
-                )
-
-                index = prefix_index("rdmrecords")
-                same_doi = current_search_client.search(
-                    index=index,
-                    q=f'pids.doi.identifier:"{doi_for_query[0]}/{doi_for_query[1]}"',
-                )
-                app.logger.debug(f"same_doi: {pformat(same_doi)}")
-            except Exception as e:
-                app.logger.error("error checking for existing record with same DOI:")
-                raise e
-            if same_doi["hits"]["total"]["value"] > 0:
-                draft_recs = []
-                published_recs = []
-                rec_ids = [r["_source"]["id"] for r in same_doi["hits"]["hits"]]
-                for rec_id in rec_ids:
-                    try:
-                        published_rec = records_service.read(
-                            system_identity, id_=rec_id
-                        ).to_dict()
-                        if published_rec["pids"]["doi"]["identifier"] != my_doi:
-                            published_doi = published_rec["pids"]["doi"]["identifier"]
-                            print(
-                                f"published rec doi for {rec_id} ("
-                                f"{published_doi}) does not actually match "
-                                f"doi for new record ({my_doi}). "
-                                "draft was corrupted."
-                            )
-                            pass  # Don't use this record
-                        else:
-                            published_recs.append(published_rec)
-                    except PIDUnregistered:
-                        draft_recs.append(
-                            records_service.read_draft(
-                                system_identity, id_=rec_id
-                            ).to_dict()
-                        )
-                    except KeyError:
-                        try:
-                            # FIXME: indicates missing published record for
-                            # registered PID; we try to delete PID locally
-                            # and ignore the corrupted draft
-                            provider = PIDProvider("base", client=None, pid_type="doi")
-                            stranded_pid = provider.get(
-                                metadata["pids"]["doi"]["identifier"]
-                            )
-                            stranded_pid.status = "N"
-                            stranded_pid.delete()
-                        except NoResultFound:
-                            # FIXME: happens for duplicate record ID with
-                            # same DOI??
-                            pass
-                raw_recs = published_recs + draft_recs
-                recs: list[dict] = []
-                # deduplicate based on invenio record id and prefer published
-                # records over drafts
-                for r in raw_recs:
-                    if r["id"] not in [p["id"] for p in recs]:
-                        recs.append(r)
-
-                app.logger.info(
-                    f"found {same_doi['hits']['total']['value']} existing"
-                    " records with same DOI..."
-                )
-                # check for corrupted draft with different DOI and add to recs
-                # so that we can delete it
-                try:
-                    existing_draft_hit = records_service.search_drafts(
-                        system_identity,
-                        q=f"id:{rec_ids[0]}",
-                    )._results[0]
-                    if (
-                        existing_draft_hit.to_dict()
-                        .get("pids", {})
-                        .get("doi", {})
-                        .get("identifier")
-                        != my_doi
-                    ):
-                        recs.append(existing_draft_hit.to_dict())
-                except IndexError:
-                    pass
-                # delete extra records with the same doi
-                if len(recs) > 1:
-                    rec_list = [
-                        (
-                            r["id"],
-                            ("published" if r["is_published"] else "draft"),
-                        )
-                        for r in recs
-                    ]
-                    app.logger.info(
-                        f"found more than one existing record with same DOI: {rec_list}"
-                    )
-                    app.logger.info("deleting extra records...")
-                    for r in recs[1:]:
-                        try:
-                            self.delete_invenio_record(r["id"], record_type="draft")
-                        except PIDUnregistered as e:
-                            app.logger.error(
-                                f"error deleting extra record with same "
-                                f"DOI: {r['id']} was unregistered: {str(e)}"
-                            )
-                            raise DraftDeletionFailedError(
-                                f"Draft deletion failed because PID for "
-                                f"record {r['id']} was unregistered: {str(e)}"
-                            ) from None
-                        except Exception as e:
-                            if r["is_published"] and not r["is_draft"]:
-                                app.logger.error(
-                                    f"error deleting extra published "
-                                    f"record {r['id']} with same DOI: {str(e)}"
-                                )
-                                raise DraftDeletionFailedError(
-                                    f"Draft deletion failed for published "
-                                    f"record {r['id']} with same DOI: {str(e)}"
-                                ) from None
-                            else:
-                                app.logger.info(
-                                    f"could not delete draft record "
-                                    f"{r['id']} with same DOI. It will be "
-                                    "cleaned up by the system later."
-                                )
-                                pass
-                existing_metadata = recs[0] if len(recs) > 0 else None
-                # Check for differences in metadata
-                if existing_metadata:
-                    differences = compare_metadata(existing_metadata, metadata)
-                    if differences:
-                        app.logger.info(
-                            "existing record with same DOI has different"
-                            f" metadata: existing record: {differences['A']}"
-                            f"; new record: {differences['B']}"
-                        )
-                        if no_updates:
-                            raise NoUpdates(
-                                "no_updates flag is set, so not updating "
-                                "existing record with changed metadata..."
-                            )
-                        update_payload = existing_metadata.copy()
-                        for key, val in differences["B"].items():
-                            if key in [
-                                "access",
-                                "custom_fields",
-                                "files",
-                                "metadata",
-                                "pids",
-                            ]:
-                                for k2 in val.keys():
-                                    if val[k2] is None:
-                                        update_payload.setdefault(key, {}).pop(k2)
-                                    else:
-                                        update_payload.setdefault(key, {})[k2] = (
-                                            metadata[key][k2]
-                                        )
-                        app.logger.info("updating existing record with new metadata...")
-                        new_comparison = compare_metadata(
-                            existing_metadata, update_payload
-                        )
-                        if new_comparison:
-                            raise ExistingRecordNotUpdatedError(
-                                "    metadata still does not match migration "
-                                "source after update attempt..."
-                            )
-                        else:
-                            update_payload = {
-                                k: v
-                                for k, v in update_payload.items()
-                                if k
-                                in [
-                                    "access",
-                                    "custom_fields",
-                                    "files",
-                                    "metadata",
-                                    "pids",
-                                ]
-                            }
-                            # TODO: Check whether this is the right way
-                            # to update
-                            if existing_metadata["files"].get("enabled") and (
-                                len(existing_metadata["files"]["entries"].keys()) > 0
-                            ):
-                                # update_draft below will copy files from the
-                                # existing draft's file manager over to the new
-                                # draft's file manager. We need *some* files in
-                                # the metadata here to avoid a validation
-                                # error, but it will be overwritten by the
-                                # files in the file manager. We have to use
-                                # the existing draft's files here to avoid
-                                # problems setting the default files for the
-                                # new draft in
-                                # BaseRecordFilesComponent.update_draft
-                                app.logger.info("existing record has files attached...")
-                                update_payload["files"] = existing_metadata["files"]
-                                # update_payload["files"] = metadata["files"]
-                                print(
-                                    f"update_payload['files']: "
-                                    f"{pformat(update_payload['files'])}"
-                                )
-                            # Invenio validator will reject other
-                            # rights metadata values from existing records
-                            if existing_metadata["metadata"].get("rights"):
-                                existing_metadata["metadata"]["rights"] = [
-                                    {"id": r["id"]}
-                                    for r in existing_metadata["metadata"]["rights"]
-                                ]
-                            app.logger.info(
-                                "metadata updated to match migration source"
-                            )
-                            try:
-                                # If there is an existing draft for a
-                                # published record, or an unpublished draft,
-                                # we update the draft
-                                result = records_service.update_draft(
-                                    system_identity,
-                                    id_=existing_metadata["id"],
-                                    data=update_payload,
-                                )
-                                app.logger.info(
-                                    "continuing with existing draft record"
-                                    " (new metadata)..."
-                                )
-                                if not result._record.files.bucket:
-                                    result._record.files.create_bucket()
-                                    uow.register(RecordCommitOp(result._record))  # type:ignore
-
-                                return {
-                                    "status": "updated_draft",
-                                    "record_data": result.to_dict(),
-                                    "record_uuid": result._record.id,
-                                }
-                            except (PIDDoesNotExistError, NoResultFound):
-                                # If there is no existing draft for the
-                                # published record, we create a new draft
-                                # to edit
-                                app.logger.info(
-                                    "creating new draft of published "
-                                    "record or recovering unpublished draft..."
-                                )
-                                create_draft_result = records_service.edit(
-                                    system_identity,
-                                    id_=existing_metadata["id"],
-                                )
-                                app.logger.info(
-                                    "updating new draft of published "
-                                    "record with new metadata..."
-                                )
-                                result = records_service.update_draft(
-                                    system_identity,
-                                    id_=create_draft_result.id,
-                                    data=update_payload,
-                                )
-                                result = records_service.update_draft(
-                                    system_identity,
-                                    id_=create_draft_result.id,
-                                    data=update_payload,
-                                )
-                                if result.to_dict().get("errors"):
-                                    # NOTE: some validation errors don't
-                                    # prevent the update and aren't indicative
-                                    # of actual problems
-                                    errors = [
-                                        e
-                                        for e in result.to_dict()["errors"]
-                                        if e.get("field") != "metadata.rights.0.icon"
-                                        and e.get("messages") != ["Unknown field."]
-                                        and "Missing uploaded files"
-                                        not in e.get("messages")[0]
-                                    ]
-                                    if errors:
-                                        raise UpdateValidationError(
-                                            f"Validation error when trying to "
-                                            f"update existing record: "
-                                            f"{pformat(errors)}"
-                                        ) from None
-                                app.logger.info(
-                                    f"updated new draft of published: "
-                                    f"{pformat(result.to_dict())}"
-                                )
-                                return {
-                                    "status": "updated_published",
-                                    "record_data": result.to_dict(),
-                                    "record_uuid": result._record.id,
-                                }
-
-                    if not differences:
-                        record_type = (
-                            "draft"
-                            if existing_metadata["status"] != "published"
-                            else "published"
-                        )
-                        app.logger.info(
-                            f"continuing with existing {record_type} "
-                            "record (same metadata)..."
-                        )
-                        existing_record_id = ""
-                        try:
-                            existing_record_hit = records_service.search_drafts(
-                                system_identity,
-                                q=f"id:{existing_metadata['id']}",
-                            )._results[0]
-                            print(
-                                f"existing_record_hit draft: "
-                                f"{pformat(existing_record_hit.to_dict()['pids'])}"  # noqa: E501
-                            )
-                            existing_record_id = existing_record_hit.to_dict()["uuid"]
-                        except IndexError:
-                            existing_record_hit = records_service.read(
-                                system_identity, id_=existing_metadata["id"]
-                            )
-                            existing_record_id = existing_record_hit.id
-                        result = {
-                            "record_data": existing_metadata,
-                            "status": f"unchanged_existing_{record_type}",
-                            "record_uuid": existing_record_id,
-                        }
-                        return result
+        result_dict = self._get_existing_record(metadata, no_updates, uow=uow)
+        if result_dict is not None:
+            return result_dict
 
         # Make draft and publish
         app.logger.info("creating new draft record...")
@@ -802,6 +869,7 @@ class RecordsHelper:
         # If we want to override the created timestamp, we need to do it
         # manually here because normal record api objects operations don't
         # have access to that model field.
+        # FIXME: I don't think we end up updating created dates for existing records
         if (
             created_timestamp_override
             and RecordsHelper._validate_timestamp(created_timestamp_override)
