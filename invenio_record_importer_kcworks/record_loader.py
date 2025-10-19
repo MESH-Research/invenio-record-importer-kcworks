@@ -1,11 +1,12 @@
 #! /usr/bin/env python
-# -*- coding: utf-8 -*-
 #
 # Copyright (C) 2023-2024 Mesh Research
 #
 # invenio-record-importer-kcworks is free software; you can redistribute it
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
+
+"""High-level record importer class for invenio-record-importer-kcworks."""
 
 import copy
 import itertools
@@ -22,6 +23,14 @@ from invenio_access.permissions import system_identity
 from invenio_drafts_resources.resources.records.errors import DraftNotCreatedError
 from invenio_pidstore.errors import PIDDoesNotExistError
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
+from invenio_records_resources.services.uow import (
+    RecordCommitOp,
+    UnitOfWork,
+    unit_of_work,
+)
+from sqlalchemy.exc import NoResultFound
+from sqlalchemy.orm.exc import StaleDataError
+
 from invenio_record_importer_kcworks.errors import (
     DraftValidationError,
     FileUploadError,
@@ -48,13 +57,6 @@ from invenio_record_importer_kcworks.types import (
 from invenio_record_importer_kcworks.utils.utils import (
     replace_value_in_nested_dict,
 )
-from invenio_records_resources.services.uow import (
-    RecordCommitOp,
-    UnitOfWork,
-    unit_of_work,
-)
-from sqlalchemy.exc import NoResultFound
-from sqlalchemy.orm.exc import StaleDataError
 
 
 class RecordLoader:
@@ -132,11 +134,15 @@ class RecordLoader:
             except (NoResultFound, DraftNotCreatedError):
                 record = records_service.read(system_identity, id_=draft_id)._record
 
-            parsed_timestamp = RecordsHelper._parse_timestamp(created_timestamp_override)
+            parsed_timestamp = RecordsHelper._parse_timestamp(
+                created_timestamp_override
+            )
             if parsed_timestamp:
                 record.model.created = parsed_timestamp
             else:
-                app.logger.error(f"Failed to parse timestamp: {created_timestamp_override}")
+                app.logger.error(
+                    f"Failed to parse timestamp: {created_timestamp_override}"
+                )
                 return
             uow.register(RecordCommitOp(record))
 
@@ -222,8 +228,7 @@ class RecordLoader:
         strict_validation: bool = True,
         notify_record_owners: bool = True,
     ) -> LoaderResult:
-        """
-        Create an invenio record with file uploads, ownership, communities.
+        """Create an invenio record with file uploads, ownership, communities.
 
         Note that the owners list identified in the submitted data's
         parent.access.owned_by list will not be included in the record metadata
@@ -248,68 +253,67 @@ class RecordLoader:
         mean is that collection managers will be able to see all of the work owners
         in the list of collection members on the collection's landing page.
 
-        Parameters
-        ----------
-        import_data : dict
-            The data to import into Invenio. This should be a dictionary
-            with the following keys:
-            - custom_fields: a dictionary of custom metadata fields
-            - metadata: a dictionary of standard metadata fields
-            - pids: a dictionary of PID values
-            - files: a dictionary of file uploads
-        files : list[FileData]
-            A list of FileData objects. Each FileData object should have
-            the following properties:
-            - filename: the name of the file
-            - content_type: the MIME type of the file
-            - mimetype: the MIME type of the file
-            - mimetype_params: the MIME type parameters of the file
-            - stream: the file stream (a file-like object)
-        no_updates : bool
-            If True, do not update existing records
-        user_system : str
-            The name of the system in which the user is/will be registered.
-            Defaults to "knowledgeCommons".
-        overrides : dict
-            A dictionary of metadata fields to override in the import data
-            if manual corrections are necessary
-        strict_validation : bool
-            If True, raise a DraftValidationError if there are validation
-            errors in the record metadata, even if they do not prevent record creation.
-            If False, add the errors to the errors list and continue with the import.
-        notify_record_owners : bool
-            If True, notify the owners of the records by email when their records
-            are created. If False, do not notify the owners of the records.
-            Defaults to True.
+        Parameters:
+            import_data : dict
+                The data to import into Invenio. This should be a dictionary
+                with the following keys:
+                - custom_fields: a dictionary of custom metadata fields
+                - metadata: a dictionary of standard metadata fields
+                - pids: a dictionary of PID values
+                - files: a dictionary of file uploads
+            files : list[FileData]
+                A list of FileData objects. Each FileData object should have
+                the following properties:
+                - filename: the name of the file
+                - content_type: the MIME type of the file
+                - mimetype: the MIME type of the file
+                - mimetype_params: the MIME type parameters of the file
+                - stream: the file stream (a file-like object)
+            no_updates : bool
+                If True, do not update existing records
+            user_system : str
+                The name of the system in which the user is/will be registered.
+                Defaults to "knowledgeCommons".
+            overrides : dict
+                A dictionary of metadata fields to override in the import data
+                if manual corrections are necessary
+            strict_validation : bool
+                If True, raise a DraftValidationError if there are validation
+                errors in the record metadata, even if they do not prevent record
+                creation. If False, add the errors to the errors list and continue
+                with the import.
+            notify_record_owners : bool
+                If True, notify the owners of the records by email when their records
+                are created. If False, do not notify the owners of the records.
+                Defaults to True.
 
-        Returns
-        -------
-        LoaderResult
-            A LoaderResult object with the results of the import. It has the
-            following properties:
-            - index: the index of the record in the source file
-            - source_id: the ID of the record in the source system, using the
-                first sourceid_scheme specified in the RecordLoader constructor
-            - primary_community: the community data dictionary for the record's
-                primary community
-            - record_created: the metadata record creation result.
-                This is not just the metadata record, but the dictionary
-                returned by the create_invenio_record method of RecordsHelper.
-                It contains the following keys:
-                - record_data: the metadata record
-                - record_uuid: the UUID of the metadata record
-                - status: the status of the metadata record
-            - existing_record: the existing metadata record if it exists
-                (after updating)
-            - uploaded_files: the file upload results
-            - community_review_result: the community review acceptance result
-                as a dictionary
-            - assigned_ownership: the record ownership assignment result
-            - added_to_collections: the group collection addition
-            - submitted: the submitted data
-                - data: the submitted data
-                - files: the submitted files
-                - owners: the submitted owners
+        Returns:
+            LoaderResult
+                A LoaderResult object with the results of the import. It has the
+                following properties:
+                - index: the index of the record in the source file
+                - source_id: the ID of the record in the source system, using the
+                    first sourceid_scheme specified in the RecordLoader constructor
+                - primary_community: the community data dictionary for the record's
+                    primary community
+                - record_created: the metadata record creation result.
+                    This is not just the metadata record, but the dictionary
+                    returned by the create_invenio_record method of RecordsHelper.
+                    It contains the following keys:
+                    - record_data: the metadata record
+                    - record_uuid: the UUID of the metadata record
+                    - status: the status of the metadata record
+                - existing_record: the existing metadata record if it exists
+                    (after updating)
+                - uploaded_files: the file upload results
+                - community_review_result: the community review acceptance result
+                    as a dictionary
+                - assigned_ownership: the record ownership assignment result
+                - added_to_collections: the group collection addition
+                - submitted: the submitted data
+                    - data: the submitted data
+                    - files: the submitted files
+                    - owners: the submitted owners
         """
         result = LoaderResult(
             index=index,
@@ -325,6 +329,9 @@ class RecordLoader:
             errors=[],
             submitted={},
         )
+
+        app.logger.error(f"import_data data in loader: {pformat(import_data)}")
+
         result.source_id = next(
             (
                 i.get("identifier")
@@ -400,6 +407,9 @@ class RecordLoader:
             result.record_created = RecordsHelper().create_invenio_record(
                 submitted_data, no_updates, created_timestamp_override
             )
+            app.logger.error(
+                f"result.record_created in loader: {pformat(result.record_created)}"
+            )
             validation_errors = (
                 result.record_created["record_data"]
                 .get("metadata", {})
@@ -408,9 +418,9 @@ class RecordLoader:
             if strict_validation and len(validation_errors) > 0:
                 raise DraftValidationError(validation_errors)
             else:
-                result.errors.extend(
-                    [{"validation_error": e} for e in validation_errors]
-                )
+                result.errors.extend([
+                    {"validation_error": e} for e in validation_errors
+                ])
             result.status = result.record_created["status"]
             if result.record_created["status"] in [
                 "updated_published",
@@ -452,13 +462,16 @@ class RecordLoader:
             ]
             if any(failed_files):
                 app.logger.error(f"failed files: {pformat(result.uploaded_files)}")
-                raise FileUploadError(
-                    {
-                        "file upload failures": {
-                            k: result.uploaded_files[k] for k in failed_files
-                        }
+                raise FileUploadError({
+                    "file upload failures": {
+                        k: result.uploaded_files[k] for k in failed_files
                     }
-                )
+                })
+
+            app.logger.error(
+                f"record before publication by community: "
+                f"{pformat(result.record_created['record_data'])}"
+            )
 
             # Attach the record to the communities
             result.community_review_result = (
@@ -645,12 +658,10 @@ class RecordLoader:
         failed_list = lists["failed_records"]
         index = result.log_object.get("index", -1)
         failed_obj = result.log_object.copy()
-        failed_obj.update(
-            {
-                "reason": reason,
-                "datestamp": arrow.now().format(),
-            }
-        )
+        failed_obj.update({
+            "reason": reason,
+            "datestamp": arrow.now().format(),
+        })
 
         if index > -1:
             failed_list.append(result)
@@ -935,11 +946,9 @@ class RecordLoader:
             raise e
 
         if e.__class__.__name__ not in ["SkipRecord", "NoUpdates"]:
-            result.errors.append(
-                {
-                    "message": error_reasons[e.__class__.__name__],
-                }
-            )
+            result.errors.append({
+                "message": error_reasons[e.__class__.__name__],
+            })
             lists = self._log_failed_record(result=result, lists=lists)
         elif e.__class__.__name__ == "NoUpdates":
             lists["no_updates_records"].append(result.log_object)
