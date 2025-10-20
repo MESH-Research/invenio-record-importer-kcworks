@@ -28,7 +28,6 @@ from invenio_records_resources.services.records.results import RecordItem
 from invenio_records_resources.services.uow import RecordCommitOp, UnitOfWork
 
 # Removed invenio_stats_dashboard import - not needed for basic functionality
-
 from ..helpers.files_helper import FilesHelper
 from ..helpers.types import FileData
 from ..helpers.utils import remove_value_by_path, replace_value_in_nested_dict

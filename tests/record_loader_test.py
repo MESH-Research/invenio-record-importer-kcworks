@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-# -*- coding: utf-8 -*-
 #
 # Copyright (C) 2023 MESH Research
 #
@@ -22,6 +21,8 @@ from invenio_access.permissions import system_identity
 from invenio_pidstore.errors import PIDUnregistered
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_rdm_records.records.stats.api import Statistics
+from invenio_search import current_search_client
+
 from invenio_record_importer_kcworks.cli import cli
 from invenio_record_importer_kcworks.queries import (
     aggregations_search,
@@ -48,7 +49,6 @@ from invenio_record_importer_kcworks.utils import (
     generate_random_string,
     valid_date,
 )
-from invenio_search import current_search_client
 
 from .helpers.sample_records import (
     rec583,

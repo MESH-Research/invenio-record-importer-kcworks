@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-# -*- coding: utf-8 -*-
 #
 # Copyright (C) 2023-2024 Mesh Research
 #
@@ -9,7 +8,6 @@
 
 import json
 import os
-from pprint import pformat
 from traceback import print_exc
 
 import arrow
@@ -22,13 +20,13 @@ from invenio_accounts.proxies import current_accounts
 from invenio_communities.proxies import current_communities
 from invenio_db import db
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
+
 from invenio_record_importer_kcworks.services.communities import CommunityRecordHelper
 from invenio_record_importer_kcworks.tasks import send_security_email
 
 
 class UsersHelper:
-    """
-    A helper class for working with Invenio users during record imports.
+    """A helper class for working with Invenio users during record imports.
 
     Includes public methods for creating users (including configuring SAML
     login).
@@ -137,8 +135,7 @@ class UsersHelper:
         orcid: str = "",
         other_user_ids: list = [],
     ) -> dict:
-        """
-        Create a new user account in the Invenio instance
+        """Create a new user account in the Invenio instance
 
         Where a user account already exists with the provided email address,
         the existing account is returned. If the user account does not exist,
@@ -167,7 +164,7 @@ class UsersHelper:
             A list of other user ids that the new user should be linked to.
             These may be user record UUIDs or other identifiers.
 
-        Returns
+        Returns:
         -------
         dict
             A dictionary with the following keys:

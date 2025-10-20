@@ -48,7 +48,6 @@ def creators_role_type(app):
 @pytest.fixture(scope="module")
 def creators_role_v(app, creators_role_type):
     """Creator role vocabulary record."""
-
     for role in creatibutor_roles:
         vocabulary_service.create(
             system_identity,
@@ -69,7 +68,6 @@ def contributors_role_type(app):
 @pytest.fixture(scope="module")
 def contributors_role_v(app, contributors_role_type):
     """Contributor role vocabulary record."""
-
     for role in creatibutor_roles:
         vocabulary_service.create(
             system_identity,

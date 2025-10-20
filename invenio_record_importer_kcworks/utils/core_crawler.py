@@ -92,7 +92,7 @@ def get_metadata(record_id):
     if len(details) > 0:
         dts.extend(meta.find_elements(By.TAG_NAME, "dt"))
         dds.extend(meta.find_elements(By.TAG_NAME, "dd"))
-    for dt, dd in zip(dts, dds):
+    for dt, dd in zip(dts, dds, strict=False):
         print(dd.text)
         if dt.text == "Metadata:":
             meta_desc_url = dd.find_elements(By.TAG_NAME, "a")[

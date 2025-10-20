@@ -232,7 +232,6 @@ subject_data = [
 @pytest.fixture(scope="module")
 def subject_v(app, subjects_service):
     """Subject vocabulary record."""
-
     for subject in subject_data:
         try:
             subjects_service.create(

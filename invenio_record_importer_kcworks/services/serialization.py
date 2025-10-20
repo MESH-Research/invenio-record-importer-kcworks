@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # This file is part of the invenio_record_importer_kcworks package.
 # Copyright (C) 2024, MESH Research.
@@ -65,7 +64,6 @@ class SerializationService:
         Returns:
             list[dict]: List of serialized json records as python dictionaries.
         """
-
         file_path = Path(app.config["RECORD_IMPORTER_SERIALIZED_PATH"])
 
         serialized_recs = []
@@ -119,7 +117,6 @@ class SerializationService:
         field_path: str = "",
     ) -> str:
         """Dump serialized data."""
-
         return json.dumps(
             cls.read_serialized(
                 identifiers=identifiers,
@@ -138,7 +135,6 @@ class SerializationService:
         field_path: str = "",
     ) -> dict:
         """Read raw data."""
-
         file_path = Path(
             app.config["RECORD_IMPORTER_DATA_DIR"],
             "records-for-import.json",
@@ -194,7 +190,6 @@ class SerializationService:
         field_path: str = "",
     ):
         """Dump raw data."""
-
         return json.dumps(
             cls.read_raw(
                 identifiers=identifiers,

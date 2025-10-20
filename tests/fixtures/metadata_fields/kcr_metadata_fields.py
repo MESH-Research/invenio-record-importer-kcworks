@@ -1,5 +1,4 @@
-"""
-kcr:commons_domain      The commons domain from which the record was deposited.
+"""kcr:commons_domain      The commons domain from which the record was deposited.
 kcr:chapter_label       The title or heading for a chapter. Used primarily
                         for bookSection resource type.
 kcr:edition             The edition number (or other identifier) for the

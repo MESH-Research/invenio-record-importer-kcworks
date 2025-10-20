@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # This file is part of the invenio-record-importer-kcworks package.
 # Copyright (C) 2024, Mesh Research.
@@ -12,7 +11,7 @@ from .resources import RecordImporterResource, RecordImporterResourceConfig
 from .service import RecordImporterService
 
 
-class InvenioRecordImporter(object):
+class InvenioRecordImporter:
     """Flask extension for invenio-record-importer-kcworks.
 
     Args:

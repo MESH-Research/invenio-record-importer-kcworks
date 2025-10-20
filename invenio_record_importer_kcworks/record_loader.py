@@ -14,7 +14,6 @@ import json
 from pathlib import Path
 from pprint import pformat
 from traceback import format_exc, print_exc
-from typing import Optional, Union
 
 import arrow
 import jsonlines
@@ -112,10 +111,9 @@ class RecordLoader:
         self,
         draft_id: str,
         created_timestamp_override: str,
-        uow: Optional[UnitOfWork] = None,
+        uow: UnitOfWork | None = None,
     ) -> None:
-        """
-        Override the created timestamp of a draft record and update related events.
+        """Override the created timestamp of a draft record and update related events.
 
         If we want to override the created timestamp, we need to do it
         manually here because normal record api objects operations don't
@@ -597,8 +595,7 @@ class RecordLoader:
         load_result: LoaderResult,
         lists: dict[str, list[LoaderResult]],
     ) -> dict[str, list[LoaderResult]]:
-        """
-        Log a created record to the created records log file.
+        """Log a created record to the created records log file.
 
         This does not update the log file if the record has already been
         created. If the record does not appear in the log file, it is added at
@@ -651,9 +648,8 @@ class RecordLoader:
         result: LoaderResult,
         lists: dict,
         reason: str = "",
-    ) -> dict[str, list[Union[LoaderResult, dict]]]:
-        """
-        Log a failed record to the failed records log file.
+    ) -> dict[str, list[LoaderResult | dict]]:
+        """Log a failed record to the failed records log file.
         """
         failed_list = lists["failed_records"]
         index = result.log_object.get("index", -1)
@@ -672,8 +668,7 @@ class RecordLoader:
         return lists
 
     def _update_failed_logfile(self, lists: dict) -> None:
-        """
-        Update the failed records logfile.
+        """Update the failed records logfile.
         """
         failed_list = lists["failed_records"]
         skipped_ids = []
@@ -699,8 +694,7 @@ class RecordLoader:
         result: LoaderResult,
         lists: dict,
     ) -> dict[str, list[dict]]:
-        """
-        Log a repaired record.
+        """Log a repaired record.
         """
         app.logger.info("repaired previously failed record...")
         app.logger.info(
@@ -719,8 +713,7 @@ class RecordLoader:
     def _load_prior_failed_records(
         self,
     ) -> tuple[list[dict], list[dict], list[int], list[str], list[str]]:
-        """
-        Load the prior failed records.
+        """Load the prior failed records.
 
         :returns: a tuple of lists which contain:
             - the existing failed records
@@ -760,8 +753,7 @@ class RecordLoader:
         range_args: list[int] = [],
         nonconsecutive: list[int] = [],
     ) -> list[dict]:
-        """
-        Get the record set from the metadata.
+        """Get the record set from the metadata.
         """
         retry_failed = flags.get("retry_failed")
         no_updates = flags.get("no_updates")
@@ -854,10 +846,8 @@ class RecordLoader:
         current_record_index: int,
         record: dict,
     ) -> dict[str, str]:
+        """Get the record ids from the record.
         """
-        Get the record ids from the record.
-        """
-
         rec_doi = record.get("pids", {}).get("doi", {}).get("identifier", "")
         scheme_ids = []
         for scheme in [self.sourceid_scheme, self.sourceid_scheme2]:
@@ -887,10 +877,9 @@ class RecordLoader:
         self,
         e: Exception,
         result: LoaderResult,
-        lists: dict[str, list[Union[LoaderResult, dict]]],
-    ) -> dict[str, list[Union[LoaderResult, dict]]]:
-        """
-        Handle a raised exception and log the error.
+        lists: dict[str, list[LoaderResult | dict]],
+    ) -> dict[str, list[LoaderResult | dict]]:
+        """Handle a raised exception and log the error.
 
         :param e: the raised exception
         :param current_index: the index of the record in the source file
@@ -965,8 +954,7 @@ class RecordLoader:
         return created_records
 
     def _get_overrides(self, record: dict) -> tuple[bool, dict]:
-        """
-        Get any metadata overrides for a record.
+        """Get any metadata overrides for a record.
 
         :param record: the record to get overrides for
         :returns: a tuple containing a boolean indicating whether the record
@@ -993,8 +981,7 @@ class RecordLoader:
         return skip, overrides
 
     def _update_counts(self, counts: dict, result: LoaderResult) -> dict:
-        """
-        Update the counts based on the result of the load operation.
+        """Update the counts based on the result of the load operation.
         """
         if not result.existing_record:
             counts["new_records"] += 1
@@ -1014,8 +1001,7 @@ class RecordLoader:
         nonconsecutive: list[int] = [],
         start_index: int = 0,
     ) -> None:
-        """
-        Log and report the final counts of the load operation.
+        """Log and report the final counts of the load operation.
         """
         counter = counts["record_counter"]
         app.logger.info("All done loading records into InvenioRDM")
@@ -1067,8 +1053,7 @@ class RecordLoader:
             app.logger.info(f"Failed records written to {self.failed_log_path}")
 
     def _update_record_log_object(self, result: LoaderResult) -> dict:
-        """
-        Update the record log object with the result of the load operation.
+        """Update the record log object with the result of the load operation.
         """
         result.log_object["invenio_recid"] = result.record_created.get(
             "record_data", {}
@@ -1082,8 +1067,7 @@ class RecordLoader:
         return result.log_object
 
     def _roll_back_created_records(self, records: list[LoaderResult]) -> None:
-        """
-        Roll back the created records.
+        """Roll back the created records.
         """
         for record in records:
             record_id = record.record_created.get("record_data", {}).get("id")
@@ -1097,9 +1081,8 @@ class RecordLoader:
         self,
         start_date: str = "",
         end_date: str = "",
-    ) -> Union[list, bool]:
-        """
-        Aggregate the stats for the load operation.
+    ) -> list | bool:
+        """Aggregate the stats for the load operation.
         """
         start_date = (
             start_date
@@ -1141,8 +1124,7 @@ class RecordLoader:
         all_or_none: bool = True,
         notify_record_owners: bool = True,
     ) -> APIResponsePayload:
-        """
-        Create new InvenioRDM records and upload files for serialized deposits.
+        """Create new InvenioRDM records and upload files for serialized deposits.
 
         params:
             start_index (int): the starting index of the records to load in the

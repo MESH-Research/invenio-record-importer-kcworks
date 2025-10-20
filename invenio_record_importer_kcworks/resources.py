@@ -219,7 +219,6 @@ class RecordImporterResource(Resource):
 
 def create_api_blueprint(app):
     """Register blueprint on api app."""
-
     ext = app.extensions["invenio-record-importer-kcworks"]
     blueprint = ext.resource.as_blueprint()
 

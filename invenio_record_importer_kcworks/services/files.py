@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-# -*- coding: utf-8 -*-
 #
 # Copyright (C) 2023-2024 Mesh Research
 #
@@ -15,7 +14,6 @@ from io import BufferedReader
 from pathlib import Path
 from pprint import pformat
 from tempfile import SpooledTemporaryFile
-from typing import Optional, Union
 from urllib.parse import unquote
 
 from flask import current_app as app
@@ -26,15 +24,6 @@ from invenio_drafts_resources.resources.records.errors import (
 from invenio_files_rest.errors import BucketLockedError, InvalidKeyError
 from invenio_pidstore.errors import PIDDoesNotExistError, PIDUnregistered
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
-from invenio_record_importer_kcworks.errors import (
-    FileUploadError,
-    UploadFileNotFoundError,
-)
-from invenio_record_importer_kcworks.types import FileData
-from invenio_record_importer_kcworks.utils.utils import (
-    normalize_string,
-    valid_date,
-)
 from invenio_records_resources.services.errors import (
     FileKeyNotFoundError,
 )
@@ -44,6 +33,16 @@ from invenio_records_resources.services.uow import (
     unit_of_work,
 )
 from sqlalchemy.orm.exc import NoResultFound
+
+from invenio_record_importer_kcworks.errors import (
+    FileUploadError,
+    UploadFileNotFoundError,
+)
+from invenio_record_importer_kcworks.types import FileData
+from invenio_record_importer_kcworks.utils.utils import (
+    normalize_string,
+    valid_date,
+)
 
 
 class FilesHelper:
@@ -66,7 +65,7 @@ class FilesHelper:
         return changed
 
     @unit_of_work()
-    def set_to_metadata_only(self, draft_id: str, uow: Optional[UnitOfWork] = None):
+    def set_to_metadata_only(self, draft_id: str, uow: UnitOfWork | None = None):
         if uow:
             try:
                 record = records_service.read(system_identity, draft_id)._record
@@ -96,7 +95,7 @@ class FilesHelper:
         record,
         is_draft: bool,
         is_published: bool,
-        uow: Optional[UnitOfWork] = None,
+        uow: UnitOfWork | None = None,
     ):
 
         def inner_clear_manager(record, is_published):
@@ -139,7 +138,7 @@ class FilesHelper:
         key: str,
         files_service=None,
         files_type: str = "",
-        uow: Optional[UnitOfWork] = None,
+        uow: UnitOfWork | None = None,
     ) -> bool:
         if files_service is None:
             files_service = self.files_service
@@ -211,7 +210,7 @@ class FilesHelper:
         return True
 
     @unit_of_work()
-    def _unlock_files(self, existing_record, uow: Optional[UnitOfWork] = None):
+    def _unlock_files(self, existing_record, uow: UnitOfWork | None = None):
 
         need_to_unlock = (
             existing_record.get("is_published") if existing_record else False
@@ -240,7 +239,7 @@ class FilesHelper:
                 pass
 
     @unit_of_work()
-    def _lock_files(self, existing_record, uow: Optional[UnitOfWork] = None):
+    def _lock_files(self, existing_record, uow: UnitOfWork | None = None):
 
         need_to_lock = existing_record.get("is_published") if existing_record else False
         record = None
@@ -269,14 +268,13 @@ class FilesHelper:
     def handle_record_files(
         self,
         metadata: dict,
-        file_data: Union[dict, list[dict]],
+        file_data: dict | list[dict],
         files: list[FileData] = [],
-        existing_record: Optional[dict] = {},
-        source_filepaths: Optional[dict] = {},
-        uow: Optional[UnitOfWork] = None,
-    ) -> dict[str, list[Union[str, list[str]]]]:
-        """
-        Ensure that the files for a record are uploaded correctly.
+        existing_record: dict | None = {},
+        source_filepaths: dict | None = {},
+        uow: UnitOfWork | None = None,
+    ) -> dict[str, list[str | list[str]]]:
+        """Ensure that the files for a record are uploaded correctly.
 
         If the record already exists, we need to check if the files have
         changed. If they have, we need to upload the new files and delete the
@@ -450,7 +448,7 @@ class FilesHelper:
         self,
         draft_id: str,
         k: str,
-        uow: Optional[UnitOfWork] = None,
+        uow: UnitOfWork | None = None,
     ) -> bool:
         existing_record = self.files_service._get_record(
             draft_id, system_identity, "create_files"
@@ -548,8 +546,8 @@ class FilesHelper:
 
     def _check_file_size(
         self,
-        file_object: Union[SpooledTemporaryFile, BufferedReader],
-        size: Optional[int],
+        file_object: SpooledTemporaryFile | BufferedReader,
+        size: int | None,
         key: str,
     ) -> None:
         if size:
@@ -569,10 +567,9 @@ class FilesHelper:
         files_dict: dict[str, dict],
         source_filenames: dict[str, str] = {},
         files: list[FileData] = [],
-        uow: Optional[UnitOfWork] = None,
-    ) -> dict[str, list[Union[str, list[str]]]]:
-        """
-        Upload files to a draft record.
+        uow: UnitOfWork | None = None,
+    ) -> dict[str, list[str | list[str]]]:
+        """Upload files to a draft record.
 
         :param draft_id: The ID of the draft record to upload files to.
         :param files_dict: A dictionary of file keys and their corresponding file data.
@@ -589,7 +586,6 @@ class FilesHelper:
             including [0] the file's status after the upload was attempted, and
             [1] any error messages that were generated.
         """
-
         output = {}
 
         # Ensure a draft exists for a published record
@@ -827,8 +823,7 @@ class FilesHelper:
         old_files: dict[str, dict],
         new_entries: dict[str, dict],
     ) -> tuple[bool, dict[str, dict]]:
-        """
-        Compare existing files to new entries.
+        """Compare existing files to new entries.
 
         Note that this function should only be called when we are updating a
         pre-existing record:

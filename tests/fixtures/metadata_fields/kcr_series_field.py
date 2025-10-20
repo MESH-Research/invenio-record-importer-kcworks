@@ -1,22 +1,15 @@
 #! /usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-kcr:notes           Notes related to the record. This value is an array of
-                    objects, each of which has the keys "note_text",
-                    "note_text_sanitized", and "note_description". The "note_text_sanitized" field contains the same string as "note_text" but with any allowed html tags stripped out.
+"""kcr:notes           Notes related to the record. This value is an array of
+objects, each of which has the keys "note_text",
+"note_text_sanitized", and "note_description". The "note_text_sanitized" field contains the same string as "note_text" but with any allowed html tags stripped out.
 """
 
 from invenio_i18n import lazy_gettext as _
 from invenio_records_resources.services.custom_fields import (
-    BaseCF,
     BaseListCF,
-    IntegerCF,
-    TextCF,
 )
-from marshmallow import fields, validate
-from marshmallow_utils.fields import SanitizedHTML, SanitizedUnicode, StrippedHTML
-
-from .kcr_metadata_fields import KCR_NAMESPACE
+from marshmallow import fields
+from marshmallow_utils.fields import SanitizedUnicode
 
 
 class BookSeriesCF(BaseListCF):
