@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-# -*- coding: utf-8 -*-
 #
 # Copyright (C) 2023 MESH Research
 #
@@ -7,8 +6,7 @@
 # modify it under the terms of the MIT License; see LICENSE file for more
 # details.
 
-"""
-Functions to re-serialize legacy CORE deposits exported as json files to a
+"""Functions to re-serialize legacy CORE deposits exported as json files to a
 json schema consumable by InvenioRDM.
 
 The main function `serialize_json` writes the output to a jsonl file, with
@@ -32,6 +30,11 @@ from idutils import (
     normalize_doi,
     normalize_pid,
 )
+from isbnlib import get_isbnlike
+from langdetect import detect_langs
+from stdnum import issn
+from titlecase import titlecase
+
 from invenio_record_importer_kcworks.libs.date_parser import DateParser
 from invenio_record_importer_kcworks.utils.utils import (
     normalize_string,
@@ -39,10 +42,6 @@ from invenio_record_importer_kcworks.utils.utils import (
     valid_date,
     valid_isbn,
 )
-from isbnlib import get_isbnlike
-from langdetect import detect_langs
-from stdnum import issn
-from titlecase import titlecase
 
 book_types = [
     "textDocument-bookChapter",
@@ -205,8 +204,7 @@ publication_types = {
 
 
 def _append_bad_data(rowid: str, content: tuple, bad_data_dict: dict) -> dict:
-    """
-    Add info on bad data to dictionary of bad data
+    """Add info on bad data to dictionary of bad data
     """
     bad_data_dict.setdefault(rowid, []).append(content)
     return bad_data_dict
@@ -375,8 +373,7 @@ def _add_resource_type(rec: dict, row: dict, bad_data_dict: dict) -> tuple[dict,
 def _add_book_authors(
     author_string: str, bad_data_dict: dict, row_id
 ) -> tuple[list[dict], dict]:
-    """
-    Convert the "book_author" string to JSON objects for Invenio
+    """Convert the "book_author" string to JSON objects for Invenio
     """
     author_list = []
 
@@ -502,12 +499,10 @@ def _add_book_authors(
 
 
 def _add_author_data(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]:
-    """
-    Add information about authors to the supplied record from supplied row.
+    """Add information about authors to the supplied record from supplied row.
 
     Processes data from the 'authors' and 'author_info' csv export fields.
     """
-
     creators = []
     contributors_misplaced = []
     # creators_misplaced = []
@@ -635,8 +630,7 @@ def _add_author_data(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict
 
 
 def _get_subject_from_jsonl(subject: str) -> str:
-    """
-    Retrieve the full subject string corresponding to the provided label
+    """Retrieve the full subject string corresponding to the provided label
     """
     # FIXME: Finish finding id numbers
     existing_subjects = {
@@ -925,7 +919,7 @@ def add_titles(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict
     the stripped 'title' is added as an additional title (in
     'additional_titles') with type 'Primary title with HTML stripped'.
 
-    args:
+    Args:
         newrec (_type_): The new record being prepared for serialization
         row (_type_): The CORE record being processed
         bad_data_dict (_type_): A dictionary of error messages recording
@@ -976,7 +970,7 @@ def add_descriptions(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict
     description fields are different, the stripped 'abstract' is added as an
     additional description (in 'additional_descriptions') with type 'Other'.
 
-    args:
+    Args:
         newrec (_type_): The new record being prepared for serialization
         row (_type_): The CORE record being processed
         bad_data_dict (_type_): A dictionary of error messages recording
@@ -985,7 +979,6 @@ def add_descriptions(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict
     Returns:
         dict: The new record dict with description info added
     """
-
     # Descriptions/Abstracts
     normalized_desc = normalize_string(row["abstract_unchanged"])
     normalized_abstr = normalize_string(row["abstract"])
@@ -1212,7 +1205,6 @@ def add_language_info(
     Returns:
         dict: The new record dict with language info added
     """
-
     # Language info
     # FIXME: Deal with all of these exceptions and the 'else' condition
     if row["language"]:
@@ -1386,7 +1378,6 @@ def add_edition_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict
     Returns:
         dict: The new record dict with edition info added
     """
-
     # Edition
     # FIXME: There's some bad data here, like ISSNs
     if row["edition"]:
@@ -1418,7 +1409,6 @@ def add_date_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, d
     Returns:
         dict: The new record dict with date info added
     """
-
     # FIXME: does "issued" work here?
     newrec["metadata"]["publication_date"] = row["date_issued"].split("T")[0]
     if row["date_issued"] != row["date"] and row["date"] not in ["", " "]:
@@ -1494,7 +1484,6 @@ def add_groups_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict,
     Returns:
         dict: The new record dict with group info added
     """
-
     # Group info for deposit
     try:
         # print(row['group'])
@@ -1542,7 +1531,6 @@ def add_book_authors(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict
     Returns:
         dict: The new record dict with book author info added
     """
-
     # book info
     # FIXME: Need to augment out-of-the-box imprint custom fields
     if row["book_author"]:
@@ -1568,7 +1556,6 @@ def add_volume_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict,
     Returns:
         dict: The new record dict with volume info added
     """
-
     # volume info
     # FIXME: distinguish volume meaning for ambiguous resource types
     if row["volume"]:
@@ -1611,7 +1598,6 @@ def add_publication_details(
     Returns:
         dict: The new record dict with ISBN info added
     """
-
     if row["isbn"]:
         row["isbn"] = row["isbn"].replace(r"\\0", "")
         isbn = get_isbnlike(row["isbn"])
@@ -1731,7 +1717,6 @@ def add_pages(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, dict]
     Returns:
         dict: The new record dict with page info added
     """
-
     # article/chapter info
 
     if row["start_page"]:
@@ -1890,7 +1875,6 @@ def add_institution(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict,
     Returns:
         dict: The new record dict with institution info added
     """
-
     if row["institution"]:
         # print(row['id'])
         # print(newrec['metadata']['resource_type']['id'])
@@ -1950,7 +1934,6 @@ def add_meeting_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict
     Returns:
         dict: The new record dict with meeting info added
     """
-
     if row["conference_date"] or row["meeting_date"]:
         # if not newrec['custom_fields']['meeting:meeting']:
         #     newrec['custom_fields']['meeting:meeting'] = {}
@@ -2000,7 +1983,6 @@ def add_subjects_keywords(
     Returns:
         dict: The new record dict with subject and keyword info added
     """
-
     # FIXME: keyword ids filled in and harmonized where possible
     #   with subject headings below
     # FIXME: use named entity recognition to regularize
@@ -2261,7 +2243,6 @@ def add_rights_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict,
     Returns:
         dict: The new record dict with rights info added
     """
-
     if row["type_of_license"]:
         license_id, license_name, license_url = licenses[row["type_of_license"]]
         newrec["metadata"].setdefault("rights", []).append(
@@ -2286,7 +2267,6 @@ def add_file_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, d
     Returns:
         dict: The new record dict with file info added
     """
-
     if row["file_pid"] or row["fileloc"] or row["filename"]:
         clean_name = re.sub(r"[‘’”“]", "", row["filename"])
         clean_loc = re.sub(r"[‘’”“]", "", row["fileloc"])
@@ -2307,8 +2287,7 @@ def add_file_info(newrec: dict, row: dict, bad_data_dict: dict) -> tuple[dict, d
 
 
 def serialize_json() -> tuple[list[dict], dict]:
-    """
-    Parse and serialize csv data into Invenio JSON format.
+    """Parse and serialize csv data into Invenio JSON format.
     """
     baserec: dict = {
         "parent": {"access": {"owned_by": []}},

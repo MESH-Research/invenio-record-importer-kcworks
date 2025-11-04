@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # This file is part of the invenio_record_importer_kcworks package.
 # Copyright (C) 2024, MESH Research.
@@ -9,19 +8,23 @@
 
 import datetime
 import json
-import time
 import uuid
 from pathlib import Path
 from pprint import pformat
-from typing import List, Optional, Union
 
 import arrow
 from flask import current_app as app
 from invenio_access.permissions import system_identity
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
+from invenio_stats.contrib.event_builders import (  # build_record_unique_id,
+    build_file_unique_id,
+)
+from invenio_stats.proxies import current_stats
+from invenio_stats.tasks import process_events
+from opensearchpy.exceptions import NotFoundError
+
 from invenio_record_importer_kcworks.errors import (
     FailedCreatingUsageEventsError,
-    TooManyDownloadEventsError,
     TooManyViewEventsError,
 )
 from invenio_record_importer_kcworks.queries import (
@@ -29,13 +32,6 @@ from invenio_record_importer_kcworks.queries import (
     view_events_search,
 )
 from invenio_record_importer_kcworks.tasks import aggregate_events
-from invenio_stats.contrib.event_builders import (  # build_record_unique_id,
-    build_file_unique_id,
-)
-from invenio_stats.processors import anonymize_user
-from invenio_stats.proxies import current_stats
-from invenio_stats.tasks import process_events
-from opensearchpy.exceptions import NotFoundError
 
 # from invenio_rdm_records.services.tasks import reindex_stats
 
@@ -56,8 +52,7 @@ class StatsFabricator:
         """Initialize the service."""
 
     def generate_datetimes(self, start, n):
-        """
-        Generate evenly distributed datetimes between the record creation
+        """Generate evenly distributed datetimes between the record creation
         date and the current date.
         """
         # Use a relatively recent start time to avoid issues with
@@ -79,8 +74,7 @@ class StatsFabricator:
         date_field: str = "metadata.publication_date",
         verbose: bool = False,
     ):
-        """
-        Create statistics events for the migrated records already in the db.
+        """Create statistics events for the migrated records already in the db.
 
         This method reads a JSONL file of records and creates statistics events
         for each record. The JSONL file should be a list of dictionaries, where
@@ -104,14 +98,14 @@ class StatsFabricator:
                 creation date
             verbose (bool): whether to print debug information
 
-        returns:
+        Returns:
             None
         """
         filename = Path(
             app.config["RECORD_IMPORTER_USAGE_STATS_PATH"],
             f"{record_source}.jsonl",
         )
-        with open(filename, "r") as f:
+        with open(filename) as f:
             records = [json.loads(line) for line in f]
 
         for record in records:
@@ -136,15 +130,14 @@ class StatsFabricator:
 
     def fabricate_events_from_db(
         self,
-        record_ids: Optional[List[int]] = None,
+        record_ids: list[int] | None = None,
         record_source: str = "knowledgeCommons",
         downloads_field: str = "hclegacy:total_downloads",
         views_field: str = "hclegacy:total_views",
         date_field: str = "metadata.publication_date",
         verbose: bool = False,
     ):
-        """
-        Create statistics events for the migrated records already in the db.
+        """Create statistics events for the migrated records already in the db.
         """
         if record_ids:
             record_ids = records_service.read_many(
@@ -197,14 +190,13 @@ class StatsFabricator:
         downloads_field: str = "custom_fields.hclegacy:total_downloads",
         views_field: str = "custom_fields.hclegacy:total_views",
         date_field: str = "metadata.publication_date",
-        views_count: Optional[int] = None,
-        downloads_count: Optional[int] = None,
-        publication_date: Optional[str] = None,
+        views_count: int | None = None,
+        downloads_count: int | None = None,
+        publication_date: str | None = None,
         eager=False,
         verbose=False,
-    ) -> Union[bool, list]:
-        """
-        Create artificial statistics events for a migrated record.
+    ) -> bool | list:
+        """Create artificial statistics events for a migrated record.
 
         Since Invenio stores statistics as aggregated events in the
         search index, we need to create the individual events that
@@ -232,7 +224,7 @@ class StatsFabricator:
                 queue them for processing in a background task
             verbose (bool): whether to print debug information
 
-        returns:
+        Returns:
             Either bool or list, depending on the value of eager. If eager
             is True, the function returns a list of the events. If eager
             is False, the function returns True. In either case, if the
@@ -519,14 +511,13 @@ class AggregationFabricator:
 
     def create_stats_aggregations(
         self,
-        start_date: Union[arrow.Arrow, datetime.datetime] = None,
-        end_date: Union[arrow.Arrow, datetime.datetime] = None,
-        bookmark_override: Union[arrow.Arrow, datetime.datetime] = None,
+        start_date: arrow.Arrow | datetime.datetime = None,
+        end_date: arrow.Arrow | datetime.datetime = None,
+        bookmark_override: arrow.Arrow | datetime.datetime = None,
         eager: bool = False,
         verbose: bool = False,
-    ) -> Union[bool, list]:
-        """
-        Create statistics aggregations for the migrated records.
+    ) -> bool | list:
+        """Create statistics aggregations for the migrated records.
 
         This function triggers the creation of statistics aggregations
         for the migrated records. It is intended to be run after all
@@ -548,13 +539,12 @@ class AggregationFabricator:
                 or queue them for processing in a background task
             verbose (bool): whether to print debug information
 
-        returns:
+        Returns:
             Either bool or list, depending on the value of eager. If eager
             is True, the function returns a list of the aggregations. If
             eager is False, the function returns True.
 
         """
-
         aggregation_types = list(current_stats.aggregations.keys())
 
         # first delete existing aggregations

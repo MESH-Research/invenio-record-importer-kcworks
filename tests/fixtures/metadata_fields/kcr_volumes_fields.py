@@ -1,27 +1,20 @@
-"""
-kcr:volumes     Information on the total number of volumes and the current
-                volume identifier for multi-volume works. This value is an
-                object with the keys "total_volumes" (for the total number of
-                volumes in the whole work) and "volume" (for the identifier for
-                the current item's volume). This is not used for the volume of
-                a journal in which a journalArticle appears. For that value,
-                see journal:journal.volume.
+"""kcr:volumes     Information on the total number of volumes and the current
+volume identifier for multi-volume works. This value is an
+object with the keys "total_volumes" (for the total number of
+volumes in the whole work) and "volume" (for the identifier for
+the current item's volume). This is not used for the volume of
+a journal in which a journalArticle appears. For that value,
+see journal:journal.volume.
 """
 
 from invenio_i18n import lazy_gettext as _
 from invenio_records_resources.services.custom_fields import (
     BaseCF,
-    IntegerCF,
-    TextCF,
 )
-from marshmallow import fields, validate
+from marshmallow import fields
 from marshmallow_utils.fields import (
-    SanitizedHTML,
     SanitizedUnicode,
-    StrippedHTML,
 )
-
-from .kcr_metadata_fields import KCR_NAMESPACE
 
 
 class VolumesCF(BaseCF):

@@ -10,7 +10,6 @@ from lxml.etree import XMLSyntaxError
 
 
 class FedoraApi: #pylint: disable=too-many-public-methods
-
     """Class for interacting with the fedora API."""
 
     def __init__(self, base_url="http://localhost:8080/fedora", username=None, password=None):
@@ -58,7 +57,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
             req.close()
         except requests.exceptions.HTTPError as http_error:
             res = (-1, http_error)
-            write_to_log(loglevel="error", message="Fedora API Exception: {0}".format(http_error), exc_info=True)
+            write_to_log(loglevel="error", message=f"Fedora API Exception: {http_error}", exc_info=True)
         # Reset vars for next call
         self.dynamic_params = {}
         self._set_method("GET")
@@ -71,7 +70,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
         if fields is None:
             fields = ["pid"]
         self._set_url("objects")
-        self._set_dynamic_param("query", "identifier~{0}".format(term))
+        self._set_dynamic_param("query", f"identifier~{term}")
 
         for field in fields:
             self._set_dynamic_param(field, "true")
@@ -122,7 +121,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
 
         Returns: data about the datastream, not the content itself. See: get_datastream_dissemination.
         """
-        self._set_url("objects/{0}/datastreams/{1}".format(pid, dsid))
+        self._set_url(f"objects/{pid}/datastreams/{dsid}")
         for field, value in kwargs.items():
             self._set_dynamic_param(field, value)
         return self._call_api()
@@ -132,7 +131,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
 
         Returns: datastream content. See get_datastream to get info about the datastream.
         """
-        self._set_url("objects/{0}/datastreams/{1}/content".format(pid, dsid))
+        self._set_url(f"objects/{pid}/datastreams/{dsid}/content")
         for field, value in kwargs.items():
             self._set_dynamic_param(field, value)
         return self._call_api()
@@ -183,7 +182,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
     def purge_object(self, pid, log_message=None):
         """Purge object."""
         self._set_method("DELETE")
-        self._set_url("objects/{0}".format(pid))
+        self._set_url(f"objects/{pid}")
         if log_message:
             self._set_dynamic_param("logMessage", log_message)
         return self._call_api()
@@ -196,7 +195,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
         [label] [format] [encoding] [namespace] [ownerId] [logMessage] [ignoreMime] [state]
         """
         self._set_method("POST")
-        self._set_url("objects/{0}".format(pid))
+        self._set_url(f"objects/{pid}")
         for field, value in kwargs.items():
             self._set_dynamic_param(field, value)
         return self._call_api()
@@ -208,7 +207,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
         [label] [ownerId] [state] [logMessage] [lastModifiedDate]
         """
         self._set_method("PUT")
-        self._set_url("objects/{0}".format(pid))
+        self._set_url(f"objects/{pid}")
         for field, value in kwargs.items():
             self._set_dynamic_param(field, value)
         return self._call_api()
@@ -216,7 +215,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
     def add_datastream(self, pid, ds_id, filepath=None, content=None, **kwargs):
         """Add datastream to specified object.
 
-        args:
+        Args:
             pid(str): PID of the object to udpate.
             ds_id(str): Datastream ID to create.
         kwargs:
@@ -228,7 +227,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
             [mimeType] [logMessage]
         """
         self._set_method("POST")
-        self._set_url("objects/{0}/datastreams/{1}".format(pid, ds_id))
+        self._set_url(f"objects/{pid}/datastreams/{ds_id}")
         for field, value in kwargs.items():
             self._set_dynamic_param(field, value)
         if filepath:
@@ -243,7 +242,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
     def update_datastream_content(self, pid, ds_id, file_object, **kwargs):
         """Replace content of specified datastream."""
         self._set_method("POST")
-        self._set_url("objects/{0}/datastreams/{1}".format(pid, ds_id))
+        self._set_url(f"objects/{pid}/datastreams/{ds_id}")
         for field, value in kwargs.items():
             self._set_dynamic_param(field, value)
         self.file = file_object
@@ -257,7 +256,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
         [mimeType] [logMessage]
         """
         self._set_method("PUT")
-        self._set_url("objects/{0}/datastreams/{1}".format(pid, ds_id))
+        self._set_url(f"objects/{pid}/datastreams/{ds_id}")
         for field, value in kwargs.items():
             self._set_dynamic_param(field, value)
         if filepath:
@@ -272,7 +271,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
     def purge_datastream(self, pid, ds_id, **kwargs):
         """Purge datastream!"""
         self._set_method("DELETE")
-        self._set_url("objects/{0}/datastreams/{1}".format(pid, ds_id))
+        self._set_url(f"objects/{pid}/datastreams/{ds_id}")
         for field, value in kwargs.items():
             self._set_dynamic_param(field, value)
         return self._call_api()
@@ -281,7 +280,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
         """Add relationship to RELS-EXT."""
         api_function = self._call_api if api_function is None else api_function
         self._set_method("POST")
-        self._set_url("objects/{0}/relationships/new".format(pid))
+        self._set_url(f"objects/{pid}/relationships/new")
         self._set_dynamic_param("isLiteral", "true" if is_literal else "false")
         self._set_dynamic_param("predicate", predicate)
         self._set_dynamic_param("object", obj)
@@ -295,7 +294,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
     def delete_relationship(self, pid, predicate, obj, is_literal=False, datatype=None):  # pylint: disable-msg=too-many-arguments
         """Delete relationship in RELS-EXT."""
         self._set_method("DELETE")
-        self._set_url("objects/{0}/relationships".format(pid))
+        self._set_url(f"objects/{pid}/relationships")
         self._set_dynamic_param("predicate", predicate)
         self._set_dynamic_param("isLiteral", "true" if is_literal else "false")
         self._set_dynamic_param("object", obj)
@@ -313,7 +312,7 @@ class FedoraApi: #pylint: disable=too-many-public-methods
 
     def get_relationships(self, pid, rels_ext_format="n-triples", predicate=None):
         """Return all relationship associated with given pid, limited by predicate if supplied."""
-        self._set_url("objects/{0}/relationships".format(pid))
+        self._set_url(f"objects/{pid}/relationships")
         self._set_dynamic_param("format", rels_ext_format)
         if predicate:
             self._set_dynamic_param("predicate", predicate)
@@ -329,27 +328,27 @@ class FedoraApi: #pylint: disable=too-many-public-methods
 
     def get_object_profile(self, pid):
         """Get details about a given object."""
-        self._set_url("objects/{0}".format(pid))
+        self._set_url(f"objects/{pid}")
         self._set_dynamic_param("format", "xml")
         return self._call_api()
 
     def get_object_xml(self, pid):
         """Get object xml aka foxml."""
-        self._set_url("objects/{0}/objectXML".format(pid))
+        self._set_url(f"objects/{pid}/objectXML")
         return self._call_api()
 
     def list_datastreams(self, pid, **kwargs):
         """List datastreams for given object."""
-        self._set_url("objects/{0}/datastreams".format(pid))
+        self._set_url(f"objects/{pid}/datastreams")
         self._set_dynamic_param("format", "xml")
         for field, value in kwargs.items():
             self._set_dynamic_param(field, value)
         return self._call_api()
 
     def get_extracted_data_from_xml(self, xml):
-        """ Function to return the extracted data from xml
-            args:
-                xml (str): xml received from fedora
+        """Function to return the extracted data from xml
+        args:
+            xml (str): xml received from fedora
         """
         return self._extract_data_from_xml(xml)
 
@@ -382,8 +381,9 @@ class FedoraApi: #pylint: disable=too-many-public-methods
     @staticmethod
     def _extract_data_from_xml(xml):
         """Get data from xml for user display.
-            args:
-                xml (str): xml received from fedora
+
+        Args:
+            xml (str): xml received from fedora
         """
         items = []
         try:
@@ -396,11 +396,11 @@ class FedoraApi: #pylint: disable=too-many-public-methods
                 items.append(item)
 
         except XMLSyntaxError:
-            write_to_log(loglevel="error", message="Inappropriately formatted XML: {0}".format(xml), exc_info=True)
+            write_to_log(loglevel="error", message=f"Inappropriately formatted XML: {xml}", exc_info=True)
             items = None
 
         except ValueError:
-            write_to_log(loglevel="error", message="Can only parse strings, not: {0}".format(type(xml)), exc_info=True)
+            write_to_log(loglevel="error", message=f"Can only parse strings, not: {type(xml)}", exc_info=True)
             items = None
 
         return items

@@ -96,8 +96,7 @@ def update_record_created_dates_task(
     dry_run: bool = False,
     verbose: bool = False,
 ) -> dict:
-    """
-    Celery task to update record created dates in background.
+    """Celery task to update record created dates in background.
 
     This task updates the 'created' timestamp for records that have
     custom_fields.hclegacy:record_creation_date set. It processes records
@@ -161,8 +160,7 @@ def update_community_created_dates_task(
     dry_run: bool = False,
     verbose: bool = False,
 ) -> dict:
-    """
-    Celery task to update community created dates in background.
+    """Celery task to update community created dates in background.
 
     This task updates the 'created' timestamp for communities based on
     the oldest record in each community. It processes communities in

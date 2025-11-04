@@ -1,7 +1,6 @@
-from datetime import datetime
+"""Customized statistics aggregator class."""
 
-# from invenio_stats.bookmark import format_range_dt
-from typing import Union
+from datetime import datetime
 
 import arrow
 from flask import current_app
@@ -12,8 +11,9 @@ from invenio_stats.aggregations import StatAggregator
 
 
 class StatAggregatorOverridable(StatAggregator):
-    """A subclass of StatAggregator that allows for overriding the
-    bookmark datetime to re-aggregate earlier stats.
+    """StatAggregator with overridable bookmark.
+
+    Allows for re-aggregating of earlier stats.
 
     Primarily needed because of re-aggregation after importing older
     records with existing stats.
@@ -21,10 +21,10 @@ class StatAggregatorOverridable(StatAggregator):
 
     def run(
         self,
-        start_date: Union[str, None, datetime] = None,
-        end_date: Union[str, None, datetime] = None,
+        start_date: str | None | datetime = None,
+        end_date: str | None | datetime = None,
         update_bookmark: bool = True,
-        previous_bookmark: Union[str, None, datetime] = None,
+        previous_bookmark: str | None | datetime = None,
     ):
         """Calculate statistics aggregations."""
         # If no events have been indexed there is nothing to aggregate
@@ -51,9 +51,7 @@ class StatAggregatorOverridable(StatAggregator):
             previous_bookmark = arrow.get(previous_bookmark).naive
         # return from _get_oldest_event_timestamp() is datetime object
         lower_limit = (
-            start_date
-            or previous_bookmark
-            or self._get_oldest_event_timestamp()  # noqa: E501
+            start_date or previous_bookmark or self._get_oldest_event_timestamp()  # noqa: E501
         )
         # FIXME: this is to handle accidentally recording bookmark
         # with timezone awareness
@@ -70,12 +68,12 @@ class StatAggregatorOverridable(StatAggregator):
         if not end_date:
             end_date = arrow.utcnow().naive
 
-        current_app.logger.warning("upper_limit: %s", upper_limit)
-        current_app.logger.warning("lower_limit: %s", lower_limit)
-        current_app.logger.warning("end_date: %s", end_date)
-        current_app.logger.warning("previous_bookmark: %s", previous_bookmark)
+        current_app.logger.info("upper_limit: %s", upper_limit)
+        current_app.logger.info("lower_limit: %s", lower_limit)
+        current_app.logger.info("end_date: %s", end_date)
+        current_app.logger.info("previous_bookmark: %s", previous_bookmark)
         results = []
-        for dt_key, dt in sorted(dates.items()):
+        for _dt_key, dt in sorted(dates.items()):
             results.append(
                 search.helpers.bulk(
                     self.client,
@@ -87,57 +85,3 @@ class StatAggregatorOverridable(StatAggregator):
         if update_bookmark:
             self.bookmark_api.set_bookmark(upper_limit)
         return results
-
-    # NOTE: debugging statements in delete() may be useful again
-    #       but the logic is unchanged from the superclass
-    #
-    # def delete(self, start_date=None, end_date=None, skip_bookmark=False):
-    #     """Delete aggregation documents."""
-    #     aggs_query = dsl.Search(
-    #         using=self.client,
-    #         index=self.index,
-    #     ).extra(_source=False)
-
-    #     range_args = {}
-    #     if start_date:
-    #         range_args["gte"] = format_range_dt(start_date, self.interval)
-    #     if end_date:
-    #         range_args["lte"] = format_range_dt(end_date, self.interval)
-    #     if range_args:
-    #         aggs_query = aggs_query.filter("range", timestamp=range_args)
-
-    #     from flask import current_app
-
-    #     current_app.logger.warning(f"deleting for range: {range_args}")
-
-    #     bookmarks_query = (
-    #         dsl.Search(
-    #             using=self.client,
-    #             index=self.bookmark_api.bookmark_index,
-    #         )
-    #         .filter("term", aggregation_type=self.name)
-    #         .sort({"date": {"order": "desc"}})
-    #     )
-
-    #     if range_args:
-    #         bookmarks_query = bookmarks_query.filter("range",
-    #                                                  date=range_args)
-
-    #     def _delete_actions():
-    #         for query in (aggs_query, bookmarks_query):
-    #             affected_indices = set()
-    #             for doc in query.scan():
-    #                 affected_indices.add(doc.meta.index)
-    #                 yield {
-    #                     "_index": doc.meta.index,
-    #                     "_op_type": "delete",
-    #                     "_id": doc.meta.id,
-    #                 }
-    #             current_search_client.indices.flush(
-    #                 index=",".join(affected_indices), wait_if_ongoing=True
-    #             )
-
-    #     result = search.helpers.bulk(
-    #         self.client, _delete_actions(), refresh=True
-    #     )
-    #     print("delete result: ", result)

@@ -1,21 +1,20 @@
 from io import BufferedReader
 from pprint import pformat
 from tempfile import SpooledTemporaryFile
-from typing import Any, Union
+from typing import Any
 
 from pydantic import BaseModel, field_validator
 
 
 class FileData(BaseModel):
-    """
-    A class to represent the file data for a record to be imported.
+    """A class to represent the file data for a record to be imported.
     """
 
     filename: str
     content_type: str
     mimetype: str
     mimetype_params: dict
-    stream: Union[SpooledTemporaryFile, BufferedReader]
+    stream: SpooledTemporaryFile | BufferedReader
 
     class Config:
         arbitrary_types_allowed = True
@@ -24,15 +23,14 @@ class FileData(BaseModel):
     @classmethod
     def validate_temp_file(
         cls, v: Any
-    ) -> Union[SpooledTemporaryFile, BufferedReader, None]:
+    ) -> SpooledTemporaryFile | BufferedReader | None:
         if v is not None and not isinstance(v, (SpooledTemporaryFile, BufferedReader)):
             raise ValueError("Must be a SpooledTemporaryFile or BufferedReader")
         return v
 
 
 class ImportedRecord(BaseModel):
-    """
-    A class to represent a record import result.
+    """A class to represent a record import result.
 
     item_index(int): The index of the record in the source metadata list.
     record_id(str): The InvenioRDM record ID of the created record.
@@ -47,15 +45,14 @@ class ImportedRecord(BaseModel):
     record_id: str
     source_id: str
     record_url: str
-    files: dict[str, list[Union[str, list[str]]]]
+    files: dict[str, list[str | list[str]]]
     collection_id: str
     errors: list[dict]
     metadata: dict
 
 
 class APIResponsePayload(BaseModel):
-    """
-    A class to represent an API endpoint response payload.
+    """A class to represent an API endpoint response payload.
     """
 
     status: str
@@ -65,8 +62,7 @@ class APIResponsePayload(BaseModel):
 
 
 class LoaderResult(BaseModel):
-    """
-    A class to represent the loader result for one record.
+    """A class to represent the loader result for one record.
     """
 
     index: int
@@ -75,7 +71,7 @@ class LoaderResult(BaseModel):
     primary_community: dict = {}
     record_created: dict = {}
     existing_record: dict = {}
-    uploaded_files: dict[str, list[Union[str, list[str]]]] = {}
+    uploaded_files: dict[str, list[str | list[str]]] = {}
     community_review_result: dict = {}
     assigned_owners: dict = {}
     added_to_collections: list = []

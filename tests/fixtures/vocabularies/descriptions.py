@@ -6,7 +6,7 @@ from invenio_vocabularies.records.api import Vocabulary
 
 @pytest.fixture(scope="module")
 def description_type(app):
-    """title vocabulary type."""
+    """Title vocabulary type."""
     return vocabulary_service.create_type(
         system_identity, "descriptiontypes", "dty"
     )

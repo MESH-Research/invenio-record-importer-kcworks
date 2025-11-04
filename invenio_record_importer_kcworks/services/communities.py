@@ -598,7 +598,6 @@ class CommunitiesHelper:
                 app.logger.debug("   record is already published")
                 record_communities = current_rdm_records.record_communities_service
 
-
                 # Try to create and submit a 'community-inclusion' request
                 requests, errors = record_communities.add(
                     system_identity,
@@ -909,13 +908,13 @@ class CommunitiesHelper:
             try:
                 community_id = hit.meta.id
                 slug = hit.slug if hasattr(hit, "slug") else "unknown"
-                
+
                 # Use bracket access for fields with colons
                 try:
                     group_id = hit.custom_fields["kcr:commons_group_id"]
                 except KeyError:
                     group_id = None
-                    
+
                 current_created = hit.created if hasattr(hit, "created") else None
 
                 if group_id and current_created:
@@ -965,7 +964,7 @@ class CommunitiesHelper:
         # Use match filter (not term) for the group_identifier field
         search = search.filter(
             "match",
-            **{"custom_fields.hclegacy:groups_for_deposit.group_identifier": group_id}
+            **{"custom_fields.hclegacy:groups_for_deposit.group_identifier": group_id},
         )
         search = search.filter(
             "exists", field="custom_fields.hclegacy:record_creation_date"
@@ -983,7 +982,7 @@ class CommunitiesHelper:
                     creation_date = hit.custom_fields["hclegacy:record_creation_date"]
                 except KeyError:
                     creation_date = None
-                    
+
                 if creation_date:
                     records.append({"date": creation_date, "id": hit.meta.id})
 

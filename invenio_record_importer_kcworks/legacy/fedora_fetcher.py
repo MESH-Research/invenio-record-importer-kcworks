@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-# -*- coding: utf-8 -*-
 #
 # Copyright (C) 2023 MESH Research
 #
@@ -10,9 +9,9 @@
 import os
 import xml.etree.ElementTree as ET
 from pprint import pprint
-from typing import Optional
 
 import requests
+
 from invenio_record_importer_kcworks.libs.fedoraapi import FedoraApi
 from invenio_record_importer_kcworks.utils.utils import valid_date
 
@@ -43,15 +42,14 @@ fedora_fields = [
 
 
 def fetch_fedora_records(
-    query: Optional[str],
+    query: str | None,
     protocol: str,
-    pid: Optional[str],
-    terms: Optional[str],
-    fields: Optional[str],
+    pid: str | None,
+    terms: str | None,
+    fields: str | None,
     count: int,
 ) -> list[dict]:
-    """
-    Fetch deposit records from the Fedora CORE datastream.
+    """Fetch deposit records from the Fedora CORE datastream.
 
     DEPRECATED AND NOT CURRENTLY FUNCTIONAL
     """

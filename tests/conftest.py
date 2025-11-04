@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Copyright (C) 2024 MESH Research
 #
@@ -17,8 +16,9 @@ from invenio_app.factory import create_api
 from invenio_communities.proxies import current_communities
 from invenio_queues.proxies import current_queues
 from invenio_rdm_records.proxies import current_rdm_records
-from invenio_record_importer_kcworks.serializer import serialize_json
 from invenio_records_resources.proxies import current_service_registry
+
+from invenio_record_importer_kcworks.serializer import serialize_json
 
 from .fixtures.custom_fields import test_config_fields
 from .fixtures.identifiers import test_config_identifiers

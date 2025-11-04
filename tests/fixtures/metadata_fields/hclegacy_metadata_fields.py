@@ -1,5 +1,4 @@
-"""
-Custom fields to hold legacy metadata for records imported from the CORE
+"""Custom fields to hold legacy metadata for records imported from the CORE
 repository.
 
 Implements the following fields:
@@ -52,18 +51,10 @@ hclegacy:submitter_id       The user id number (in the HC database) for the
 """
 
 from invenio_i18n import lazy_gettext as _
-from invenio_records_resources.services.custom_fields import BaseCF, TextCF
-from invenio_records_resources.services.custom_fields.date import (
-    ISODateStringCF,
-)
+from invenio_records_resources.services.custom_fields import TextCF
 from invenio_records_resources.services.custom_fields.number import IntegerCF
-from invenio_vocabularies.services.custom_fields import VocabularyCF
-from marshmallow import fields, validate
 from marshmallow_utils.fields import (
-    EDTFDateString,
-    SanitizedHTML,
     SanitizedUnicode,
-    StrippedHTML,
 )
 
 HCLEGACY_NAMESPACE = {

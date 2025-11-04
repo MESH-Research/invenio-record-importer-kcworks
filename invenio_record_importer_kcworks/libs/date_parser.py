@@ -1,12 +1,10 @@
-import glob
 import re
-from typing import List
 
 import arrow
 import dateparser
 import regex
 import timefhuman
-from flask import current_app as app
+
 from invenio_record_importer_kcworks.utils import (
     monthwords,
     seasonwords,
@@ -340,7 +338,7 @@ class DateParser:
         return re.sub(r"\(|\)", "", date)
 
     @staticmethod
-    def split_mashed_datestring(date: str) -> List[str]:
+    def split_mashed_datestring(date: str) -> list[str]:
         """Divide a datestring lacking delimiters into parts.
 
         Works for entirely numeric datestrings, e.g. "20210405".

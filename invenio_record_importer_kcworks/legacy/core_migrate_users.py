@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-# -*- coding: utf-8 -*-
 #
 # adapted from scripts in invenio-utilities-tuw
 # <https://gitlab.tuwien.ac.at/fairdata/invenio-utilities-tuw>

@@ -80,7 +80,7 @@ class RecordImporterService(Service):
         downloads_field : str
             The field to use for the downloads count. Defaults to ""
 
-        Returns
+        Returns:
         -------
         dict
             The import result. This is an APIResponsePayload object dumped to a

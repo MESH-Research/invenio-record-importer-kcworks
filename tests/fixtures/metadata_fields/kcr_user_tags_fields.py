@@ -1,25 +1,18 @@
-"""
-kcr:user_defined_tags       Free user-defined tags associated with the current
-                            item. This value is an array of objects, each with
-                            the keys "tag_label" and "tag_identifier". The
-                            tag_identifier is an integer assigned automatically. The tag_label is the string entered
-                            by the user.
+"""kcr:user_defined_tags       Free user-defined tags associated with the current
+item. This value is an array of objects, each with
+the keys "tag_label" and "tag_identifier". The
+tag_identifier is an integer assigned automatically. The tag_label is the string entered
+by the user.
 """
 
 from invenio_i18n import lazy_gettext as _
 from invenio_records_resources.services.custom_fields import (
     BaseListCF,
-    IntegerCF,
     TextCF,
 )
-from marshmallow import Schema, fields, validate
 from marshmallow_utils.fields import (
-    SanitizedHTML,
     SanitizedUnicode,
-    StrippedHTML,
 )
-
-from .kcr_metadata_fields import KCR_NAMESPACE
 
 
 class UserTagsCF(BaseListCF):
