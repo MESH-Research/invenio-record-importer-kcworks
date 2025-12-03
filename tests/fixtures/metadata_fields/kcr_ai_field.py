@@ -1,3 +1,5 @@
+"""KCR AI usage custom field definition."""
+
 from invenio_i18n import lazy_gettext as _
 from invenio_records_resources.services.custom_fields import (
     BaseCF,
@@ -11,7 +13,8 @@ from marshmallow_utils.fields import (
 
 
 class AiUsageCF(BaseCF):
-    #     """Nested custom field."""
+    """Nested custom field."""
+
     def __init__(self, name, **kwargs):
         """Constructor."""
         super().__init__(

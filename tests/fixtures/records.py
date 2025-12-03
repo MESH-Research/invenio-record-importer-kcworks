@@ -1,9 +1,9 @@
-# Part of the Invenio-Stats-Dashboard extension for InvenioRDM
+# Part of invenio-record-importer-kcworks.
+# Copyright (C) 2024-2025, MESH Research.
 #
-# Copyright (C) 2025 MESH Research.
-#
-# Invenio-Stats-Dashboard is free software; you can redistribute it and/or modify
-# it under the terms of the MIT License; see LICENSE file for more details.
+# invenio-record-importer-kcworks is free software; you can redistribute it
+# and/or modify it under the terms of the MIT License; see
+# LICENSE file for more details.
 
 """Test fixtures for records."""
 
@@ -26,8 +26,10 @@ from invenio_accounts.proxies import current_accounts
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_records_resources.services.records.results import RecordItem
 from invenio_records_resources.services.uow import RecordCommitOp, UnitOfWork
+from invenio_stats_dashboard.services.components.components import (
+    update_community_events_created_date,
+)
 
-# Removed invenio_stats_dashboard import - not needed for basic functionality
 from ..helpers.files_helper import FilesHelper
 from ..helpers.types import FileData
 from ..helpers.utils import remove_value_by_path, replace_value_in_nested_dict
@@ -39,24 +41,40 @@ from .vocabularies.resource_types import RESOURCE_TYPES
 
 @pytest.fixture(scope="function")
 def minimal_draft_record_factory(running_app, db, record_metadata):
-    """Factory for creating a minimal draft record."""
+    """Factory for creating a minimal draft record.
+
+    Returns:
+        function: Function to create minimal draft records.
+    """
 
     def _factory(
         metadata: dict | None = None,
         identity: Identity | None = None,
         **kwargs: Any,
     ):
-        """Create a minimal draft record."""
+        """Create a minimal draft record.
+
+        Returns:
+            RecordItem: The created draft record.
+        """
+        current_app.logger.error(
+            f"Creating draft record with metadata: {pformat(metadata)}"
+        )
         input_metadata = metadata or deepcopy(record_metadata().metadata_in)
+        current_app.logger.error(f"Input metadata: {pformat(input_metadata)}")
         identity = identity or system_identity
         draft = records_service.create(identity, input_metadata)
 
         if input_metadata.get("created"):
-            record = records_service.read(system_identity, id_=draft.id)._record
-            record.model.created = input_metadata.get("created")
-            uow = UnitOfWork(db.session)
-            uow.register(RecordCommitOp(record))
-            uow.commit()
+            with UnitOfWork(db.session) as uow:
+                record = records_service.read_draft(
+                    system_identity, id_=draft.id
+                )._record
+                record.model.created = (
+                    arrow.get(input_metadata.get("created", "")).to("UTC").datetime
+                )
+                uow.register(RecordCommitOp(record))
+                return records_service.read_draft(system_identity, id_=draft.id)
 
         return draft
 
@@ -101,7 +119,10 @@ def minimal_published_record_factory(
         """
 
         def _deep_merge(base: dict, overrides: dict) -> dict:
-            """Recursively merge overrides into base without dropping required defaults."""
+            """Recursively merge overrides into base.
+
+            Does not drop required defaults.
+            """
             for key, override_value in overrides.items():
                 if (
                     key in base
@@ -157,6 +178,19 @@ def minimal_published_record_factory(
                 files=file_objects,
             )
 
+        # Handle ownership if provided in metadata
+        owned_by = input_metadata.get("parent", {}).get("access", {}).get("owned_by")
+        if owned_by:
+            draft_record = draft._record
+            if isinstance(owned_by, dict) and "user" in owned_by:
+                # Get the user by ID
+                user_id = int(owned_by["user"])
+                user = current_accounts.datastore.get_user(user_id)
+                if user:
+                    draft_record.parent.access.owned_by = user
+                    draft_record.parent.commit()
+                    db.session.commit()
+
         published = records_service.publish(system_identity, draft.id)
 
         if input_metadata.get("created"):
@@ -166,12 +200,14 @@ def minimal_published_record_factory(
                 uow.register(RecordCommitOp(record))
                 uow.commit()
                 current_app.logger.error(
-                    f"in published record factory, updated record created date: {pformat(record.id)}"
+                    f"in published record factory, "
+                    f"updated record created date: {pformat(record.id)}"
                 )
 
         if community_list:
             current_app.logger.error(
-                f"in published record factory, adding community to record: {pformat(community_list)}"
+                f"in published record factory, "
+                f"adding community to record: {pformat(community_list)}"
             )
             record = published._record
             add_community_to_record(
@@ -181,9 +217,12 @@ def minimal_published_record_factory(
                 default=set_default,
                 identity=superuser_identity,
             )
-            for community in community_list[1:] if len(community_list) > 1 else []:
+            for community in (
+                community_list[1:] if len(community_list) > 1 else []
+            ):
                 current_app.logger.error(
-                    f"in published record factory, adding community to record: {pformat(community)}"
+                    f"in published record factory, "
+                    f"adding community to record: {pformat(community)}"
                 )
                 add_community_to_record(
                     db, record, community, default=False, identity=superuser_identity
@@ -191,10 +230,28 @@ def minimal_published_record_factory(
             # Refresh the record to get the latest state.
             published = records_service.read(system_identity, published.id)
             current_app.logger.error(
-                f"in published record factory, refreshed record: {pformat(published.id)}"
+                f"in published record factory, "
+                f"refreshed record: {pformat(published.id)}"
             )
 
-        # Community events update removed - not needed for basic functionality
+        if update_community_event_dates and input_metadata.get("created"):
+            current_app.logger.error(
+                f"in published record factory, updating community events created date: "
+                f"{pformat(published.id)}"
+            )
+            try:
+                # Always update record_created_date, optionally update event_date
+                # based on the flag
+                update_community_events_created_date(
+                    record_id=str(published.id),
+                    new_created_date=input_metadata.get("created"),
+                    update_event_date=update_community_event_dates,
+                )
+            except Exception as e:
+                current_app.logger.error(
+                    f"Failed to update community events created date for record "
+                    f"{published.id}: {e}"
+                )
 
         return published
 

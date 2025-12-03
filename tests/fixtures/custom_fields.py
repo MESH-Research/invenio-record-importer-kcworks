@@ -1,3 +1,12 @@
+# Part of invenio-record-importer-kcworks.
+# Copyright (C) 2024-2025, MESH Research.
+#
+# invenio-record-importer-kcworks is free software; you can redistribute it
+# and/or modify it under the terms of the MIT License; see
+# LICENSE file for more details.
+
+"""Pytest fixtures for custom fields."""
+
 import pytest
 from invenio_communities.proxies import current_communities
 from invenio_rdm_records.contrib.codemeta import (
@@ -37,10 +46,10 @@ from invenio_search.engine import search as search_engine
 from invenio_search.utils import build_alias_name
 from marshmallow_utils.fields import SanitizedUnicode
 
-from .metadata_fields.hclegacy_groups_for_deposit import (  # noqa: E501
+from .metadata_fields.hclegacy_groups_for_deposit import (
     HCLEGACY_GROUPS_FOR_DEPOSIT_FIELD,
 )
-from .metadata_fields.hclegacy_metadata_fields import (  # noqa: E501
+from .metadata_fields.hclegacy_metadata_fields import (
     HCLEGACY_CUSTOM_FIELDS,
     HCLEGACY_NAMESPACE,
 )
@@ -69,7 +78,11 @@ from .metadata_fields.kcr_volumes_fields import (
 
 
 def _(x):
-    """Identity function for string extraction."""
+    """Identity function for string extraction.
+    
+    Returns:
+        str: The input string unchanged.
+    """
     return x
 
 
@@ -146,9 +159,7 @@ test_config_fields["COMMUNITIES_CUSTOM_FIELDS_UI"] = [
     {
         "section": "Linked Commons Group",
         "hidden": False,
-        "description": (
-            "Information about a Commons group that owns the collection"
-        ),
+        "description": "Information about a Commons group that owns the collection",
         "fields": [
             {
                 "field": "kcr:commons_group_name",
@@ -157,7 +168,7 @@ test_config_fields["COMMUNITIES_CUSTOM_FIELDS_UI"] = [
                     "label": "Commons Group Name",
                     "placeholder": "",
                     "icon": "",
-                    "description": ("Name of the Commons group."),
+                    "description": "Name of the Commons group.",
                     "disabled": True,
                 },
             },
@@ -168,7 +179,7 @@ test_config_fields["COMMUNITIES_CUSTOM_FIELDS_UI"] = [
                     "label": "Commons Group ID",
                     "placeholder": "",
                     "icon": "",
-                    "description": ("ID of the Commons group"),
+                    "description": "ID of the Commons group",
                     "disabled": True,
                 },
             },
@@ -193,7 +204,7 @@ test_config_fields["COMMUNITIES_CUSTOM_FIELDS_UI"] = [
                     "label": "Commons Group Description",
                     "placeholder": "",
                     "icon": "",
-                    "description": ("Description of the Commons group."),
+                    "description": "Description of the Commons group.",
                     "disabled": True,
                 },
             },
@@ -204,7 +215,7 @@ test_config_fields["COMMUNITIES_CUSTOM_FIELDS_UI"] = [
                     "label": "Commons Group Visibility",
                     "placeholder": "",
                     "icon": "",
-                    "description": ("Visibility of the Commons group."),
+                    "description": "Visibility of the Commons group.",
                     "disabled": True,
                 },
             },
@@ -215,9 +226,15 @@ test_config_fields["COMMUNITIES_CUSTOM_FIELDS_UI"] = [
 
 @pytest.fixture(scope="function")
 def create_records_custom_fields(app):
+    """Creates one or all custom fields for records.
+
+    like with
+    ```shell
+    invenio custom-fields records create [field].
+    ```
+    """
     available_fields = app.config.get("RDM_CUSTOM_FIELDS")
     namespaces = set(app.config.get("RDM_NAMESPACES").keys())
-
     try:
         validate_custom_fields(
             given_fields=None,
@@ -225,26 +242,15 @@ def create_records_custom_fields(app):
             namespaces=namespaces,
         )
     except CustomFieldsException as e:
-        print(
-            f"Custom record fields configuration is not valid. {e.description}"
-        )
+        print(f"Custom record fields configuration is not valid. {e.description}")
     properties = Mapping.properties_for_fields(None, available_fields)
-    print(f"DEBUG: Registering {len(properties)} record custom field properties")
-    print(f"DEBUG: Properties: {properties}")
     try:
         mycls = current_rdm_records.records_service.config.record_cls
-        index_name = build_alias_name(mycls.index._name)
-        print(f"DEBUG: Putting mappings on index: {index_name}")
         rdm_records_index = dsl.Index(
-            index_name,
+            build_alias_name(mycls.index._name),
             using=current_search_client,  # type: ignore
         )
         rdm_records_index.put_mapping(body={"properties": properties})
-        print(f"DEBUG: Successfully put mappings on {index_name}")
-
-        # Verify the mapping was applied
-        mapping = rdm_records_index.get_mapping()
-        print(f"DEBUG: Current mapping for {index_name}: {mapping}")
     except search_engine.RequestError as e:
         print("An error occured while creating custom records fields.")
         print(e)
@@ -254,7 +260,10 @@ def create_records_custom_fields(app):
 def create_communities_custom_fields(app):
     """Creates one or all custom fields for communities.
 
-    $ invenio custom-fields communities create [field].
+    like with
+    ```shell
+    invenio custom-fields communities create [field].
+    ```
     """
     available_fields = app.config.get("COMMUNITIES_CUSTOM_FIELDS")
     namespaces = set(app.config.get("COMMUNITIES_NAMESPACES").keys())

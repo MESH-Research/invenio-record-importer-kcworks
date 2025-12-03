@@ -1,3 +1,5 @@
+"""Sample record metadata for testing."""
+
 rec34031 = {
     "input": {
         "created": "2021-01-11T23:48:41Z",
@@ -469,3 +471,4 @@ rec34031 = {
         "updated": "2021-01-11T23:48:41Z",
     },
 }
+# noqa: E501

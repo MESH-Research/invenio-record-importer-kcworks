@@ -1,8 +1,9 @@
-# Part of the Invenio-Stats-Dashboard extension for InvenioRDM
-# Copyright (C) 2025 MESH Research
+# Part of invenio-record-importer-kcworks.
+# Copyright (C) 2024-2025, MESH Research.
 #
-# Invenio-Stats-Dashboard is free software; you can redistribute it and/or modify
-# it under the terms of the MIT License; see LICENSE file for more details.
+# invenio-record-importer-kcworks is free software; you can redistribute it
+# and/or modify it under the terms of the MIT License; see
+# LICENSE file for more details.
 
 """Pytest fixtures for communities."""
 
@@ -21,7 +22,6 @@ from invenio_rdm_records.records.api import RDMRecord
 from invenio_records_resources.services.uow import RecordCommitOp, UnitOfWork
 from invenio_requests.proxies import current_requests_service
 from invenio_search.proxies import current_search_client
-from sqlalchemy.exc import IntegrityError
 
 
 def add_community_to_record(
@@ -67,26 +67,12 @@ def add_community_to_record(
 
 def make_community_member(user_id: int, role: str, community_id: str) -> None:
     """Make a member of a community."""
-    service = current_communities.service.members
-    with UnitOfWork() as uow:
-        try:
-            member = service.record_cls.create(
-                {},
-                community_id=community_id,
-                role=role,
-                active=True,
-                visible=True,
-                request_id=None,
-                user_id=user_id,
-            )
-        except IntegrityError as e:
-            raise e
-
-        uow.register(
-            RecordCommitOp(member, indexer=current_communities.service.members.indexer)
-        )
-
-        Community.index.refresh()
+    current_communities.service.members.add(
+        system_identity,
+        community_id,
+        data={"members": [{"type": "user", "id": str(user_id)}], "role": role},
+    )
+    Community.index.refresh()
 
 
 @pytest.fixture(scope="function")
@@ -219,7 +205,8 @@ def sample_community_with_group_id(
     community_dict = community.to_dict()
     community_id = community_dict["id"]
 
-    # Get the group_id from custom fields (custom_fields is at top level, not under metadata)
+    # Get the group_id from custom fields
+    # (custom_fields is at top level, not under metadata)
     print(f"DEBUG: community_dict keys: {community_dict.keys()}")
     print(f"DEBUG: community_dict custom_fields: {community_dict.get('custom_fields')}")
     group_id = community_dict.get("custom_fields", {}).get("kcr:commons_group_id")

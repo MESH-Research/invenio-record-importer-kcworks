@@ -1,5 +1,4 @@
-"""Custom fields to hold legacy metadata for records imported from the CORE
-repository.
+"""Custom fields to hold legacy metadata for records imported from the CORE repository.
 
 Implements the following fields:
 
@@ -38,10 +37,15 @@ hclegacy:record_change_date     The last modification date for the original
 hclegacy:record_creation_date   The creation date for the original CORE
                                 deposit record.
 hclegacy:record_identifier      A number used in the original Solr indexing. It
-                                concatenates the site ID (id number for HC, MLA, etc.) and original item id number in the
-                                CORE database.
+                                concatenates the site ID (id number for HC, MLA,
+                                etc.) and original item id number in the CORE
+                                database.
 hclegacy:society            The HC societies to which the original uploader of
-                            the CORE deposit belonged. It should include the society from whose site the deposit was made, although this may not be the case for bulk uploads. Possible values are: arlisna, hc, msu, ajs, hastac, sah, aseees, caa, up.
+                            the CORE deposit belonged. It should include the
+                            society from whose site the deposit was made,
+                            although this may not be the case for bulk uploads.
+                            Possible values are: arlisna, hc, msu, ajs, hastac,
+                            sah, aseees, caa, up.
 hclegacy:submitter_org_memberships  The HC organizations to which the user
                                     who uploaded the deposit belonged.
 hclegacy:submitter_affiliation  The institutional affiliation of the user
@@ -64,9 +68,13 @@ HCLEGACY_NAMESPACE = {
 HCLEGACY_CUSTOM_FIELDS = [
     # VocabularyCF(
     #     name="hclegacy:collection",
-    #     vocabulary_id="hcCollections",  # controlled vocabulary id defined in the vocabularies.yaml file
-    #     dump_options=True,  # True when the list of all possible values will be visible in the dropdown UI component, typically for small vocabularies
-    #     multiple=False, # if the field accepts a list of values (True) or single value (False)
+    #     # controlled vocabulary id defined in the vocabularies.yaml file
+    #     vocabulary_id="hcCollections",
+    #     # True when the list of all possible values will be visible in the
+    #     # dropdown UI component, typically for small vocabularies
+    #     dump_options=True,
+    #     # if the field accepts a list of values (True) or single value (False)
+    #     multiple=False,
     #     field_cls=SanitizedUnicode,
     # ),
     TextCF(name="hclegacy:collection"),
@@ -88,7 +96,9 @@ HCLEGACY_CUSTOM_FIELDS = [
         field_cls=SanitizedUnicode,
     ),
     TextCF(name="hclegacy:record_change_date"),
-    TextCF(  # FIXME: This should be date formatted, but EDTFDateString doesn't accept time
+    # FIXME: This should be date formatted, but EDTFDateString doesn't
+    # accept time
+    TextCF(
         name="hclegacy:record_creation_date"
         # field_cls=EDTFDateString,
     ),

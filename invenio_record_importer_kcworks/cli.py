@@ -35,7 +35,6 @@ from halo import Halo
 from invenio_record_importer_kcworks.record_loader import (
     RecordLoader,
 )
-from invenio_record_importer_kcworks.serializer import serialize_json
 from invenio_record_importer_kcworks.services.communities import CommunitiesHelper
 from invenio_record_importer_kcworks.services.records import RecordsHelper
 from invenio_record_importer_kcworks.services.serialization import (
@@ -56,13 +55,6 @@ from invenio_record_importer_kcworks.tasks import (
 def cli():
     """Main cli command group."""
     pass
-
-
-@cli.command(name="serialize")
-@with_appcontext
-def serialize_command_wrapper():
-    """Serialize all exported legacy CORE deposits as JSON that Invenio can ingest."""
-    serialize_json()
 
 
 @cli.command(name="load")

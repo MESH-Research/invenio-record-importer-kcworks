@@ -1,3 +1,5 @@
+"""Sample record metadata for testing."""
+
 # Part of the Invenio-Stats-Dashboard extension for InvenioRDM
 # Copyright (C) 2025 Mesh Research
 #
@@ -145,3 +147,4 @@ sample_metadata_journal_article_pdf = {
         }
     },
 }
+# noqa: E501

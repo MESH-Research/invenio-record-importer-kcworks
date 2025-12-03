@@ -1,3 +1,12 @@
+# Part of invenio-record-importer-kcworks.
+# Copyright (C) 2024-2025, MESH Research.
+#
+# invenio-record-importer-kcworks is free software; you can redistribute it
+# and/or modify it under the terms of the MIT License; see
+# LICENSE file for more details.
+
+"""Vocabulary pytest fixtures for date types."""
+
 import pytest
 from invenio_access.permissions import system_identity
 from invenio_vocabularies.proxies import current_service as vocabulary_service
@@ -6,7 +15,11 @@ from invenio_vocabularies.records.api import Vocabulary
 
 @pytest.fixture(scope="module")
 def date_type_type(app):
-    """Date vocabulary type."""
+    """Fixture to create the date type vocabulary type.
+    
+    Returns:
+        VocabularyType: The created date type vocabulary type.
+    """
     return vocabulary_service.create_type(system_identity, "datetypes", "dat")
 
 
@@ -36,11 +49,8 @@ date_type_data = [
 
 @pytest.fixture(scope="module")
 def date_type_v(app, date_type_type):
-    """Date vocabulary record."""
+    """Fixture to create the date type vocabulary records."""
     for date_type in date_type_data:
-        vocabulary_service.create(
-            system_identity,
-            {**date_type, "type": "datetypes"},
-        )
+        vocabulary_service.create(system_identity, {**date_type, "type": "datetypes"})
 
     Vocabulary.index.refresh()

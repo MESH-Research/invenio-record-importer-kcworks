@@ -1,8 +1,9 @@
-"""kcr:user_defined_tags       Free user-defined tags associated with the current
-item. This value is an array of objects, each with
-the keys "tag_label" and "tag_identifier". The
-tag_identifier is an integer assigned automatically. The tag_label is the string entered
-by the user.
+"""kcr:user_defined_tags field definition.
+
+Free user-defined tags associated with the current item. This value is an
+array of objects, each with the keys "tag_label" and "tag_identifier". The
+tag_identifier is an integer assigned automatically. The tag_label is the
+string entered by the user.
 """
 
 from invenio_i18n import lazy_gettext as _
@@ -17,7 +18,8 @@ from marshmallow_utils.fields import (
 
 class UserTagsCF(BaseListCF):
     """Nested custom field.
-    DEPRECATED
+
+    DEPRECATED.
     """
 
     def __init__(self, name, **kwargs):
@@ -72,7 +74,10 @@ KCR_USER_TAGS_SECTION_UI = {
                     "Type your keywords here (press 'enter' to add each one)"
                 ),
                 "icon": "tags",
-                "description": "Words describing this material that do not appear in the subject terms above.",
+                "description": (
+                    "Words describing this material that do not appear in the "
+                    "subject terms above."
+                ),
             },
         }
     ],

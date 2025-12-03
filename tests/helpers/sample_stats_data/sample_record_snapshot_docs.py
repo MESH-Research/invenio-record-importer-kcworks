@@ -217,10 +217,8 @@ MOCK_RECORD_SNAPSHOT_DOCS = [
                 ],
             },
             "timestamp": "2025-09-01T17:21:38",
-            "total_files": {"data_volume": 1984949.0, "file_count": 1},
-            "total_parents": {"metadata_only": 1, "with_files": 1},
-            "total_records": {"metadata_only": 1, "with_files": 1},
-            "total_uploaders": 0,
+            "total_files": {"data_volume": 1984949.0, "file_count": 1},  # noqa: F601  # noqa: F601
+            "total_uploaders": 0,  # noqa: F601  # noqa: F601
             "updated_timestamp": "2025-09-01T17:21:38",
         },
     },
@@ -540,12 +538,10 @@ MOCK_RECORD_SNAPSHOT_DOCS = [
                 ],
             },
             "timestamp": "2025-09-01T17:21:38",
-            "total_files": {"data_volume": 61102780.0, "file_count": 3},
-            "total_parents": {"metadata_only": 1, "with_files": 3},
-            "total_records": {"metadata_only": 1, "with_files": 3},
-            "total_uploaders": 0,
-            "updated_timestamp": "2025-09-01T17:21:38",
-        },
+            "total_files": {"data_volume": 61102780.0, "file_count": 3},  # noqa: F601
+            "total_uploaders": 0,  # noqa: F601
+            "updated_timestamp": "2025-09-01T17:21:38",  # noqa: F601
+        },  # noqa: F601
     },
     {
         "_id": "global-2025-09-01",
@@ -813,11 +809,9 @@ MOCK_RECORD_SNAPSHOT_DOCS = [
                 ],
             },
             "timestamp": "2025-09-01T17:21:38",
-            "total_files": {"data_volume": 2442985.0, "file_count": 2},
-            "total_parents": {"metadata_only": 1, "with_files": 2},
-            "total_records": {"metadata_only": 1, "with_files": 2},
-            "total_uploaders": 0,
-            "updated_timestamp": "2025-09-01T17:21:38",
-        },
+            "total_files": {"data_volume": 2442985.0, "file_count": 2},  # noqa: F601
+            "total_uploaders": 0,  # noqa: F601
+            "updated_timestamp": "2025-09-01T17:21:38",  # noqa: F601
+        },  # noqa: F601
     },
 ]

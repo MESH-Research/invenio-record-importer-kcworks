@@ -1,8 +1,9 @@
-# Part of the Invenio-Stats-Dashboard extension for InvenioRDM
-# Copyright (C) 2025 MESH Research
+# Part of invenio-record-importer-kcworks.
+# Copyright (C) 2024-2025, MESH Research.
 #
-# Invenio-Stats-Dashboard is free software; you can redistribute it and/or modify
-# it under the terms of the MIT License; see LICENSE file for more details.
+# invenio-record-importer-kcworks is free software; you can redistribute it
+# and/or modify it under the terms of the MIT License; see
+# LICENSE file for more details.
 
 """Vocabulary pytest fixtures for funding and awards."""
 
@@ -15,7 +16,11 @@ from invenio_vocabularies.contrib.funders.api import Funder
 
 @pytest.fixture(scope="module")
 def funders_v(app):
-    """Fixture to create the funder vocabulary records."""
+    """Fixture to create the funder vocabulary records.
+    
+    Returns:
+        list: List of created funder vocabulary records.
+    """
     funders_service = current_service_registry.get("funders")
     funders = [
         "00k4n6c31",
@@ -54,7 +59,11 @@ def funders_v(app):
 
 @pytest.fixture(scope="module")
 def awards_v(app, funders_v):
-    """Funder vocabulary record."""
+    """Funder vocabulary record.
+    
+    Returns:
+        list: List of created award vocabulary records.
+    """
     awards_service = current_service_registry.get("awards")
     awards = [
         "00k4n6c31::755021",
@@ -72,7 +81,7 @@ def awards_v(app, funders_v):
                 "id": award,
                 "identifiers": [
                     {
-                        "identifier": f"https://sandbox.inveniosoftware.org/{award}",
+                        "identifier": f"https://sandbox.kcworks.org/{award}",
                         "scheme": "url",
                     },
                 ],

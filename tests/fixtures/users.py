@@ -1,17 +1,18 @@
-# Part of the Invenio-Stats-Dashboard extension for InvenioRDM
+# Part of invenio-record-importer-kcworks.
+# Copyright (C) 2024-2025, MESH Research.
 #
-# Copyright (C) 2025 MESH Research.
-#
-# Invenio-Stats-Dashboard is free software; you can redistribute it and/or modify
-# it under the terms of the MIT License; see LICENSE file for more details.
+# invenio-record-importer-kcworks is free software; you can redistribute it
+# and/or modify it under the terms of the MIT License; see
+# LICENSE file for more details.
 
 """User related pytest fixtures for testing."""
 
+import os
 from collections.abc import Callable
 
 import pytest
 from flask_login import login_user
-from flask_principal import Identity
+from flask_principal import AnonymousIdentity, Identity
 from flask_security.utils import hash_password
 from invenio_access.models import ActionRoles, Role
 from invenio_access.permissions import any_user, authenticated_user, superuser_access
@@ -21,7 +22,9 @@ from invenio_accounts.proxies import current_accounts
 from invenio_accounts.testutils import login_user_via_session
 from invenio_administration.permissions import administration_access_action
 from invenio_oauth2server.models import Token
+from invenio_oauthclient.models import UserIdentity
 from pytest_invenio.fixtures import UserFixtureBase
+from requests_mock.adapter import _Matcher as Matcher
 
 
 def get_authenticated_identity(user: User | Identity) -> Identity:
@@ -36,12 +39,81 @@ def get_authenticated_identity(user: User | Identity) -> Identity:
     return identity
 
 
+@pytest.fixture(scope="function")
+def anon_identity():
+    """Anonymous identity fixture for UI view tests.
+
+    Returns:
+        Identity: An anonymous identity with any_user need.
+    """
+    identity = AnonymousIdentity()
+    identity.provides.add(any_user)
+    return identity
+
+
+@pytest.fixture(scope="function")
+def mock_user_data_api(requests_mock) -> Callable:
+    """Mock the user data api.
+    
+    Returns:
+        Callable: Mock API call function.
+    """
+
+    def mock_api_call(saml_id: str, mock_remote_data: dict) -> Matcher:
+        protocol = os.environ.get(
+            "INVENIO_COMMONS_API_REQUEST_PROTOCOL", "https"
+        )  # noqa: E501
+        base_url = f"{protocol}://hcommons-dev.org/wp-json/commons/v1/users"
+        remote_url = f"{base_url}/{saml_id}"
+        mock_adapter = requests_mock.get(
+            remote_url,
+            json=mock_remote_data,
+        )
+        return mock_adapter
+
+    return mock_api_call
+
+
+@pytest.fixture(scope="function")
+def user_data_to_remote_data(requests_mock):
+    """Factory fixture providing function to convert user data format.
+    
+    Returns:
+        function: Function to convert user data to remote data format.
+    """
+
+    def convert_user_data_to_remote_data(
+        saml_id: str, email: str, user_data: dict
+    ) -> dict[str, str | list[dict[str, str]]]:
+        """Convert user fixture data to format for remote data.
+        
+        Returns:
+            dict: Converted user data in remote format.
+        """
+        mock_remote_data = {
+            "username": saml_id,
+            "email": email,
+            "name": user_data.get("name", ""),
+            "first_name": user_data.get("first_name", ""),
+            "last_name": user_data.get("last_name", ""),
+            "institutional_affiliation": user_data.get("institutional_affiliation", ""),
+            "orcid": user_data.get("orcid", ""),
+            "preferred_language": user_data.get("preferred_language", ""),
+            "time_zone": user_data.get("time_zone", ""),
+            "groups": user_data.get("groups", ""),
+        }
+        return mock_remote_data
+
+    return convert_user_data_to_remote_data
+
+
 class AugmentedUserFixture(UserFixtureBase):
     """Augmented UserFixtureBase class."""
 
     def __init__(self, *args, **kwargs):
         """Initialize the AugmentedUserFixture."""
         super().__init__(*args, **kwargs)
+        self.mock_adapter: Matcher | None = None
         self.allowed_token: str | None = None
 
 
@@ -50,6 +122,9 @@ def user_factory(
     app,
     db,
     admin_role_need,
+    requests_mock,
+    mock_user_data_api,
+    user_data_to_remote_data,
 ) -> Callable:
     """Factory for creating test users.
 
@@ -62,6 +137,11 @@ def user_factory(
         password: str = "password",
         token: bool = False,
         admin: bool = False,
+        saml_src: str | None = "knowledgeCommons",
+        saml_id: str | None = "myuser",
+        orcid: str | None = "",
+        kc_username: str | None = "",
+        new_remote_data: dict | None = None,
     ) -> AugmentedUserFixture:
         """Create an augmented pytest-invenio user fixture.
 
@@ -70,13 +150,29 @@ def user_factory(
             password: The password of the user.
             token: Whether the user should have a token.
             admin: Whether the user should have admin access.
+            saml_src: The source of the user's saml authentication.
+            saml_id: The user's ID for saml authentication.
 
         Returns:
             The created UserFixture object. This has the following attributes:
             - user: The created Invenio User object.
+            - mock_adapter: The requests_mock adapter for the api call to
+                sync user data from the remote service.
             - identity: The identity of the user.
             - allowed_token: The API auth token of the user.
         """
+        new_remote_data = new_remote_data or {}
+
+        # Mock remote data that's already in the user fixture.
+        mock_remote_data = user_data_to_remote_data(
+            saml_id, new_remote_data.get("email") or email, new_remote_data
+        )
+        # Mock the remote api call.
+        mock_adapter = mock_user_data_api(saml_id, mock_remote_data)
+
+        if not orcid and new_remote_data.get("orcid"):
+            orcid = new_remote_data.get("orcid")
+
         u = AugmentedUserFixture(
             email=email,
             password=hash_password(password),
@@ -95,10 +191,23 @@ def user_factory(
             )
             datastore.add_role_to_user(u.user, role)
 
-        if u.user:
-            u.user.username = f"test-{email.split('@')[0]}"
+        if u.user and orcid:
             profile = u.user.user_profile
+            profile["identifier_orcid"] = orcid
             u.user.user_profile = profile
+
+        if u.user and kc_username:
+            profile = u.user.user_profile
+            profile["identifier_kc_username"] = kc_username
+            u.user.user_profile = profile
+
+        if u.user and saml_src and saml_id:
+            u.user.username = f"{saml_src}-{saml_id}"
+            profile = u.user.user_profile
+            profile["identifier_kc_username"] = saml_id
+            u.user.user_profile = profile
+            UserIdentity.create(u.user, saml_src, saml_id)
+            u.mock_adapter = mock_adapter
 
         current_accounts.datastore.commit()
         db.session.commit()
@@ -111,11 +220,14 @@ def user_factory(
 @pytest.fixture(scope="function")
 def admin_role_need(db):
     """Store 1 role with 'superuser-access' ActionNeed.
-
+    
     WHY: This is needed because expansion of ActionNeed is
          done on the basis of a User/Role being associated with that Need.
          If no User/Role is associated with that Need (in the DB), the
          permission is expanded to an empty list.
+    
+    Returns:
+        Role: The created admin role.
     """
     role = Role(name="administration-access")
     db.session.add(role)
@@ -129,12 +241,18 @@ def admin_role_need(db):
 
 @pytest.fixture(scope="function")
 def admin(user_factory) -> AugmentedUserFixture:
-    """Admin user for requests."""
+    """Admin user for requests.
+    
+    Returns:
+        AugmentedUserFixture: Admin user fixture.
+    """
     u: AugmentedUserFixture = user_factory(
         email="admin@inveniosoftware.org",
         password="password",
         admin=True,
         token=True,
+        saml_src="knowledgeCommons",
+        saml_id="admin",
     )
 
     return u
@@ -143,11 +261,14 @@ def admin(user_factory) -> AugmentedUserFixture:
 @pytest.fixture(scope="function")
 def superuser_role_need(db):
     """Store 1 role with 'superuser-access' ActionNeed.
-
+    
     WHY: This is needed because expansion of ActionNeed is
          done on the basis of a User/Role being associated with that Need.
          If no User/Role is associated with that Need (in the DB), the
          permission is expanded to an empty list.
+    
+    Returns:
+        Role: The created superuser role.
     """
     role = Role(name="superuser-access")
     db.session.add(role)
@@ -161,19 +282,28 @@ def superuser_role_need(db):
 
 
 @pytest.fixture(scope="function")
-def superuser_identity(admin: AugmentedUserFixture, superuser_role_need) -> Identity:
-    """Superuser identity fixture."""
-    # Recreate identity from a fresh, attached User to avoid detached instance issues
-    # in containerized test setups where sessions can be closed between fixture steps.
-    user = current_accounts.datastore.get_user(admin.id)
-    identity = get_identity(user)
+def superuser_identity(
+    admin: AugmentedUserFixture, superuser_role_need, db
+) -> Identity:
+    """Superuser identity fixture.
+    
+    Returns:
+        Identity: Superuser identity.
+    """
+    # Merge the user to ensure it's attached to the current session
+    merged_user = db.session.merge(admin.user)
+    identity = get_identity(merged_user)
     identity.provides.add(superuser_role_need)
     return identity
 
 
 @pytest.fixture(scope="module")
 def user1_data() -> dict:
-    """Data for user1."""
+    """Data for user1.
+    
+    Returns:
+        dict: User data dictionary.
+    """
     return {
         "saml_id": "user1",
         "email": "user1@inveniosoftware.org",
@@ -228,7 +358,7 @@ user_data_set = {
     },
     "user3": {
         "saml_id": "gihctester",
-        "email": "ghosthc@lblyoehp.mailosaur.net",
+        "email": "ghosthc@email.ghostinspector.com",
         # FIXME: Unobfuscated email not sent by
         # KC because no email marked as official.
         # Also, different email address than shown in KC profile.
@@ -348,8 +478,11 @@ user_data_set = {
 @pytest.fixture(scope="function")
 def client_with_login(requests_mock, app):
     """Log in a user to the client.
-
+    
     Returns a factory function that returns a client with a logged in user.
+    
+    Returns:
+        function: Function to log in a user to a client.
     """
 
     def log_in_user(
@@ -357,10 +490,13 @@ def client_with_login(requests_mock, app):
         user: User,
     ):
         """Log in a user to the client.
-
+        
         Parameters:
             client: The client to log in with.
             user: The user to log in.
+        
+        Returns:
+            None: This function doesn't return anything.
         """
         login_user(user)
         login_user_via_session(client, email=user.email)

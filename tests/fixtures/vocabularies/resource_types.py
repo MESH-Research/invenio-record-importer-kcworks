@@ -1,8 +1,9 @@
-# Part of the Invenio-Stats-Dashboard extension for InvenioRDM
-# Copyright (C) 2025 Mesh Research
+# Part of invenio-record-importer-kcworks.
+# Copyright (C) 2024-2025, MESH Research.
 #
-# Invenio-Stats-Dashboard is free software; you can redistribute it and/or modify
-# it under the terms of the MIT License; see LICENSE file for more details.
+# invenio-record-importer-kcworks is free software; you can redistribute it
+# and/or modify it under the terms of the MIT License; see
+# LICENSE file for more details.
 
 """Resource type vocabulary fixtures."""
 
@@ -18,7 +19,11 @@ from invenio_vocabularies.records.models import VocabularyMetadata
 
 @pytest.fixture(scope="module")
 def resource_type_type(app):
-    """Resource type vocabulary type."""
+    """Resource type vocabulary type.
+    
+    Returns:
+        VocabularyType: The created resource type vocabulary type.
+    """
     return vocabulary_service.create_type(system_identity, "resourcetypes", "rsrct")
 
 
@@ -280,7 +285,11 @@ RESOURCE_TYPES = [
 
 @pytest.fixture(scope="module")
 def resource_types():
-    """Fixture to create the resource type vocabulary."""
+    """Fixture to create the resource type vocabulary.
+    
+    Returns:
+        dict: Resource types vocabulary data.
+    """
     return copy.deepcopy(RESOURCE_TYPES)
 
 

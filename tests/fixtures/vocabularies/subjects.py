@@ -1,12 +1,26 @@
+# Part of invenio-record-importer-kcworks.
+# Copyright (C) 2024-2025, MESH Research.
+#
+# invenio-record-importer-kcworks is free software; you can redistribute it
+# and/or modify it under the terms of the MIT License; see
+# LICENSE file for more details.
+
+"""Fixtures for subjects vocabulary."""
+
 import pytest
 from invenio_access.permissions import system_identity
-from invenio_pidstore.errors import PIDAlreadyExists
+from invenio_pidstore.errors import PIDDoesNotExistError
 from invenio_records_resources.proxies import current_service_registry
 from invenio_vocabularies.contrib.subjects.api import Subject
 
 
 @pytest.fixture(scope="module")
 def subjects_service(app):
+    """Pytest fixture providing the current subjects service.
+    
+    Returns:
+        Service: The subjects service.
+    """
     return current_service_registry.get("subjects")
 
 
@@ -17,7 +31,7 @@ subject_data = [
         "subject": "Digital humanities",
     },
     {
-        "id": "http://id.worldcat.org/fast/863509",
+        "id": "http://id.worldcat.org/fast/963509",
         "scheme": "FAST-topical",
         "subject": "Human-machine systems--Planning",
     },
@@ -57,7 +71,7 @@ subject_data = [
         "subject": "Science--Study and teaching",
     },
     {
-        "id": "http://id.worldcat.org/fast/863509",
+        "id": "http://id.worldcat.org/fast/904058",
         "scheme": "FAST-topical",
         "subject": "Eighteenth century",
     },
@@ -127,11 +141,6 @@ subject_data = [
         "subject": "Classical literature",
     },
     {
-        "id": "http://id.worldcat.org/fast/904058",
-        "scheme": "FAST-topical",
-        "subject": "Eighteenth century",
-    },
-    {
         "id": "http://id.worldcat.org/fast/1031646",
         "scheme": "FAST-topical",
         "subject": "Mysticism--Judaism",
@@ -187,11 +196,6 @@ subject_data = [
         "subject": "East Asian literature",
     },
     {
-        "id": "http://id.worldcat.org/fast/1047055",
-        "scheme": "FAST-topical",
-        "subject": "Oral history",
-    },
-    {
         "id": "http://id.worldcat.org/fast/1710945",
         "scheme": "FAST-topical",
         "subject": "Church history--Primitive and early church",
@@ -226,18 +230,168 @@ subject_data = [
         "scheme": "FAST-topical",
         "subject": "Epic poetry",
     },
+    {
+        "id": "http://id.worldcat.org/fast/911979",
+        "subject": "English language--Written English--History",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/911660",
+        "subject": "English language--Spoken English--Research",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/845111",
+        "subject": "Canadian literature",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/845142",
+        "subject": "Canadian literature--Periodicals",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/845184",
+        "subject": "Canadian prose literature",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/1424786",
+        "subject": "Canadian literature--Bibliography",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/934875",
+        "subject": "French-Canadian literature",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/817954",
+        "subject": "Arts, Canadian",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/821870",
+        "subject": "Authors, Canadian",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/845170",
+        "subject": "Canadian periodicals",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/911328",
+        "subject": "English language--Lexicography--History",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/997916",
+        "subject": "Library science",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/2060143",
+        "subject": "Mass incarceration",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/997987",
+        "subject": "Library science literature",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/997974",
+        "subject": "Library science--Standards",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/855500",
+        "subject": "Children of prisoners--Services for",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/995415",
+        "subject": "Legal assistance to prisoners--U.S. states",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/973589",
+        "subject": "Inklings (Group of writers)",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/810189",
+        "subject": "Anthropologists--History",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/810219",
+        "subject": "Anthropology--Methodology--History",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/810245",
+        "subject": "Anthropology in popular culture",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/810208",
+        "subject": "Anthropology--Field work--History",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/969615",
+        "subject": "Indians of Mexico--Religion",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/970071",
+        "subject": "Indians of South America--Religion",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/795128",
+        "subject": "Acadians--Religion",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/810226",
+        "subject": "Anthropology--Religious aspects",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/810234",
+        "subject": "Anthropology--Societies, etc.",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/904000",
+        "subject": "Egyptology",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/1015007",
+        "subject": "Medicine--Philosophy",
+        "scheme": "FAST-topical",
+    },
+    {
+        "id": "http://id.worldcat.org/fast/1014893",
+        "subject": "Medicine",
+        "scheme": "FAST-topical",
+    },
 ]
 
 
 @pytest.fixture(scope="module")
 def subject_v(app, subjects_service):
-    """Subject vocabulary record."""
+    """Fixture to create the subject vocabulary."""
     for subject in subject_data:
         try:
+            subjects_service.read(system_identity, id_=subject["id"])
+        except PIDDoesNotExistError:
             subjects_service.create(
                 system_identity,
                 subject,
             )
-        except PIDAlreadyExists:
-            pass
-    Subject.index.refresh()
+    Subject.index.refresh()  # type: ignore

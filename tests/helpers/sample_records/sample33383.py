@@ -1,3 +1,5 @@
+"""Sample record metadata for testing."""
+
 rec33383 = {
     "input": {
         "access": {
@@ -712,3 +714,4 @@ rec33383 = {
         "updated": "2023-01-23T14:20:48Z",
     },
 }
+# noqa: E501

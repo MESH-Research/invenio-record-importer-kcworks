@@ -1,3 +1,5 @@
+"""Sample record metadata for testing."""
+
 rec22625 = {
     "input": {
         "created": "2019-01-29T03:57:00Z",
@@ -65,7 +67,7 @@ rec22625 = {
             #     [{'description': ('The issue of gender has been a topic of '
             #                      'discussion in the research of Hasidism since S. '
             #                      'A. Horodecky’s book (1923), in which he '
-            #                      'claimed that Hasidism brought about full ' 'equality of Jewish men and women in the field '
+            #                      'claimed that Hasidism brought about full ' 'equality of Jewish men and women in the field '  # noqa: E501
             #                      'of spirituality. Although his claims have been '
             #                      'by and large rejected, most\nscholars agree that '
             #                      'the twentieth century Chabad movement has '
@@ -572,3 +574,4 @@ rec22625 = {
         "updated": "2019-01-29T03:57:00Z",
     },
 }
+# noqa: E501

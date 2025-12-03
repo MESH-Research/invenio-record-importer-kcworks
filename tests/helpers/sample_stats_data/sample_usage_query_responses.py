@@ -30,7 +30,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
             "doc_count_error_upper_bound": 0,
             "sum_other_doc_count": 0,
         },
-        "affiliations_id": {
+        "affiliations": {
             "buckets": [
                 {
                     "key": "013v4ng57",
@@ -99,181 +99,6 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "id": "03rmrcq20",
                                                 }
                                             ],
-                                        ]
-                                    },
-                                }
-                            ],
-                        }
-                    },
-                },
-            ],
-            "doc_count_error_upper_bound": 0,
-            "sum_other_doc_count": 0,
-        },
-        "affiliations_name": {
-            "buckets": [
-                {
-                    "key": "Henry Ford College",
-                    "doc_count": 20,
-                    "total_events": {"value": 20},
-                    "unique_parents": {"value": 1},
-                    "unique_records": {"value": 1},
-                    "unique_visitors": {"value": 20},
-                    "label": {
-                        "hits": {
-                            "total": {"value": 20, "relation": "eq"},
-                            "max_score": 1.006192,
-                            "hits": [
-                                {
-                                    "_index": "events-stats-record-view-2025-07",
-                                    "_score": 1.006192,
-                                    "_source": {
-                                        "affiliations": [
-                                            [{"name": "Henry Ford College"}]
-                                        ]
-                                    },
-                                }
-                            ],
-                        }
-                    },
-                },
-                {
-                    "key": "San Francisco Public Library",
-                    "doc_count": 20,
-                    "total_events": {"value": 20},
-                    "unique_parents": {"value": 1},
-                    "unique_records": {"value": 1},
-                    "unique_visitors": {"value": 20},
-                    "label": {
-                        "hits": {
-                            "total": {"value": 20, "relation": "eq"},
-                            "max_score": 1.006192,
-                            "hits": [
-                                {
-                                    "_index": "events-stats-record-view-2025-07",
-                                    "_score": 1.006192,
-                                    "_source": {
-                                        "affiliations": [
-                                            [{"name": "San Francisco Public Library"}],
-                                            [{"name": "San Francisco Public Library"}],
-                                            [
-                                                {
-                                                    "name": (
-                                                        "San Francisco Public Library"
-                                                    ),
-                                                    "id": "013v4ng57",
-                                                }
-                                            ],
-                                            [{"name": "San Francisco Public Library"}],
-                                        ]
-                                    },
-                                }
-                            ],
-                        }
-                    },
-                },
-                {
-                    "key": "University Of British Columbia",
-                    "doc_count": 20,
-                    "total_events": {"value": 20},
-                    "unique_parents": {"value": 1},
-                    "unique_records": {"value": 1},
-                    "unique_visitors": {"value": 20},
-                    "label": {
-                        "hits": {
-                            "total": {"value": 20, "relation": "eq"},
-                            "max_score": 1.006192,
-                            "hits": [
-                                {
-                                    "_index": "events-stats-record-view-2025-07",
-                                    "_score": 1.006192,
-                                    "_source": {
-                                        "affiliations": [
-                                            [
-                                                {
-                                                    "name": (
-                                                        "University Of British Columbia"
-                                                    )
-                                                }
-                                            ],
-                                            [
-                                                {
-                                                    "name": (
-                                                        "University of British Columbia"
-                                                    ),
-                                                    "id": "03rmrcq20",
-                                                }
-                                            ],
-                                        ]
-                                    },
-                                }
-                            ],
-                        }
-                    },
-                },
-                {
-                    "key": "University of British Columbia",
-                    "doc_count": 20,
-                    "total_events": {"value": 20},
-                    "unique_parents": {"value": 1},
-                    "unique_records": {"value": 1},
-                    "unique_visitors": {"value": 20},
-                    "label": {
-                        "hits": {
-                            "total": {"value": 20, "relation": "eq"},
-                            "max_score": 1.006192,
-                            "hits": [
-                                {
-                                    "_index": "events-stats-record-view-2025-07",
-                                    "_score": 1.006192,
-                                    "_source": {
-                                        "affiliations": [
-                                            [
-                                                {
-                                                    "name": (
-                                                        "University Of British Columbia"
-                                                    )
-                                                }
-                                            ],
-                                            [
-                                                {
-                                                    "name": (
-                                                        "University of British Columbia"
-                                                    ),
-                                                    "id": "03rmrcq20",
-                                                }
-                                            ],
-                                        ]
-                                    },
-                                }
-                            ],
-                        }
-                    },
-                },
-                {
-                    "key": "University of Missouri - St. Louis",
-                    "doc_count": 20,
-                    "total_events": {"value": 20},
-                    "unique_parents": {"value": 1},
-                    "unique_records": {"value": 1},
-                    "unique_visitors": {"value": 20},
-                    "label": {
-                        "hits": {
-                            "total": {"value": 20, "relation": "eq"},
-                            "max_score": 1.006192,
-                            "hits": [
-                                {
-                                    "_index": "events-stats-record-view-2025-07",
-                                    "_score": 1.006192,
-                                    "_source": {
-                                        "affiliations": [
-                                            [
-                                                {
-                                                    "name": (
-                                                        "University of Missouri - St. Louis"
-                                                    )
-                                                }
-                                            ]
                                         ]
                                     },
                                 }
@@ -423,7 +248,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"
+                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -457,7 +282,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T09:43:46-76c601bc7425aeced6b541686656ecd178104670"
+                                        "2025-07-03T09:43:46-76c601bc7425aeced6b541686656ecd178104670"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -584,7 +409,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T01:54:45-285f9a47a60e50b8f0fe4e96c5e16c98be4faab6"
+                                        "2025-07-03T01:54:45-285f9a47a60e50b8f0fe4e96c5e16c98be4faab6"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -613,7 +438,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T06:58:37-813dbf5c74958287c46ef05b5ca31b23d72d9987"
+                                        "2025-07-03T06:58:37-813dbf5c74958287c46ef05b5ca31b23d72d9987"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -642,7 +467,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T05:33:46-d0103c26fc80ee4dd1f6c71991e2fc0891f2016f"
+                                        "2025-07-03T05:33:46-d0103c26fc80ee4dd1f6c71991e2fc0891f2016f"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -677,7 +502,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"
+                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -688,7 +513,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911979"
                                                 ),
                                                 "subject": (
-                                                    "English language--Written English--History"
+                                                    "English language--Written English--History"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -696,7 +521,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911660"
                                                 ),
                                                 "subject": (
-                                                    "English language--Spoken English--Research"
+                                                    "English language--Spoken English--Research"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -721,7 +546,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/1424786"
+                                                    "http://id.worldcat.org/fast/1424786"  # noqa: E501
                                                 ),
                                                 "subject": (
                                                     "Canadian literature--Bibliography"
@@ -756,7 +581,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911328"
                                                 ),
                                                 "subject": (
-                                                    "English language--Lexicography--History"
+                                                    "English language--Lexicography--History"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -780,7 +605,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"
+                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -794,7 +619,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/2060143"
+                                                    "http://id.worldcat.org/fast/2060143"  # noqa: E501
                                                 ),
                                                 "subject": "Mass incarceration",
                                             },
@@ -815,7 +640,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/855500"
                                                 ),
                                                 "subject": (
-                                                    "Children of prisoners--Services for"
+                                                    "Children of prisoners--Services for"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -823,7 +648,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/995415"
                                                 ),
                                                 "subject": (
-                                                    "Legal assistance to prisoners--U.S. states"
+                                                    "Legal assistance to prisoners--U.S. states"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -847,7 +672,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"
+                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -858,7 +683,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911979"
                                                 ),
                                                 "subject": (
-                                                    "English language--Written English--History"
+                                                    "English language--Written English--History"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -866,7 +691,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911660"
                                                 ),
                                                 "subject": (
-                                                    "English language--Spoken English--Research"
+                                                    "English language--Spoken English--Research"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -891,7 +716,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/1424786"
+                                                    "http://id.worldcat.org/fast/1424786"  # noqa: E501
                                                 ),
                                                 "subject": (
                                                     "Canadian literature--Bibliography"
@@ -926,7 +751,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911328"
                                                 ),
                                                 "subject": (
-                                                    "English language--Lexicography--History"
+                                                    "English language--Lexicography--History"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -950,7 +775,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"
+                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -961,7 +786,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911979"
                                                 ),
                                                 "subject": (
-                                                    "English language--Written English--History"
+                                                    "English language--Written English--History"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -969,7 +794,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911660"
                                                 ),
                                                 "subject": (
-                                                    "English language--Spoken English--Research"
+                                                    "English language--Spoken English--Research"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -994,7 +819,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/1424786"
+                                                    "http://id.worldcat.org/fast/1424786"  # noqa: E501
                                                 ),
                                                 "subject": (
                                                     "Canadian literature--Bibliography"
@@ -1029,7 +854,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911328"
                                                 ),
                                                 "subject": (
-                                                    "English language--Lexicography--History"
+                                                    "English language--Lexicography--History"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -1053,7 +878,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"
+                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -1064,7 +889,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911979"
                                                 ),
                                                 "subject": (
-                                                    "English language--Written English--History"
+                                                    "English language--Written English--History"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1072,7 +897,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911660"
                                                 ),
                                                 "subject": (
-                                                    "English language--Spoken English--Research"
+                                                    "English language--Spoken English--Research"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1097,7 +922,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/1424786"
+                                                    "http://id.worldcat.org/fast/1424786"  # noqa: E501
                                                 ),
                                                 "subject": (
                                                     "Canadian literature--Bibliography"
@@ -1132,7 +957,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911328"
                                                 ),
                                                 "subject": (
-                                                    "English language--Lexicography--History"
+                                                    "English language--Lexicography--History"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -1156,7 +981,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"
+                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -1167,7 +992,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911979"
                                                 ),
                                                 "subject": (
-                                                    "English language--Written English--History"
+                                                    "English language--Written English--History"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1175,7 +1000,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911660"
                                                 ),
                                                 "subject": (
-                                                    "English language--Spoken English--Research"
+                                                    "English language--Spoken English--Research"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1200,7 +1025,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/1424786"
+                                                    "http://id.worldcat.org/fast/1424786"  # noqa: E501
                                                 ),
                                                 "subject": (
                                                     "Canadian literature--Bibliography"
@@ -1235,7 +1060,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911328"
                                                 ),
                                                 "subject": (
-                                                    "English language--Lexicography--History"
+                                                    "English language--Lexicography--History"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -1259,7 +1084,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"
+                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -1270,7 +1095,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911979"
                                                 ),
                                                 "subject": (
-                                                    "English language--Written English--History"
+                                                    "English language--Written English--History"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1278,7 +1103,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911660"
                                                 ),
                                                 "subject": (
-                                                    "English language--Spoken English--Research"
+                                                    "English language--Spoken English--Research"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1303,7 +1128,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/1424786"
+                                                    "http://id.worldcat.org/fast/1424786"  # noqa: E501
                                                 ),
                                                 "subject": (
                                                     "Canadian literature--Bibliography"
@@ -1338,7 +1163,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911328"
                                                 ),
                                                 "subject": (
-                                                    "English language--Lexicography--History"
+                                                    "English language--Lexicography--History"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -1362,7 +1187,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"
+                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -1373,7 +1198,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911979"
                                                 ),
                                                 "subject": (
-                                                    "English language--Written English--History"
+                                                    "English language--Written English--History"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1381,7 +1206,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911660"
                                                 ),
                                                 "subject": (
-                                                    "English language--Spoken English--Research"
+                                                    "English language--Spoken English--Research"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1406,7 +1231,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/1424786"
+                                                    "http://id.worldcat.org/fast/1424786"  # noqa: E501
                                                 ),
                                                 "subject": (
                                                     "Canadian literature--Bibliography"
@@ -1441,7 +1266,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911328"
                                                 ),
                                                 "subject": (
-                                                    "English language--Lexicography--History"
+                                                    "English language--Lexicography--History"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -1465,7 +1290,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"
+                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -1479,7 +1304,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/2060143"
+                                                    "http://id.worldcat.org/fast/2060143"  # noqa: E501
                                                 ),
                                                 "subject": "Mass incarceration",
                                             },
@@ -1500,7 +1325,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/855500"
                                                 ),
                                                 "subject": (
-                                                    "Children of prisoners--Services for"
+                                                    "Children of prisoners--Services for"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1508,7 +1333,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/995415"
                                                 ),
                                                 "subject": (
-                                                    "Legal assistance to prisoners--U.S. states"
+                                                    "Legal assistance to prisoners--U.S. states"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -1532,7 +1357,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"
+                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -1543,7 +1368,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911979"
                                                 ),
                                                 "subject": (
-                                                    "English language--Written English--History"
+                                                    "English language--Written English--History"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1551,7 +1376,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911660"
                                                 ),
                                                 "subject": (
-                                                    "English language--Spoken English--Research"
+                                                    "English language--Spoken English--Research"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1576,7 +1401,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/1424786"
+                                                    "http://id.worldcat.org/fast/1424786"  # noqa: E501
                                                 ),
                                                 "subject": (
                                                     "Canadian literature--Bibliography"
@@ -1611,7 +1436,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911328"
                                                 ),
                                                 "subject": (
-                                                    "English language--Lexicography--History"
+                                                    "English language--Lexicography--History"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -1635,7 +1460,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"
+                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -1646,7 +1471,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911979"
                                                 ),
                                                 "subject": (
-                                                    "English language--Written English--History"
+                                                    "English language--Written English--History"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1654,7 +1479,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911660"
                                                 ),
                                                 "subject": (
-                                                    "English language--Spoken English--Research"
+                                                    "English language--Spoken English--Research"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1679,7 +1504,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/1424786"
+                                                    "http://id.worldcat.org/fast/1424786"  # noqa: E501
                                                 ),
                                                 "subject": (
                                                     "Canadian literature--Bibliography"
@@ -1714,7 +1539,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911328"
                                                 ),
                                                 "subject": (
-                                                    "English language--Lexicography--History"
+                                                    "English language--Lexicography--History"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -1738,7 +1563,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"
+                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -1749,7 +1574,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911979"
                                                 ),
                                                 "subject": (
-                                                    "English language--Written English--History"
+                                                    "English language--Written English--History"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1757,7 +1582,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911660"
                                                 ),
                                                 "subject": (
-                                                    "English language--Spoken English--Research"
+                                                    "English language--Spoken English--Research"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1782,7 +1607,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/1424786"
+                                                    "http://id.worldcat.org/fast/1424786"  # noqa: E501
                                                 ),
                                                 "subject": (
                                                     "Canadian literature--Bibliography"
@@ -1817,7 +1642,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911328"
                                                 ),
                                                 "subject": (
-                                                    "English language--Lexicography--History"
+                                                    "English language--Lexicography--History"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -1841,7 +1666,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"
+                                        "2025-07-03T13:02:55-2e451e41b611b7eba881d07bfa380cb6d68cf760"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -1852,7 +1677,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911979"
                                                 ),
                                                 "subject": (
-                                                    "English language--Written English--History"
+                                                    "English language--Written English--History"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1860,7 +1685,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911660"
                                                 ),
                                                 "subject": (
-                                                    "English language--Spoken English--Research"
+                                                    "English language--Spoken English--Research"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -1885,7 +1710,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/1424786"
+                                                    "http://id.worldcat.org/fast/1424786"  # noqa: E501
                                                 ),
                                                 "subject": (
                                                     "Canadian literature--Bibliography"
@@ -1920,7 +1745,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/911328"
                                                 ),
                                                 "subject": (
-                                                    "English language--Lexicography--History"
+                                                    "English language--Lexicography--History"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -1944,7 +1769,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T00:08:07-a69e246cfaa3036c877052b6bee1325a218663cb"
+                                        "2025-07-03T00:08:07-a69e246cfaa3036c877052b6bee1325a218663cb"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -1979,7 +1804,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"
+                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -1993,7 +1818,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/2060143"
+                                                    "http://id.worldcat.org/fast/2060143"  # noqa: E501
                                                 ),
                                                 "subject": "Mass incarceration",
                                             },
@@ -2014,7 +1839,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/855500"
                                                 ),
                                                 "subject": (
-                                                    "Children of prisoners--Services for"
+                                                    "Children of prisoners--Services for"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -2022,7 +1847,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/995415"
                                                 ),
                                                 "subject": (
-                                                    "Legal assistance to prisoners--U.S. states"
+                                                    "Legal assistance to prisoners--U.S. states"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -2046,7 +1871,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"
+                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -2060,7 +1885,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/2060143"
+                                                    "http://id.worldcat.org/fast/2060143"  # noqa: E501
                                                 ),
                                                 "subject": "Mass incarceration",
                                             },
@@ -2081,7 +1906,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/855500"
                                                 ),
                                                 "subject": (
-                                                    "Children of prisoners--Services for"
+                                                    "Children of prisoners--Services for"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -2089,7 +1914,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/995415"
                                                 ),
                                                 "subject": (
-                                                    "Legal assistance to prisoners--U.S. states"
+                                                    "Legal assistance to prisoners--U.S. states"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -2113,7 +1938,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"
+                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -2127,7 +1952,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/2060143"
+                                                    "http://id.worldcat.org/fast/2060143"  # noqa: E501
                                                 ),
                                                 "subject": "Mass incarceration",
                                             },
@@ -2148,7 +1973,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/855500"
                                                 ),
                                                 "subject": (
-                                                    "Children of prisoners--Services for"
+                                                    "Children of prisoners--Services for"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -2156,7 +1981,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/995415"
                                                 ),
                                                 "subject": (
-                                                    "Legal assistance to prisoners--U.S. states"
+                                                    "Legal assistance to prisoners--U.S. states"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -2180,7 +2005,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"
+                                        "2025-07-03T00:29:39-de2e0837d9e40a79b63bfeaba263a26e22d1e2a1"  # noqa: E501
                                     ),
                                     "_index": "events-stats-record-view-2025-07",
                                     "_score": 1.006192,
@@ -2194,7 +2019,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/2060143"
+                                                    "http://id.worldcat.org/fast/2060143"  # noqa: E501
                                                 ),
                                                 "subject": "Mass incarceration",
                                             },
@@ -2215,7 +2040,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/855500"
                                                 ),
                                                 "subject": (
-                                                    "Children of prisoners--Services for"
+                                                    "Children of prisoners--Services for"  # noqa: E501
                                                 ),
                                             },
                                             {
@@ -2223,7 +2048,7 @@ MOCK_USAGE_QUERY_RESPONSE_VIEWS = {
                                                     "http://id.worldcat.org/fast/995415"
                                                 ),
                                                 "subject": (
-                                                    "Legal assistance to prisoners--U.S. states"
+                                                    "Legal assistance to prisoners--U.S. states"  # noqa: E501
                                                 ),
                                             },
                                         ]
@@ -2269,7 +2094,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
             "doc_count_error_upper_bound": 0,
             "sum_other_doc_count": 0,
         },
-        "affiliations_id": {
+        "affiliations": {
             "buckets": [
                 {
                     "key": "013v4ng57",
@@ -2308,109 +2133,6 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                         }
                     },
                 }
-            ],
-            "doc_count_error_upper_bound": 0,
-            "sum_other_doc_count": 0,
-        },
-        "affiliations_name": {
-            "buckets": [
-                {
-                    "key": "Henry Ford College",
-                    "doc_count": 20,
-                    "total_events": {"value": 20},
-                    "total_volume": {"value": 39698980.0},
-                    "unique_parents": {"value": 1},
-                    "unique_records": {"value": 1},
-                    "unique_visitors": {"value": 20},
-                    "unique_files": {"value": 1},
-                    "label": {
-                        "hits": {
-                            "total": {"value": 20, "relation": "eq"},
-                            "max_score": 1.0082304,
-                            "hits": [
-                                {
-                                    "_index": "events-stats-file-download-2025-07",
-                                    "_score": 1.0082304,
-                                    "_source": {
-                                        "affiliations": [
-                                            [{"name": "Henry Ford College"}]
-                                        ]
-                                    },
-                                }
-                            ],
-                        }
-                    },
-                },
-                {
-                    "key": "San Francisco Public Library",
-                    "doc_count": 20,
-                    "total_events": {"value": 20},
-                    "total_volume": {"value": 9160720.0},
-                    "unique_parents": {"value": 1},
-                    "unique_records": {"value": 1},
-                    "unique_visitors": {"value": 20},
-                    "unique_files": {"value": 1},
-                    "label": {
-                        "hits": {
-                            "total": {"value": 20, "relation": "eq"},
-                            "max_score": 1.0082304,
-                            "hits": [
-                                {
-                                    "_index": "events-stats-file-download-2025-07",
-                                    "_score": 1.0082304,
-                                    "_source": {
-                                        "affiliations": [
-                                            [{"name": "San Francisco Public Library"}],
-                                            [{"name": "San Francisco Public Library"}],
-                                            [
-                                                {
-                                                    "name": (
-                                                        "San Francisco Public Library"
-                                                    ),
-                                                    "id": "013v4ng57",
-                                                }
-                                            ],
-                                            [{"name": "San Francisco Public Library"}],
-                                        ]
-                                    },
-                                }
-                            ],
-                        }
-                    },
-                },
-                {
-                    "key": "University of Missouri - St. Louis",
-                    "doc_count": 20,
-                    "total_events": {"value": 20},
-                    "total_volume": {"value": 1173195900.0},
-                    "unique_parents": {"value": 1},
-                    "unique_records": {"value": 1},
-                    "unique_visitors": {"value": 20},
-                    "unique_files": {"value": 1},
-                    "label": {
-                        "hits": {
-                            "total": {"value": 20, "relation": "eq"},
-                            "max_score": 1.0082304,
-                            "hits": [
-                                {
-                                    "_index": "events-stats-file-download-2025-07",
-                                    "_score": 1.0082304,
-                                    "_source": {
-                                        "affiliations": [
-                                            [
-                                                {
-                                                    "name": (
-                                                        "University of Missouri - St. Louis"
-                                                    )
-                                                }
-                                            ]
-                                        ]
-                                    },
-                                }
-                            ],
-                        }
-                    },
-                },
             ],
             "doc_count_error_upper_bound": 0,
             "sum_other_doc_count": 0,
@@ -2569,7 +2291,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T22:22:03-84b1e4e885f0f768ad5b6c53995733c20ed4d8e8"
+                                        "2025-07-03T22:22:03-84b1e4e885f0f768ad5b6c53995733c20ed4d8e8"  # noqa: E501
                                     ),
                                     "_index": "events-stats-file-download-2025-07",
                                     "_score": 1.0082304,
@@ -2605,7 +2327,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T22:22:03-84b1e4e885f0f768ad5b6c53995733c20ed4d8e8"
+                                        "2025-07-03T22:22:03-84b1e4e885f0f768ad5b6c53995733c20ed4d8e8"  # noqa: E501
                                     ),
                                     "_index": "events-stats-file-download-2025-07",
                                     "_score": 1.0082304,
@@ -2730,7 +2452,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T22:22:03-84b1e4e885f0f768ad5b6c53995733c20ed4d8e8"
+                                        "2025-07-03T22:22:03-84b1e4e885f0f768ad5b6c53995733c20ed4d8e8"  # noqa: E501
                                     ),
                                     "_index": "events-stats-file-download-2025-07",
                                     "_score": 1.0082304,
@@ -2761,7 +2483,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T03:34:59-56efb173eaf90a51112c5574d29a905536b39878"
+                                        "2025-07-03T03:34:59-56efb173eaf90a51112c5574d29a905536b39878"  # noqa: E501
                                     ),
                                     "_index": "events-stats-file-download-2025-07",
                                     "_score": 1.0082304,
@@ -2798,7 +2520,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T08:14:55-9deb53f7a85851587f5d527760049042cbf7ccc2"
+                                        "2025-07-03T08:14:55-9deb53f7a85851587f5d527760049042cbf7ccc2"  # noqa: E501
                                     ),
                                     "_index": "events-stats-file-download-2025-07",
                                     "_score": 1.0082304,
@@ -2812,7 +2534,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/2060143"
+                                                    "http://id.worldcat.org/fast/2060143"  # noqa: E501
                                                 ),
                                                 "subject": "Mass incarceration",
                                             },
@@ -2878,7 +2600,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T08:14:55-9deb53f7a85851587f5d527760049042cbf7ccc2"
+                                        "2025-07-03T08:14:55-9deb53f7a85851587f5d527760049042cbf7ccc2"  # noqa: E501
                                     ),
                                     "_index": "events-stats-file-download-2025-07",
                                     "_score": 1.0082304,
@@ -2892,7 +2614,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/2060143"
+                                                    "http://id.worldcat.org/fast/2060143"  # noqa: E501
                                                 ),
                                                 "subject": "Mass incarceration",
                                             },
@@ -2958,7 +2680,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T03:34:59-56efb173eaf90a51112c5574d29a905536b39878"
+                                        "2025-07-03T03:34:59-56efb173eaf90a51112c5574d29a905536b39878"  # noqa: E501
                                     ),
                                     "_index": "events-stats-file-download-2025-07",
                                     "_score": 1.0082304,
@@ -2995,7 +2717,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T08:14:55-9deb53f7a85851587f5d527760049042cbf7ccc2"
+                                        "2025-07-03T08:14:55-9deb53f7a85851587f5d527760049042cbf7ccc2"  # noqa: E501
                                     ),
                                     "_index": "events-stats-file-download-2025-07",
                                     "_score": 1.0082304,
@@ -3009,7 +2731,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/2060143"
+                                                    "http://id.worldcat.org/fast/2060143"  # noqa: E501
                                                 ),
                                                 "subject": "Mass incarceration",
                                             },
@@ -3075,7 +2797,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T08:14:55-9deb53f7a85851587f5d527760049042cbf7ccc2"
+                                        "2025-07-03T08:14:55-9deb53f7a85851587f5d527760049042cbf7ccc2"  # noqa: E501
                                     ),
                                     "_index": "events-stats-file-download-2025-07",
                                     "_score": 1.0082304,
@@ -3089,7 +2811,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/2060143"
+                                                    "http://id.worldcat.org/fast/2060143"  # noqa: E501
                                                 ),
                                                 "subject": "Mass incarceration",
                                             },
@@ -3155,7 +2877,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T08:14:55-9deb53f7a85851587f5d527760049042cbf7ccc2"
+                                        "2025-07-03T08:14:55-9deb53f7a85851587f5d527760049042cbf7ccc2"  # noqa: E501
                                     ),
                                     "_index": "events-stats-file-download-2025-07",
                                     "_score": 1.0082304,
@@ -3169,7 +2891,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/2060143"
+                                                    "http://id.worldcat.org/fast/2060143"  # noqa: E501
                                                 ),
                                                 "subject": "Mass incarceration",
                                             },
@@ -3235,7 +2957,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                             "hits": [
                                 {
                                     "_id": (
-                                        "2025-07-03T08:14:55-9deb53f7a85851587f5d527760049042cbf7ccc2"
+                                        "2025-07-03T08:14:55-9deb53f7a85851587f5d527760049042cbf7ccc2"  # noqa: E501
                                     ),
                                     "_index": "events-stats-file-download-2025-07",
                                     "_score": 1.0082304,
@@ -3249,7 +2971,7 @@ MOCK_USAGE_QUERY_RESPONSE_DOWNLOADS = {
                                             },
                                             {
                                                 "id": (
-                                                    "http://id.worldcat.org/fast/2060143"
+                                                    "http://id.worldcat.org/fast/2060143"  # noqa: E501
                                                 ),
                                                 "subject": "Mass incarceration",
                                             },

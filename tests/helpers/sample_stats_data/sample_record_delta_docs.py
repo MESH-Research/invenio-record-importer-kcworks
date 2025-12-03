@@ -305,7 +305,6 @@ MOCK_RECORD_DELTA_DOCS = [
             },
             "timestamp": "2025-06-05T18:45:58",
             "updated_timestamp": "2025-06-05T18:45:58",
-            "uploaders": 1,
         },
     },
     {

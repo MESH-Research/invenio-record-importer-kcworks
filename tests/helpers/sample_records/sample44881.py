@@ -1,3 +1,5 @@
+"""Sample record metadata for testing."""
+
 rec44881 = {
     "input": {
         "pids": {
@@ -577,3 +579,4 @@ rec44881 = {
         "updated": "2022-03-08T21:57:49Z",
     },
 }
+# noqa: E501

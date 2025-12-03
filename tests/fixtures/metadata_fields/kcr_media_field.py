@@ -1,6 +1,7 @@
-"""kcr:media       Free user-defined descriptors of the media or materials
-involved in the creation of a workd. This value is an array of
-strings.
+"""kcr:media field definition.
+
+Free user-defined descriptors of the media or materials involved in the
+creation of a work. This value is an array of strings.
 """
 
 from invenio_i18n import lazy_gettext as _

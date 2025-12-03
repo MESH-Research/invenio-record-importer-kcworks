@@ -190,6 +190,9 @@ overrides = [
 [tool.ruff]
 line-length = 88
 target-version = "py312"
+exclude = [
+    "**/*.ipynb",  # Exclude Jupyter notebook files
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "D", "DOC"]

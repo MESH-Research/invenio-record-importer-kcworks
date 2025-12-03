@@ -33,7 +33,14 @@ def sample_record_with_legacy_date(
     create_records_custom_fields,
     minimal_published_record_factory,
 ):
-    """Create a sample record with hclegacy:record_creation_date."""
+    """Create a sample record with hclegacy:record_creation_date.
+
+    Yields:
+        dict: Dictionary containing:
+            - id (str): The record ID
+            - legacy_date (str): The legacy creation date
+            - current_date (str): The current date
+    """
     # Create a record with a legacy creation date
     legacy_date = "2020-01-15T10:30:00Z"
     current_date = arrow.utcnow().isoformat()
