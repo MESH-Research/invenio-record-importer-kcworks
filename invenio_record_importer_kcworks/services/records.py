@@ -180,9 +180,18 @@ class RecordsHelper:
         """Assign the ownership of the record.
 
         Assigns ownership to the users specified in the submitted_owners list.
-        If no users are specified, assigns ownership to the user specified by
-        the user_id parameter. (Generally, this will be the user initiating
-        the import.)
+        If no users are specified in submitted_owners, assigns ownership to
+        the user specified by the user_id parameter as a fallback.
+
+        IMPORTANT: Argument semantics:
+        - user_id: The ID of the user PERFORMING THE ACTION (e.g., the user
+          initiating the import or CLI operation). This is used as a fallback
+          owner only if submitted_owners is None or empty, or if user creation
+          fails. For system operations, this may be 0 or a system user ID.
+        - submitted_owners: The list of users who should OWN THE RECORD. Each
+          user dict should contain at minimum email and full_name. The first
+          user in the list becomes the primary owner; additional users are
+          added as access grants.
 
         Note that only one user can be assigned ownership of a record. If
         more than one owner is specified, only the first will be assigned
@@ -191,17 +200,28 @@ class RecordsHelper:
         Params:
             draft_id: the ID of the draft record to assign ownership to
             submitted_data: the submitted metadata for the record
-            user_id: the ID of the user to assign ownership to if no
-                submitted_owners are provided
+            user_id: the ID of the user performing the action (e.g., the
+                importer or CLI operator). Used as a fallback owner only if
+                submitted_owners is None/empty or if user creation fails.
+                For system operations, use 0 or a system user ID.
             submitted_owners: a list of users to assign ownership to. Each
                 user is a dict with the following keys:
-                - email: the email address of the user
-                - full_name: the full name of the user
-                - identifiers: a list of identifiers for the user
+                - user: the user ID as a string (optional, fastest lookup for existing users)
+                - email: the email address of the user (required for user creation,
+                    optional but recommended for existing user lookup)
+                - full_name: the full name of the user (required only for user creation,
+                    not needed for existing users)
+                - identifiers: a list of identifiers for the user (optional, helps with
+                    lookup by username or other identifiers)
                     - scheme: the scheme of the identifier
                     - identifier: the identifier
+                
+                For existing users, only "user" (ID) is required. "email" is recommended
+                as a fallback. "full_name" and "identifiers" are only needed if the
+                user doesn't exist and needs to be created.
             user_system: the source system of the user
-            existing_record: the existing record to assign ownership to
+            existing_record: the existing record to assign ownership to (as a
+                dict, typically from record.to_dict())
             collection_id: the ID of the collection to add the owner to as a member.
                 This must be a UUID, not the collection's slug. If not provided,
                 the owner will not be added to any collection.
@@ -218,18 +238,18 @@ class RecordsHelper:
         app.logger.info("creating or finding the user (submitter)...")
         new_owners = []
         new_grants = []
+        missing_owners: list[dict] = []
         if not submitted_owners:
             new_owners = [current_accounts.datastore.get_user(user_id)]
             app.logger.warning(
                 "No submitter email or username found in source metadata. "
                 "Assigning ownership to the currently active user..."
             )
-
-        # Find existing users and owners without accounts
-        owners_with_accounts, missing_owners = RecordsHelper._find_existing_users(
-            submitted_owners  # type:ignore
-        )
-        new_owners.extend(owners_with_accounts)
+        else:
+            owners_with_accounts, missing_owners = RecordsHelper._find_existing_users(
+                submitted_owners
+            )
+            new_owners.extend(owners_with_accounts)
 
         for missing_owner in missing_owners:
             missing_owner_kcid = next(
@@ -274,17 +294,21 @@ class RecordsHelper:
         new_grant_holders = new_owners[1:]
 
         # Check to make sure the record is not already owned by the new owners
+        existing_owner_id = (
+            existing_record.get("parent", {}).get("access", {}).get("owned_by", {}).get("user")
+            if existing_record
+            else None
+        )
         if (
-            existing_record
-            and existing_record["parent"].get("access", {}).get("owned_by", {})
-            and new_owner.id
-            == existing_record["parent"]
-            .get("access", {})
-            .get("owned_by", {})
-            .get("user")
+            existing_owner_id is not None
+            and new_owner.id == int(existing_owner_id)
         ):
             app.logger.info("skipping re-assigning ownership of the record ")
             app.logger.info(f"(already belongs to owner {new_owner.id})")
+            record: RDMRecord = (
+                records_service.read(id_=draft_id, identity=system_identity)._record
+            )
+            changed_ownership = record.parent.access.owned_by
         else:
             # Change the ownership of the record
             try:
