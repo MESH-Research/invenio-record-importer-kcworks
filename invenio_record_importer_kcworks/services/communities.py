@@ -41,7 +41,9 @@ from invenio_records_resources.services.uow import (
     RecordCommitOp,
     RecordIndexOp,
     unit_of_work,
+    UnitOfWork,
 )
+from invenio_notifications.services.uow import NotificationOp
 from invenio_requests.errors import CannotExecuteActionError
 from invenio_requests.proxies import current_requests_service
 from invenio_search.proxies import current_search_client
@@ -56,6 +58,7 @@ from werkzeug.exceptions import UnprocessableEntity
 from invenio_record_importer_kcworks.errors import (
     CollectionDoesNotExistError,
     CommonsGroupServiceError,
+    InvalidParametersError,
     MissingParentMetadataError,
     MultipleActiveCollectionsError,
     PublicationValidationError,
@@ -403,6 +406,199 @@ class CommunitiesHelper:
             raise RuntimeError(result)
         return result.to_dict()  # type:ignore
 
+    def _get_record_or_draft(self, draft_id: str) -> dict | None:
+        """Get a record as draft or published record.
+
+        Tries to read as draft first, falls back to published record if draft
+        doesn't exist.
+
+        Args:
+            draft_id: The ID of the draft/record to retrieve
+
+        Returns:
+            dict: The record dict if found, None otherwise
+        """
+        try:
+            existing_record = records_service.read_draft(
+                system_identity, id_=draft_id
+            ).to_dict()
+            assert existing_record
+            return existing_record  # type:ignore
+        except (IndexError, NoResultFound, DraftNotCreatedError):
+            try:
+                existing_record = records_service.read(
+                    system_identity, id_=draft_id
+                ).to_dict()
+                return existing_record  # type:ignore
+            except (AssertionError, PIDUnregistered):
+                return None
+
+    def _is_already_published_to_community(
+        self, record: dict, community_id: str
+    ) -> bool:
+        """Check if record is already published to the community.
+
+        Args:
+            record: The record dict to check
+            community_id: The community ID to check
+
+        Returns:
+            bool: True if already published to the community, False otherwise
+        """
+        return bool(
+            record
+            and (record["status"] not in ["draft", "draft_with_review"])
+            and (
+                record["parent"]["communities"]
+                and community_id in record["parent"]["communities"]["ids"]
+            )
+        )
+
+    def _validate_restricted_record_publication(self, record: dict) -> None:
+        """Validate that a restricted record can be published.
+
+        DOIs cannot be registered at publication if the record is restricted
+        (see datacite provider `validate_restriction_level` method called in
+        pid component's `publish` method).
+
+        Args:
+            record: The record dict to validate
+
+        Raises:
+            RestrictedRecordPublicationError: If the record is restricted
+        """
+        if record and record["access"]["record"] == "restricted":
+            raise RestrictedRecordPublicationError(
+                "Record is restricted and cannot be published to "
+                "the community because its DOI cannot be registered"
+            )
+
+    def _handle_existing_review_request(self, draft_id: str, uow) -> str | None:
+        """Handle any existing review request for the record.
+
+        Tries to cancel any existing review request for the record with another
+        community, since it will conflict. If the review is closed, it's deleted.
+        If it's open, it's cancelled.
+
+        Args:
+            draft_id: The ID of the draft record
+            uow: The unit of work to use
+
+        Returns:
+            str | None: The request ID if an open request was found, None otherwise
+        """
+        try:
+            existing_review = records_service.review.read(system_identity, id_=draft_id)
+            app.logger.info(
+                "    cancelling existing review request for the record "
+                f"to the community...: {existing_review.id}"
+            )
+            if not existing_review.data["is_open"]:
+                try:
+                    records_service.review.delete(system_identity, id_=draft_id)
+                except (
+                    NotFoundError,
+                    CannotExecuteActionError,
+                ):  # already deleted
+                    # Sometimes the review request is already deleted but
+                    # hasn't been removed from the record's metadata
+                    draft_record = records_service.read_draft(
+                        system_identity, id_=draft_id
+                    )._record
+                    draft_record.parent.review = None
+                    uow.register(ParentRecordCommitOp(draft_record.parent))
+                    uow.register(RecordIndexOp(draft_record))
+                return None
+            else:
+                request_id = existing_review.id
+                current_requests_service.execute_action(
+                    system_identity,
+                    request_id,
+                    "cancel",
+                )
+                return str(request_id)  # type:ignore
+        except (ReviewNotFoundError, NoResultFound):
+            app.logger.info(
+                "    no existing review request found for the record to "
+                "the community..."
+            )
+            return None
+
+    def _create_and_accept_submission_request(
+        self, draft_id: str, community_id: str, uow
+    ) -> dict:
+        """Create, submit, and accept a community-submission request.
+
+        Creates a 'community-submission' request for an unpublished record
+        (record will be published at acceptance). Handles status checks and
+        retries as needed.
+
+        Args:
+            draft_id: The ID of the draft record
+            community_id: The ID of the community
+            uow: The unit of work to use
+
+        Returns:
+            dict: The accepted request dict
+
+        Raises:
+            MissingParentMetadataError: If there's a StaleDataError related to
+                missing parent metadata
+        """
+        review_body = {
+            "receiver": {"community": f"{community_id}"},
+            "type": "community-submission",
+        }
+        records_service.review.update(system_identity, draft_id, review_body)
+
+        submitted_body = {
+            "payload": {
+                "content": "Thank you in advance for the review.",
+                "format": "html",
+            }
+        }
+        submitted_request = records_service.review.submit(
+            system_identity,
+            draft_id,
+            data=submitted_body,
+            require_review=True,
+        )
+        if submitted_request.data["status"] not in [
+            "submitted",
+            "accepted",
+        ]:
+            app.logger.error(
+                f"    initially failed to submit review request: "
+                f"{submitted_request.to_dict()}"
+            )
+            submitted_request = current_requests_service.execute_action(
+                system_identity,
+                submitted_request.id,
+                "submit",
+            )
+
+        if submitted_request.data["status"] != "accepted":
+            try:
+                review_accepted = current_requests_service.execute_action(
+                    system_identity,
+                    submitted_request.id,
+                    "accept",
+                )
+            except StaleDataError as e:
+                if "UPDATE statement on table 'rdm_parents_metadata'" in e.message:
+                    raise MissingParentMetadataError(
+                        "Missing parent metadata for record during "
+                        "community submission acceptance. Original "
+                        f"error message: {e.message}"
+                    ) from None
+                raise
+        else:
+            review_accepted = submitted_request
+
+        assert review_accepted.data["status"] == "accepted"
+
+        return review_accepted.to_dict()  # type:ignore
+
     @unit_of_work()
     def publish_record_to_community(
         self,
@@ -425,248 +621,173 @@ class CommunitiesHelper:
         Returns:
             dict: the result of the review acceptance action
         """
-        # Attachment to community unnecessary if the record is already
-        # published or included in it, even if a new draft version
-        try:
-            # existing_record = (
-            #     records_service.search_drafts(system_identity, q=f"id:{draft_id}")
-            #     .to_dict()
-            #     .get("hits", {})
-            #     .get("hits", [])[0]
-            # )
-            existing_record = records_service.read_draft(
-                system_identity, id_=draft_id
-            ).to_dict()
-            assert existing_record
-        except (IndexError, NoResultFound, DraftNotCreatedError):
-            try:
-                existing_record = records_service.read(
-                    system_identity, id_=draft_id
-                ).to_dict()
-            except (AssertionError, PIDUnregistered):
-                existing_record = None
+        record = self._get_record_or_draft(draft_id)
 
-        if (
-            existing_record
-            and (existing_record["status"] not in ["draft", "draft_with_review"])
-            and (
-                existing_record["parent"]["communities"]
-                and community_id in existing_record["parent"]["communities"]["ids"]
-            )
-        ):
+        if record and self._is_already_published_to_community(record, community_id):
             app.logger.info(
                 "    skipping attaching the record to the community (already"
                 " published to it)..."
             )
             return {"status": "already_published"}
-        # for records that haven't been attached to the community yet
-        # submit and accept a review request
-        else:
-            # DOIs cannot be registered at publication if the record
-            # is restricted (see datacite provider `validate_restriction_level`
-            # method called in pid component's `publish` method)
-            if existing_record and existing_record["access"]["record"] == "restricted":
-                raise RestrictedRecordPublicationError(
-                    "Record is restricted and cannot be published to "
-                    "the community because its DOI cannot be registered"
-                )
 
-            request_id = None
-            # Try to cancel any existing review request for the record
-            # with another community, since it will conflict
-            try:
-                existing_review = records_service.review.read(
-                    system_identity, id_=draft_id
-                )
-                app.logger.info(
-                    "    cancelling existing review request for the record "
-                    f"to the community...: {existing_review.id}"
-                )
-                # if (
-                #     existing_review.to_dict()["receiver"].get("community")
-                #     == community_id
-                # ):
-                #     app.logger.info(
-                #         "    skipping cancelling the existing review request"
-                #         " (already for the community)..."
-                #     )
-                if not existing_review.data["is_open"]:
-                    try:
-                        records_service.review.delete(system_identity, id_=draft_id)
-                    except (
-                        NotFoundError,
-                        CannotExecuteActionError,
-                    ):  # already deleted
-                        # Sometimes the review request is already deleted but
-                        # hasn't been removed from the record's metadata
-                        draft_record = records_service.read_draft(
-                            system_identity, id_=draft_id
-                        )._record
-                        draft_record.parent.review = None
-                        uow.register(ParentRecordCommitOp(draft_record.parent))
-                        uow.register(RecordIndexOp(draft_record))
-                else:
-                    request_id = existing_review.id
-                    cancel_existing_request = current_requests_service.execute_action(
-                        system_identity,
-                        request_id,
-                        "cancel",
-                    )
-            # If no existing review request, just continue
-            except (ReviewNotFoundError, NoResultFound):
-                app.logger.info(
-                    "    no existing review request found for the record to "
-                    "the community..."
-                )
+        if record:
+            self._validate_restricted_record_publication(record)
 
-            # Create/retrieve and accept a review request
-            app.logger.info("    attaching the record to the community...")
+        self._handle_existing_review_request(draft_id, uow)
 
-            # Try creating/retrieving and accepting a 'community-submission'
-            # request for an unpublished record (record will be published at
-            # acceptance).
-            try:
-                review_body = {
-                    "receiver": {"community": f"{community_id}"},
-                    "type": "community-submission",
-                }
-                new_request = records_service.review.update(  # noqa: F841
-                    system_identity, draft_id, review_body
-                )
-
-                submitted_body = {
-                    "payload": {
-                        "content": "Thank you in advance for the review.",
-                        "format": "html",
-                    }
-                }
-                submitted_request = records_service.review.submit(
-                    system_identity,
-                    draft_id,
-                    data=submitted_body,
-                    require_review=True,
-                )
-                if submitted_request.data["status"] not in [
-                    "submitted",
-                    "accepted",
-                ]:
-                    app.logger.error(
-                        f"    initially failed to submit review request: "
-                        f"{submitted_request.to_dict()}"
-                    )
-                    submitted_request = current_requests_service.execute_action(
-                        system_identity,
-                        submitted_request.id,
-                        "submit",
-                    )
-
-                if submitted_request.data["status"] != "accepted":
-                    try:
-                        review_accepted = current_requests_service.execute_action(
-                            system_identity,
-                            submitted_request.id,
-                            "accept",
-                        )
-                    except StaleDataError as e:
-                        if (
-                            "UPDATE statement on table 'rdm_parents_metadata'"
-                            in e.message
-                        ):
-                            raise MissingParentMetadataError(
-                                "Missing parent metadata for record during "
-                                "community submission acceptance. Original "
-                                f"error message: {e.message}"
-                            ) from None
-                else:
-                    review_accepted = submitted_request
-
-                assert review_accepted.data["status"] == "accepted"
-
-                return review_accepted.to_dict()  # type:ignore
-
-            # Catch validation errors when publishing the record
-            except ValidationError as e:
-                app.logger.error(
-                    f"    failed to validate record for publication: {e.messages}"
-                )
-                raise PublicationValidationError(e.messages) from None
-
+        app.logger.info("    attaching the record to the community...")
+        try:
+            return self._create_and_accept_submission_request(
+                draft_id, community_id, uow
+            )
+        except ValidationError as e:
+            app.logger.error(
+                f"    failed to validate record for publication: {e.messages}"
+            )
+            raise PublicationValidationError(e.messages) from None
+        except (NoResultFound, ReviewStateError) as e:
             # If the record is already published, we need to create/retrieve
             # and accept a 'community-inclusion' request instead
-            except (NoResultFound, ReviewStateError) as e:
-                app.logger.debug(f"   {pformat(e)}")
-                app.logger.debug("   record is already published")
-                record_communities = current_rdm_records.record_communities_service
+            app.logger.debug(f"   {pformat(e)}")
+            app.logger.debug("   record is already published")
+            # add_published_record_to_community always returns a tuple (result, uow)
+            review_accepted, _ = self.add_published_record_to_community(
+                draft_id, community_id, uow=uow
+            )
+            return review_accepted  # type:ignore
 
-                # Try to create and submit a 'community-inclusion' request
-                requests, errors = record_communities.add(
-                    system_identity,
-                    draft_id,
-                    {"communities": [{"id": community_id}]},
+    @unit_of_work()
+    def add_published_record_to_community(
+        self,
+        draft_id: str,
+        community_id: str,
+        suppress_notifications: bool = True,
+        uow: UnitOfWork | None = None,
+    ) -> tuple[dict, UnitOfWork | None]:
+        """Add a published record to a particular community.
+
+        If suppress_notifications is True, email notifications connected to the request
+        will be suppressed before the unit of work is committed.
+
+        **Important:** The returned UnitOfWork's commit status depends on how it was created:
+        - If you provide a UnitOfWork, it will be returned **uncommitted** for you to commit.
+        - If no UnitOfWork is provided, the decorator creates one, commits it automatically,
+          and returns it **already committed**. Attempting to commit it again will raise
+          a RuntimeError.
+
+        Parameters:
+            draft_id (str): the id of the draft record
+            community_id (str): the id of the community to add the record to
+            suppress_notifications (bool): if True, suppress email notifications
+            uow (UnitOfWork, optional): the unit of work to use. If not provided, one will be created.
+
+        Returns:
+            tuple[dict, UnitOfWork | None]: the result and the unit of work.
+                The UOW will be None if no UOW exists, otherwise it will be the UOW
+                (either provided uncommitted, or auto-created and already committed if
+                one wasn't provided).
+
+        Raises:
+            InvalidParametersError: If the record is not published.
+        """
+        # Verify that the record is actually published
+        record = self._get_record_or_draft(draft_id)
+        if not record:
+            raise InvalidParametersError(
+                f"Record with id {draft_id} not found"
+            )
+        if record.get("status") in ["draft", "draft_with_review"]:
+            raise InvalidParametersError(
+                f"Record with id {draft_id} is not published (status: {record.get('status')}). "
+                "Use publish_record_to_community() for unpublished records."
+            )
+
+        record_communities = current_rdm_records.record_communities_service
+
+        # Try to create and submit a 'community-inclusion' request
+        # Pass uow to ensure we use the same unit of work instance so we can
+        # filter out notifications before commit
+        requests, errors = record_communities.add(
+            system_identity,
+            draft_id,
+            {"communities": [{"id": community_id}]},
+            uow=uow,
+        )
+        submitted_request = requests[0] if requests else None
+
+        # If that failed because the record is already included in the
+        # community, skip accepting the request (unnecessary)
+        # FIXME: How can we tell if an inclusion request is already
+        # open and/or accepted? Without relying on this error message?
+        if errors and "already included" in errors[0]["message"]:
+            # Suppress email notifications even in early return case
+            if uow and hasattr(uow, "_operations") and suppress_notifications:
+                uow._operations = [
+                    op for op in uow._operations if not isinstance(op, NotificationOp)
+                ]
+            result = {
+                "status": "already_included",
+                "submitted_request": (
+                    submitted_request.to_dict() if submitted_request else None
+                ),
+            }
+            # Always return the UOW if it exists (may be already committed if decorator created it)
+            return result, uow
+        # If that failed look for any existing open
+        # 'community-inclusion' request and continue with it
+        if errors:
+            app.logger.debug(f"    inclusion request already open for {draft_id}")
+            app.logger.debug(pformat(errors))
+            record = record_communities.record_cls.pid.resolve(draft_id)
+            request_id = record_communities._exists(community_id, record)
+            # Read existing request from database (already committed)
+            request_obj = current_requests_service.read(
+                system_identity, request_id
+            )._record
+        # If it succeeded, continue with the new request
+        else:
+            request_id = (
+                submitted_request["id"]  # type:ignore
+                if submitted_request.get("id")  # type:ignore
+                else submitted_request["request"]["id"]  # type:ignore
+            )
+            # Note: Even though the UnitOfWork hasn't yet been committed,
+            # SQLAlchemy's session identity map will return the uncommitted request
+            # object from the same session.
+            request_obj = current_requests_service.read(
+                system_identity, request_id
+            )._record
+        community = current_communities.service.record_cls.pid.resolve(community_id)
+        # app.logger.debug(f"request_obj: {pformat(request_obj)}  ")
+
+        # Accept the 'community-inclusion' request if it's not already
+        # accepted
+        if request_obj["status"] != "accepted":
+            community_inclusion = current_rdm_records.community_inclusion_service
+            try:
+                review_accepted = community_inclusion.include(
+                    system_identity, community, request_obj, uow
                 )
-                submitted_request = requests[0] if requests else None
-
-                # If that failed because the record is already included in the
-                # community, skip accepting the request (unnecessary)
-                # FIXME: How can we tell if an inclusion request is already
-                # open and/or accepted? Without relying on this error message?
-                if errors and "already included" in errors[0]["message"]:
-                    return {
-                        "status": "already_included",
-                        "submitted_request": (
-                            submitted_request.to_dict() if submitted_request else None
-                        ),
-                    }
-                # If that failed look for any existing open
-                # 'community-inclusion' request and continue with it
-                if errors:
-                    app.logger.debug(
-                        f"    inclusion request already open for {draft_id}"
-                    )
-                    app.logger.debug(pformat(errors))
-                    record = record_communities.record_cls.pid.resolve(draft_id)
-                    request_id = record_communities._exists(community_id, record)
-                # If it succeeded, continue with the new request
-                else:
-                    request_id = (
-                        submitted_request["id"]  # type:ignore
-                        if submitted_request.get("id")  # type:ignore
-                        else submitted_request["request"]["id"]  # type:ignore
-                    )
-                request_obj = current_requests_service.read(
-                    system_identity, request_id
-                )._record
-                community = current_communities.service.record_cls.pid.resolve(
-                    community_id
+            except InvalidAccessRestrictions:
+                # can't add public record to restricted community
+                # so set community to public before acceptance
+                # TODO: can we change this policy?
+                app.logger.warning(f"    setting community {community_id} to public")
+                CommunityRecordHelper.set_community_visibility(community_id, "public")
+                review_accepted = community_inclusion.include(
+                    system_identity, community, request_obj, uow
                 )
-                # app.logger.debug(f"request_obj: {pformat(request_obj)}  ")
+        else:
+            review_accepted = request_obj
 
-                # Accept the 'community-inclusion' request if it's not already
-                # accepted
-                if request_obj["status"] != "accepted":
-                    community_inclusion = (
-                        current_rdm_records.community_inclusion_service
-                    )
-                    try:
-                        review_accepted = community_inclusion.include(
-                            system_identity, community, request_obj, uow
-                        )
-                    except InvalidAccessRestrictions:
-                        # can't add public record to restricted community
-                        # so set community to public before acceptance
-                        # TODO: can we change this policy?
-                        app.logger.warning(
-                            f"    setting community {community_id} to public"
-                        )
-                        CommunityRecordHelper.set_community_visibility(
-                            community_id, "public"
-                        )
-                        review_accepted = community_inclusion.include(
-                            system_identity, community, request_obj, uow
-                        )
-                else:
-                    review_accepted = request_obj
-                return review_accepted  # type:ignore
+        # Suppress email notifications by stripping NotificationOp instances from uow
+        if uow and hasattr(uow, "_operations") and suppress_notifications:
+            uow._operations = [
+                op for op in uow._operations if not isinstance(op, NotificationOp)
+            ]
+
+        # Always return the UOW if it exists (may be already committed if decorator created it)
+        return review_accepted.to_dict(), uow  # type:ignore
 
     def add_record_to_group_collections(
         self, metadata_record: dict, record_source: str
