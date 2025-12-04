@@ -26,7 +26,7 @@ from invenio_group_collections_kcworks.errors import (
 from invenio_group_collections_kcworks.proxies import (
     current_group_collections_service as collections_service,
 )
-from invenio_pidstore.errors import PIDUnregistered
+from invenio_pidstore.errors import PIDDoesNotExistError, PIDUnregistered
 from invenio_rdm_records.proxies import (
     current_community_records_service,
     current_rdm_records,
@@ -424,13 +424,13 @@ class CommunitiesHelper:
             ).to_dict()
             assert existing_record
             return existing_record  # type:ignore
-        except (IndexError, NoResultFound, DraftNotCreatedError):
+        except (IndexError, NoResultFound, DraftNotCreatedError, PIDDoesNotExistError):
             try:
                 existing_record = records_service.read(
                     system_identity, id_=draft_id
                 ).to_dict()
                 return existing_record  # type:ignore
-            except (AssertionError, PIDUnregistered):
+            except (AssertionError, PIDUnregistered, PIDDoesNotExistError):
                 return None
 
     def _is_already_published_to_community(
@@ -662,6 +662,7 @@ class CommunitiesHelper:
         draft_id: str,
         community_id: str,
         suppress_notifications: bool = True,
+        require_review: bool = False,
         uow: UnitOfWork | None = None,
     ) -> tuple[dict, UnitOfWork | None]:
         """Add a published record to a particular community.
@@ -679,6 +680,8 @@ class CommunitiesHelper:
             draft_id (str): the id of the draft record
             community_id (str): the id of the community to add the record to
             suppress_notifications (bool): if True, suppress email notifications
+            require_review (bool): if True, create a request that requires review (stays open).
+                If False (default), the request is auto-accepted if permissions allow.
             uow (UnitOfWork, optional): the unit of work to use. If not provided, one will be created.
 
         Returns:
@@ -710,10 +713,12 @@ class CommunitiesHelper:
         requests, errors = record_communities.add(
             system_identity,
             draft_id,
-            {"communities": [{"id": community_id}]},
+            {"communities": [{"id": community_id, "require_review": require_review}]},
             uow=uow,
         )
         submitted_request = requests[0] if requests else None
+
+        app.logger.info(f"errors: {pformat(errors)}")
 
         # If that failed because the record is already included in the
         # community, skip accepting the request (unnecessary)
@@ -778,7 +783,11 @@ class CommunitiesHelper:
                     system_identity, community, request_obj, uow
                 )
         else:
-            review_accepted = request_obj
+            # Request is already accepted, get service result to align
+            # type with the return value of the include method
+            review_accepted = current_requests_service.read(
+                system_identity, request_id
+            )
 
         # Suppress email notifications by stripping NotificationOp instances from uow
         if uow and hasattr(uow, "_operations") and suppress_notifications:
@@ -786,7 +795,7 @@ class CommunitiesHelper:
                 op for op in uow._operations if not isinstance(op, NotificationOp)
             ]
 
-        # Always return the UOW if it exists (may be already committed if decorator created it)
+        # Always return the UOW if it exists (may be already committed if decorator added)
         return review_accepted.to_dict(), uow  # type:ignore
 
     def add_record_to_group_collections(

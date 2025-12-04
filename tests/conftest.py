@@ -37,6 +37,7 @@ pytest_plugins = (
     "tests.fixtures.communities",
     "tests.fixtures.custom_fields",
     "tests.fixtures.files",
+    "tests.fixtures.fixtures",
     "tests.fixtures.records",
     "tests.fixtures.stats",
     "tests.fixtures.users",

@@ -4,6 +4,9 @@ from flask import render_template
 from flask_mail import Message
 from invenio_stats.proxies import current_stats
 
+from invenio_record_importer_kcworks.services.communities import CommunitiesHelper
+
+
 
 @shared_task(ignore_result=False)
 def aggregate_events(
@@ -88,72 +91,6 @@ def send_security_email(
 
 
 @shared_task(ignore_result=False, bind=True)
-def update_record_created_dates_task(
-    self,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    batch_size: int = 100,
-    dry_run: bool = False,
-    verbose: bool = False,
-) -> dict:
-    """Celery task to update record created dates in background.
-
-    This task updates the 'created' timestamp for records that have
-    custom_fields.hclegacy:record_creation_date set. It processes records
-    in batches and performs health checks between batches to avoid
-    overwhelming the OpenSearch cluster.
-
-    Args:
-        start_date: ISO format date string (YYYY-MM-DD) - only process records
-                   created after this date
-        end_date: ISO format date string (YYYY-MM-DD) - only process records
-                 created before this date
-        batch_size: Number of records to process in each batch
-        dry_run: If True, show what would be updated without making changes
-        verbose: If True, log detailed progress information
-
-    Returns:
-        dict: Statistics about the operation
-            {
-                'total_found': int,
-                'updated': int,
-                'skipped': int,
-                'errors': list[dict],
-                'stopped_early': bool (optional),
-                'stopped_at_record': int (optional)
-            }
-    """
-    from invenio_record_importer_kcworks.services.records import RecordsHelper
-
-    app.logger.info("Starting background task: update_record_created_dates")
-    app.logger.info(
-        f"Parameters: start_date={start_date}, end_date={end_date}, "
-        f"batch_size={batch_size}, dry_run={dry_run}, verbose={verbose}"
-    )
-
-    # Update task state to show progress
-    self.update_state(state="PROGRESS", meta={"status": "Initializing..."})
-
-    try:
-        helper = RecordsHelper()
-        stats = helper.update_record_created_dates(
-            start_date=start_date,
-            end_date=end_date,
-            batch_size=batch_size,
-            dry_run=dry_run,
-            verbose=verbose,
-        )
-
-        app.logger.info(f"Background task completed: {stats}")
-        return stats
-
-    except Exception as e:
-        app.logger.error(f"Background task failed: {str(e)}")
-        self.update_state(state="FAILURE", meta={"error": str(e)})
-        raise
-
-
-@shared_task(ignore_result=False, bind=True)
 def update_community_created_dates_task(
     self,
     batch_size: int = 100,
@@ -183,8 +120,6 @@ def update_community_created_dates_task(
                 'stopped_at_community': int (optional)
             }
     """
-    from invenio_record_importer_kcworks.services.communities import CommunitiesHelper
-
     app.logger.info("Starting background task: update_community_created_dates")
     app.logger.info(
         f"Parameters: batch_size={batch_size}, dry_run={dry_run}, verbose={verbose}"

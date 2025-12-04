@@ -51,17 +51,18 @@ class StatsFabricator:
     def __init__(self):
         """Initialize the service."""
 
-    def generate_datetimes(self, start, n):
+    def generate_datetimes(self, start, n, end=None):
         """Generate evenly distributed datetimes between the record creation
-        date and the current date.
+        date and the end date (or current date if not provided).
         """
         # Use a relatively recent start time to avoid issues with
         # creating too many monthly indices and running out of
         # available open shards
         if start < arrow.get("2019-01-01"):
             start = arrow.get("2019-01-01")
-        total_seconds = arrow.utcnow().timestamp() - start.timestamp()
-        interval = total_seconds / n
+        end = end or arrow.utcnow()
+        total_seconds = end.timestamp() - start.timestamp()
+        interval = total_seconds / n if n > 0 else 0
         datetimes = [start.shift(seconds=i * interval) for i in range(n)]
 
         return datetimes
@@ -193,6 +194,7 @@ class StatsFabricator:
         views_count: int | None = None,
         downloads_count: int | None = None,
         publication_date: str | None = None,
+        end_date: arrow.Arrow | None = None,
         eager=False,
         verbose=False,
     ) -> bool | list:
@@ -347,7 +349,7 @@ class StatsFabricator:
                 view_events = []
                 unique_session_ids = []
                 for idx, dt in enumerate(
-                    self.generate_datetimes(record_creation, views)
+                    self.generate_datetimes(record_creation, views, end=end_date)
                 ):
                     uid = str(uuid.uuid4())
                     doc = {
@@ -423,7 +425,7 @@ class StatsFabricator:
                         downloads -= existing_download_count
                     download_events = []
                     for idx, dt in enumerate(
-                        self.generate_datetimes(record_creation, downloads)
+                        self.generate_datetimes(record_creation, downloads, end=end_date)
                     ):
                         uid = str(uuid.uuid4())
                         doc = {
@@ -545,7 +547,11 @@ class AggregationFabricator:
             eager is False, the function returns True.
 
         """
-        aggregation_types = list(current_stats.aggregations.keys())
+        # Only run standard Invenio aggregators, not stats-dashboard aggregators
+        all_aggregation_types = list(current_stats.aggregations.keys())
+        aggregation_types = [
+            a for a in all_aggregation_types if not a.startswith("community-")
+        ]
 
         # first delete existing aggregations
         for a in aggregation_types:
@@ -557,15 +563,21 @@ class AggregationFabricator:
                     f"to {end_date}..."
                 )
                 aggregator.delete(start_date, end_date)
-            except NotFoundError as e:
-                app.logger.warning(
-                    f"Aggregations indices not found for initial "
-                    f"deletion of prior records: {e}"
-                )
-                print(
-                    f"Aggregations indices not found for initial "
-                    f"deletion of prior records: {e}"
-                )
+            except Exception as e:
+                # Index may not exist yet if no events have been created.
+                # This is expected for new records, so we just log and continue.
+                # NotFoundError is raised when the index doesn't exist, but other
+                # exceptions (like AttributeError) might also occur.
+                error_type = type(e).__name__
+                if "not found" in str(e).lower() or "NotFoundError" in error_type:
+                    app.logger.debug(
+                        f"Aggregations indices not found for {a} (expected if no "
+                        f"events exist yet): {e}"
+                    )
+                else:
+                    app.logger.warning(
+                        f"Error deleting aggregations for {a}: {e}"
+                    )
 
         # now create new aggregations
         agg_task = aggregate_events.si(

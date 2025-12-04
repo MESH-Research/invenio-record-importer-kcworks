@@ -47,7 +47,6 @@ from invenio_record_importer_kcworks.services.stats.stats import (
 from invenio_record_importer_kcworks.services.users import UsersHelper
 from invenio_record_importer_kcworks.tasks import (
     update_community_created_dates_task,
-    update_record_created_dates_task,
 )
 
 
@@ -1054,16 +1053,8 @@ def update_created_dates(
         tasks = []
 
         if not communities_only:
-            click.echo("Queuing record update task...")
-            task = update_record_created_dates_task.delay(
-                start_date=start_date,
-                end_date=end_date,
-                batch_size=batch_size,
-                dry_run=dry_run,
-                verbose=verbose,
-            )
-            tasks.append(("records", task))
-            click.echo(f"Record update task queued: {task.id}")
+            click.echo("Record update feature is deprecated (no longer using hclegacy:record_creation_date)")
+            click.echo("Skipping record update task.")
 
         if not records_only:
             click.echo("Queuing community update task...")
@@ -1087,35 +1078,8 @@ def update_created_dates(
         click.echo("=" * 70)
         click.echo("Updating record created dates...")
         click.echo("=" * 70)
-
-        records_helper = RecordsHelper()
-        records_stats = records_helper.update_record_created_dates(
-            start_date=start_date,
-            end_date=end_date,
-            batch_size=batch_size,
-            dry_run=dry_run,
-            verbose=verbose,
-        )
-
-        click.echo("\nRecord Update Results:")
-        click.echo(f"  Total found: {records_stats['total_found']}")
-        click.echo(f"  Updated: {records_stats['updated']}")
-        click.echo(f"  Skipped: {records_stats['skipped']}")
-        click.echo(f"  Errors: {len(records_stats['errors'])}")
-
-        if records_stats.get("stopped_early"):
-            click.echo(
-                f"  WARNING: Stopped early at record "
-                f"{records_stats['stopped_at_record']} "
-                f"due to OpenSearch health issues"
-            )
-
-        if records_stats["errors"]:
-            click.echo("\nErrors:")
-            for error in records_stats["errors"][:10]:  # Show first 10
-                click.echo(f"  - {error['pid']}: {error['error']}")
-            if len(records_stats["errors"]) > 10:
-                click.echo(f"  ... and {len(records_stats['errors']) - 10} more")
+        click.echo("Record update feature is deprecated (no longer using hclegacy:record_creation_date)")
+        click.echo("No records to update.")
 
     if not records_only:
         click.echo("\n" + "=" * 70)

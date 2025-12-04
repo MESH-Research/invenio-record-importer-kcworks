@@ -8,7 +8,8 @@
 
 import pytest
 from invenio_access.permissions import system_identity
-from invenio_rdm_records.proxies import current_rdm_records_service
+from invenio_notifications.services.uow import NotificationOp
+from invenio_rdm_records.proxies import current_rdm_records, current_rdm_records_service
 from invenio_records_resources.services.uow import UnitOfWork
 
 from invenio_record_importer_kcworks.errors import InvalidParametersError
@@ -170,8 +171,6 @@ class TestAddPublishedRecordToCommunity:
 
             # Check that NotificationOp was removed from UOW operations
             if uow and hasattr(uow, "_operations"):
-                from invenio_notifications.services.uow import NotificationOp
-
                 notification_ops = [
                     op for op in uow._operations if isinstance(op, NotificationOp)
                 ]
@@ -250,20 +249,17 @@ class TestAddPublishedRecordToCommunity:
 
             helper = CommunitiesHelper()
 
-            # Create a request but don't accept it
-            from invenio_rdm_records.proxies import current_rdm_records
-
             record_communities = current_rdm_records.record_communities_service
             requests, errors = record_communities.add(
                 system_identity,
                 published_record.id,
-                {"communities": [{"id": community.id}]},
+                {"communities": [{"id": community.id, "require_review": True}]},
             )
 
             # Now call add_published_record_to_community - it should
             # find and accept the existing request
             result, uow = helper.add_published_record_to_community(
-                published_record.id, community.id
+                published_record.id, community.id, require_review=True
             )
 
             assert result["status"] == "accepted"

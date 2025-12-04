@@ -14,8 +14,20 @@ from invenio_record_importer_kcworks.services.records import RecordsHelper
 from tests.helpers.sample_records import rec42615
 
 
-def test_upload_draft_files(app, db, search_clear):
+def test_upload_draft_files(
+    app,
+    db,
+    search_clear,
+    location,
+    test_sample_files_folder,
+    reindex_languages,
+    set_app_config_fn_scoped,
+):
     """Test FilesHelper._upload_draft_files method."""
+    set_app_config_fn_scoped({
+        "RECORD_IMPORTER_FILES_LOCATION": str(test_sample_files_folder)
+    })
+    
     my_record = rec42615["expected_serialized"]
 
     json_payload = {
@@ -29,26 +41,32 @@ def test_upload_draft_files(app, db, search_clear):
     actual_draft = RecordsHelper().create_invenio_record(json_payload, no_updates=False)
     actual_draft_id = actual_draft["record_data"]["id"]
 
+    filename = "palazzo-vernacular_patterns_in_portugal_and_brazil-2021.pdf"
+    test_file_path = test_sample_files_folder / filename
+    test_file_size = test_file_path.stat().st_size
+
+    # Use a production-style path that will be sanitized to just the filename.
+    # The sanitize_filename method strips the production prefix.
+    production_file_path = (
+        "/srv/www/commons/current/web/app/uploads/humcore/"
+        f"{filename}"
+    )
+
     files_dict = {
-        "palazzo-vernacular_patterns_in_portugal_and_brazil-2021.pdf": {  # noqa: E501
+        filename: {  # noqa: E501
             "key": (
                 "palazzo-vernacular_patterns_in_portugal_and_b"
                 "razil-2021.pdf"
             ),
             "mimetype": "application/pdf",
-            "size": "17181",
+            "size": test_file_size,
         }
     }
     source_filenames = {
-        "palazzo-vernacular_patterns_in_portugal_and_brazil-2021.pdf": (
-            "/srv/www/commons/current/web/app/uploads"
-            "/humcore/2021/11/o_1fk563qmpqgs1on0ue"
-            "g6mfcf7.pdf.palazzo-vernacular_pa"
-            "tterns_in_portugal_and_brazil-2021.pdf"
-        )
+        filename: production_file_path
     }
 
-    actual_upload = FilesHelper()._upload_draft_files(
+    actual_upload = FilesHelper(is_draft=True)._upload_draft_files(
         draft_id=actual_draft_id,
         files_dict=files_dict,
         source_filenames=source_filenames,
@@ -56,5 +74,5 @@ def test_upload_draft_files(app, db, search_clear):
     pprint(actual_upload)
     for k, v in actual_upload.items():
         assert k in files_dict.keys()
-        assert v == "uploaded"
+        assert v[0] == "uploaded"
 

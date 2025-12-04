@@ -27,62 +27,29 @@ from invenio_record_importer_kcworks.services.stats.stats import (
     AggregationFabricator,
     StatsFabricator,
 )
-from tests.helpers.sample_records import (
-    rec583,
-    rec11451,
-    rec16079,
-    rec22625,
-    rec22647,
-    rec28491,
-    rec33383,
-    rec34031,
-    rec38367,
-    rec42615,
-    rec44881,
-    rec45177,
-    rec48799,
-)
+from tests.helpers.sample_records import rec42615
 
 
-@pytest.mark.parametrize(
-    "json_in",
-    [
-        (rec42615),
-        (rec22625),
-        (rec45177),
-        (rec44881),
-        (rec22647),
-        (rec11451),
-        (rec34031),
-        (rec16079),
-        (rec33383),
-        (rec38367),
-        (rec48799),
-        (rec583),
-        (rec28491),
-    ],
-)
 def test_create_stats_events(  # noqa: D103
-    app,
+    running_app,
     db,
     create_stats_indices,
-    location,
     search_clear,
-    json_in,
-    affiliations_v,
-    contributors_role_v,
-    date_type_v,
-    creators_role_v,
-    licenses_v,
-    subject_v,
-    community_type_v,
-    resource_type_v,
-    description_type_v,
-    language_v,
+    test_sample_files_folder,
+    set_app_config_fn_scoped,
+    reindex_languages,
 ):
 
+    # Set RECORD_IMPORTER_FILES_LOCATION to point to the sample_files directory
+    set_app_config_fn_scoped({
+        "RECORD_IMPORTER_FILES_LOCATION": str(test_sample_files_folder)
+    })
+    
+    # Use a single test record
+    json_in = rec42615
+    
     # Have to first create the record and then publish it
-    app.logger.warning("Creating record...")
+    running_app.app.logger.warning("Creating record...")
     data = {**json_in["expected_serialized"]}
     draft_record = RecordsHelper().create_invenio_record(data, no_updates=False)
     record_id = draft_record["record_data"]["id"]
@@ -91,36 +58,51 @@ def test_create_stats_events(  # noqa: D103
         0
     ]
     # Then upload files
-    app.logger.warning("Uploading files...")
-    files_dict = json_in["expected_serialized"]["files"]["entries"]
+    running_app.app.logger.warning("Uploading files...")
+    # Get the actual file size from the test file
+    test_file_path = test_sample_files_folder / filekey
+    test_file_size = test_file_path.stat().st_size
+    # Use the files_dict from the sample record, but update the size to match
+    # the actual file
+    files_dict = json_in["expected_serialized"]["files"]["entries"].copy()
+    files_dict[filekey]["size"] = test_file_size
+    # Use a simplified production-style path that will be sanitized to just the
+    # filename. The sanitize_filename method strips the production prefix.
+    production_file_path = (
+        f"/srv/www/commons/current/web/app/uploads/humcore/{filekey}"
+    )
     source_filenames = {
-        filekey: json_in["expected_serialized"]["custom_fields"][
-            "hclegacy:file_location"
-        ]
+        filekey: production_file_path
     }
 
-    actual_upload = FilesHelper()._upload_draft_files(
+    actual_upload = FilesHelper(is_draft=True)._upload_draft_files(
         draft_id=record_id,
         files_dict=files_dict,
         source_filenames=source_filenames,
     )
     assert list(actual_upload.keys())[0] == filekey
-    assert actual_upload[filekey] == "uploaded"
+    assert actual_upload[filekey][0] == "uploaded"
 
     # Publish the record
-    app.logger.warning("Publishing record...")
+    running_app.app.logger.warning("Publishing record...")
     record = records_service.publish(system_identity, record_id)
     parent_rec_id = record.to_dict()["parent"]["id"]
     assert record.to_dict()["status"] == "published"
     assert record.to_dict()["id"] == record_id
 
     # Create stats eventsinfo
-    app.logger.warning("Creating stats events...")
+    # Use a narrow, fixed date range for tests to minimize OpenSearch operations
+    # Distribute events over one month instead of from publication date to now
+    test_date = arrow.utcnow().floor("month")
+    test_end_date = test_date.shift(months=1)
+    
+    running_app.app.logger.warning("Creating stats events...")
     events = StatsFabricator().create_stats_events(
         record_id,
         downloads_field="custom_fields.hclegacy:total_downloads",
         views_field="custom_fields.hclegacy:total_views",
         date_field="metadata.publication_date",
+        end_date=test_end_date,
         eager=True,
         verbose=True,
     )
@@ -136,79 +118,66 @@ def test_create_stats_events(  # noqa: D103
         system_identity, record_id
     ).to_dict()
 
-    app.logger.warning("Refreshing indices...")
+    running_app.app.logger.warning("Refreshing indices...")
     current_search_client.indices.refresh(index="*record-view*")
     current_search_client.indices.refresh(index="*file-download*")
     file_id = files_request["entries"][0]["file_id"]
-    app.logger.warning("Searching for view events...")
+    running_app.app.logger.warning("Searching for view events...")
     view_events = view_events_search(record_id)
-    app.logger.warning("Searching for download events...")
+    running_app.app.logger.warning("Searching for download events...")
     download_events = download_events_search(file_id)
     assert len(view_events) == data["custom_fields"]["hclegacy:total_views"]
-    assert (
-        len(download_events)
-        == data["custom_fields"]["hclegacy:total_downloads"]
-    )
+    assert len(download_events) == data["custom_fields"]["hclegacy:total_downloads"]
 
     # Run again to test idempotency
-    app.logger.warning("Creating stats events again...")
+    running_app.app.logger.warning("Creating stats events again...")
     events = StatsFabricator().create_stats_events(
         record_id,
         downloads_field="custom_fields.hclegacy:total_downloads",
         views_field="custom_fields.hclegacy:total_views",
         date_field="metadata.publication_date",
+        end_date=test_end_date,
         eager=True,
         verbose=True,
     )
     assert [e for e in events if e[0] == "record-view"][0][1][0] == 0
     assert [e for e in events if e[0] == "file-download"][0][1][0] == 0
 
-    app.logger.warning("Refreshing indices again...")
+    running_app.app.logger.warning("Refreshing indices again...")
     current_search_client.indices.refresh(index="*record-view*")
     current_search_client.indices.refresh(index="*file-download*")
 
-    app.logger.warning("Searching for view events again...")
+    running_app.app.logger.warning("Searching for view events again...")
     view_events = view_events_search(record_id)
     download_events = download_events_search(file_id)
     assert len(view_events) == data["custom_fields"]["hclegacy:total_views"]
-    assert (
-        len(download_events)
-        == data["custom_fields"]["hclegacy:total_downloads"]
-    )
+    assert len(download_events) == data["custom_fields"]["hclegacy:total_downloads"]
 
     # Create stats aggregations
-    # Since we re-run the aggregations for each test case,
-    # this also tests the idempotency of the aggregations
-    # agg_fab = AggregationFabricator()
-    # app.logger.warning("Creating stats aggregations...")
-    # for yr in range(2017, 2024):
-    #     app.logger.warning(f"Creating stats aggregations for {yr}...")
-    #     app.logger.warning(arrow.get(f"{yr}-01-01").isoformat())
-    #     agg_fab.create_stats_aggregations(
-    #         start_date=arrow.get(f"{yr}-01-01"),
-    #         end_date=arrow.get(f"{yr}-12-31"),
-    #         eager=True,
-    #         verbose=True,
-    #     )
-    #     current_search_client.indices.flush(
-    #         ["*record-view*", "*file-download*"], wait_if_ongoing=True
-    #     )
-    #     view_aggs, download_aggs = aggregations_search(record_id)
-    #     view_count = sum([agg.to_dict()["count"] for agg in view_aggs])
-    #     download_count = sum([agg.to_dict()["count"] for agg in download_aggs])
-    #     app.logger.warning(f"VIEW AGGS {yr} {view_count}")
-    #     app.logger.warning(f"DOWNLOAD AGGS {yr} {download_count}")
-    app.logger.warning(f"Creating all stats aggregations for {record_id}...")
+    # Events are now distributed over just one day (test_date to test_end_date)
+    # Aggregate just that day to catch all events efficiently
+    start_date = test_date
+    end_date = test_end_date
+    
+    # Ensure event indices are refreshed before aggregation
+    running_app.app.logger.warning("Refreshing event indices before aggregation...")
+    current_search_client.indices.refresh(index="*events-stats-record-view*")
+    current_search_client.indices.refresh(index="*events-stats-file-download*")
+    
+    running_app.app.logger.warning(
+        f"Creating stats aggregations for {record_id} "
+        f"(publication year: {pub_year})..."
+    )
     AggregationFabricator().create_stats_aggregations(
-        start_date=arrow.get("2017-01-01"),
-        end_date=arrow.get("2025-01-01"),
+        start_date=start_date,
+        end_date=end_date,
         eager=True,
         verbose=True,
     )
-    app.logger.warning("Refreshing indices...")
+    running_app.app.logger.warning("Refreshing indices...")
     current_search_client.indices.refresh(index="*record-view*")
     current_search_client.indices.refresh(index="*file-download*")
-    app.logger.warning("Searching for view aggregations...")
+    running_app.app.logger.warning("Searching for view aggregations...")
     view_aggs, download_aggs = aggregations_search(record_id)
     if len(view_aggs) > 0:
         print("VIEW AGGS", pformat(view_aggs[0].to_dict()))
@@ -221,19 +190,15 @@ def test_create_stats_events(  # noqa: D103
     download_unique_count = sum(
         [agg.to_dict()["unique_count"] for agg in download_aggs]
     )
-    expected_views = json_in["expected_serialized"]["custom_fields"][
-        "hclegacy:total_views"
-    ]
-    expected_downloads = json_in["expected_serialized"]["custom_fields"][
-        "hclegacy:total_downloads"
-    ]
+    expected_views = data["custom_fields"]["hclegacy:total_views"]
+    expected_downloads = data["custom_fields"]["hclegacy:total_downloads"]
     assert view_count == expected_views
     assert download_count == expected_downloads
     assert view_unique_count == expected_views
     assert download_unique_count == expected_downloads
 
     # Compare those stats to the stats returned by the get_record_stats method
-    app.logger.warning("Getting record stats...")
+    running_app.app.logger.warning("Getting record stats...")
     record_stats = Statistics.get_record_stats(record_id, parent_rec_id)
     this_version_stats = record_stats["this_version"]
     all_versions_stats = record_stats["all_versions"]

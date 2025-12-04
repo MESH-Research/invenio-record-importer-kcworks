@@ -9,7 +9,6 @@
 
 from pprint import pformat
 
-import arrow
 import pytest
 from flask import current_app
 from flask_principal import Identity
@@ -185,7 +184,14 @@ def minimal_community_factory(
 def sample_community_with_group_id(
     app, db, search_clear, create_communities_custom_fields, minimal_community_factory
 ):
-    """Create a sample community with kcr:commons_group_id for testing."""
+    """Create a sample community with kcr:commons_group_id for testing.
+    
+    Yields:
+        dict: Dictionary containing:
+            - id (str): The community ID
+            - group_id (str): The kcr:commons_group_id value
+            - community: The community service item
+    """
     # Create the community with custom fields
     community = minimal_community_factory(
         metadata={
@@ -205,22 +211,10 @@ def sample_community_with_group_id(
     community_dict = community.to_dict()
     community_id = community_dict["id"]
 
-    # Get the group_id from custom fields
-    # (custom_fields is at top level, not under metadata)
-    print(f"DEBUG: community_dict keys: {community_dict.keys()}")
-    print(f"DEBUG: community_dict custom_fields: {community_dict.get('custom_fields')}")
     group_id = community_dict.get("custom_fields", {}).get("kcr:commons_group_id")
-    print(f"DEBUG: extracted group_id: {group_id}")
-
-    # Ensure the community is committed to the database and indexed
-    db.session.commit()
-    Community.index.refresh()
-
-    # Get current date
-    current_date = arrow.utcnow()
 
     yield {
         "id": community_id,
         "group_id": group_id,
-        "current_date": current_date,
+        "community": community,
     }
