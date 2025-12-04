@@ -1,7 +1,3 @@
-[submodule "invenio_record_importer_kcworks/dependencies/invenio-remote-user-data-kcworks"]
-	path = invenio_record_importer_kcworks/dependencies/invenio-remote-user-data-kcworks
-	url = https://github.com/MESH-Research/invenio-remote-user-data-kcworks.git
-	branch = main
 [submodule "invenio_record_importer_kcworks/dependencies/invenio-rdm-records"]
 	path = invenio_record_importer_kcworks/dependencies/invenio-rdm-records
 	url = https://github.com/MESH-Research/invenio-rdm-records.git
