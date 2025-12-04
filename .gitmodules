@@ -14,7 +14,3 @@
 	path = invenio_record_importer_kcworks/dependencies/invenio-records-resources
 	url = https://github.com/MESH-Research/invenio-records-resources.git
 	branch = local-working
-[submodule "invenio_record_importer_kcworks/dependencies/invenio-group-collections-kcworks"]
-	path = invenio_record_importer_kcworks/dependencies/invenio-group-collections-kcworks
-	url = https://github.com/MESH-Research/invenio-group-collections-kcworks.git
-	branch = main

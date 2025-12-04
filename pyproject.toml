@@ -53,6 +53,9 @@ dependencies = [
   ]
 
 [tool.uv.sources]
+# Local path for development (when running from main project)
+# CI script will modify this to use GitHub source
+invenio-group-collections-kcworks = {path = "../invenio-group-collections-kcworks", editable = true}
 
 [project.urls]
 "Homepage" = "https://github.com/Knowledge-Commons-Works/invenio-record-importer-kcworks"

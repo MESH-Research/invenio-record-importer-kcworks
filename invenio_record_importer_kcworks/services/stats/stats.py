@@ -255,20 +255,34 @@ class StatsFabricator:
 
         # FIXME: this all assumes a single uploaded file per record on import
 
-        if views_count and downloads_count and publication_date:
+        # Get views and downloads - use provided values or read from record
+        if views_count is not None:
             views = int(views_count)
-            downloads = int(downloads_count)
-            record_creation = arrow.get(publication_date)
         else:
             try:
                 views = int(get_field_value(metadata_record, views_field))
                 if views in [None, ""]:
                     views = 0
+            except (KeyError, ValueError, TypeError):
+                views = 0
+
+        if downloads_count is not None:
+            downloads = int(downloads_count)
+        else:
+            try:
                 downloads = int(
                     get_field_value(metadata_record, downloads_field)
                 )
                 if downloads in [None, ""]:
                     downloads = 0
+            except (KeyError, ValueError, TypeError):
+                downloads = 0
+
+        # Get publication date - use provided value or read from record
+        if publication_date:
+            record_creation = arrow.get(publication_date)
+        else:
+            try:
                 pub_date_string = get_field_value(metadata_record, date_field)
                 if "/" in pub_date_string:
                     pub_date_string = pub_date_string.split("/")[1]

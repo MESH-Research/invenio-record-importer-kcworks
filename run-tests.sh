@@ -89,17 +89,18 @@ eval "$(uv run ${env_file_arg} docker-services-cli --filepath .venv/lib/python3.
 unset SQLALCHEMY_DATABASE_URI
 unset INVENIO_SQLALCHEMY_DATABASE_URI
 
-# Run check_manifest
-uv run python -m check_manifest --no-build-isolation
+# Run mypy
+echo "Running mypy on invenio_record_importer_kcworks"
+uv run mypy --config-file pyproject.toml invenio_record_importer_kcworks
 
 # Note: expansion of pytest_args looks like below to not cause an unbound
 # variable error when 1) "nounset" and 2) the array is empty.
 if [ ${#pytest_args[@]} -eq 0 ]; then
   echo "Running pytest"
-  uv run ${env_file_arg} python -m pytest -vv -s --disable-warnings
+  uv run ${env_file_arg} python -m pytest -vv -s --disable-warnings --cov=invenio_record_importer_kcworks --cov-report=term-missing
 else
   echo "Running pytest with additional arguments"
-  uv run ${env_file_arg} python -m pytest ${pytest_args[@]} -s --disable-warnings
+  uv run ${env_file_arg} python -m pytest ${pytest_args[@]} -s --disable-warnings --cov=invenio_record_importer_kcworks --cov-report=term-missing
 fi
 
 tests_exit_code=$?

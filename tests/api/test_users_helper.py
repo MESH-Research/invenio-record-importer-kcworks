@@ -43,6 +43,5 @@ def test_create_invenio_user(
         idp="knowledgeCommons",
     )
     print(actual_user)
-    assert re.match(r"\d+", str(actual_user["user"]["id"]))
+    assert re.match(r"\d+", str(actual_user["user"].id))
     assert actual_user["new_user"] == new_user_flag
-
