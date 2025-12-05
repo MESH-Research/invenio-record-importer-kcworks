@@ -27,6 +27,10 @@ jobs:
       run: |
         curl -LsSf https://astral.sh/uv/install.sh | sh
 
+    - name: Install TOML parsing dependencies
+      run: |
+        uv pip install tomli tomli-w
+
     - name: Setup dependencies for standalone installation
       run: |
         chmod +x scripts/use-nested-dependencies.sh
