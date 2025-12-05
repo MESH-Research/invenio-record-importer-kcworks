@@ -75,8 +75,7 @@ if "tool" in data and "uv" in data["tool"] and "sources" in data["tool"]["uv"]:
     if not os.path.exists("${PEER_KCWORKS}"):
         data["tool"]["uv"]["sources"]["kcworks"] = {
             "git": "https://github.com/MESH-Research/knowledge-commons-works.git",
-            "branch": "main",
-            "subdirectory": "site"
+            "branch": "main"
         }
     
     if not os.path.exists("${PEER_COMMUNITIES}"):
