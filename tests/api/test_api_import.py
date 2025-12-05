@@ -19,6 +19,7 @@ from invenio_access.utils import get_identity
 from invenio_accounts.models import User
 from invenio_accounts.proxies import current_accounts
 from invenio_communities.members.records.api import Member
+from invenio_communities.proxies import current_communities
 from invenio_communities.utils import load_community_needs
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_vocabularies.proxies import current_service as current_vocabulary_service
@@ -460,6 +461,7 @@ class BaseImportLoaderWithFilesTest(BaseImportLoaderTest):
         mailbox,
         test_sample_files_folder,
         reindex_resource_types,
+        reindex_date_types,
     ):
         """Test importing a record with files."""
         app = running_app.app
@@ -1014,14 +1016,14 @@ class BaseImportServiceTest:
                     )
                     assert actual_metadata["links"]["self_html"] in owner_sent_mail.html
                     assert actual_metadata["links"]["self_html"] in owner_sent_mail.body
-                    assert (
-                        f"{self.app.config['SITE_UI_URL']}/collections/{community_slug}"
-                        in owner_sent_mail.html
+                    # Get the actual community URL from the community record
+                    # (it may be /communities/ or /collections/ depending on context)
+                    community_record = current_communities.service.read(
+                        system_identity, id_=community_id
                     )
-                    assert (
-                        f"{self.app.config['SITE_UI_URL']}/collections/{community_slug}"
-                        in owner_sent_mail.body
-                    )
+                    community_url = community_record.links["self_html"]
+                    assert community_url in owner_sent_mail.html
+                    assert community_url in owner_sent_mail.body
 
         else:
             assert actual_metadata["parent"]["access"]["owned_by"] == {

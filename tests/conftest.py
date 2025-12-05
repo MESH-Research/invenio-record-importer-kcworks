@@ -94,13 +94,11 @@ test_config = {
     "CELERY_TASK_EAGER_PROPAGATES_EXCEPTIONS": True,
     "CELERY_LOGLEVEL": "DEBUG",
     "INVENIO_INSTANCE_PATH": "/opt/invenio/var/instance",
-    "MAIL_SUPPRESS_SEND": False,
-    "MAIL_SERVER": "smtp.sparkpostmail.com",
-    "MAIL_PORT": 587,
-    "MAIL_USE_TLS": True,
-    "MAIL_USE_SSL": False,
-    "MAIL_USERNAME": os.getenv("SPARKPOST_USERNAME"),
-    "MAIL_PASSWORD": os.getenv("SPARKPOST_API_KEY"),
+    # Set MAIL_SUPPRESS_SEND = True to prevent Flask-Mail from attempting
+    # SMTP connections. The mailbox fixture still works because the
+    # email_dispatched signal fires even when suppress=True (Connection.send()
+    # sends the signal regardless of whether self.host exists).
+    "MAIL_SUPPRESS_SEND": True,
     "MAIL_DEFAULT_SENDER": "test@example.com",
     "SECRET_KEY": "test-secret-key",
     "SECURITY_PASSWORD_SALT": "test-secret-key",
@@ -574,22 +572,6 @@ def app_config(app_config) -> dict:
     """
     for k, v in test_config.items():
         app_config[k] = v
-
-    # Prevent Flask-Mail from trying to connect to SparkPost during tests
-    # The mailbox fixture intercepts emails via blinker signals, but Flask-Mail
-    # still tries to connect to SMTP first. Without valid SparkPost credentials,
-    # this fails. The main project has credentials so the connection succeeds,
-    # but the mailbox still intercepts. For the submodule, we prevent the connection
-    # attempt by using a dummy server that won't be connected to.
-    if app_config.get("TESTING"):
-        # Check if we have SparkPost credentials - if not, use dummy server
-        if not (os.getenv("SPARKPOST_USERNAME") and os.getenv("SPARKPOST_API_KEY")):
-            app_config["MAIL_SERVER"] = "localhost"
-            app_config["MAIL_PORT"] = 1025
-            app_config["MAIL_USE_TLS"] = False
-            app_config["MAIL_USE_SSL"] = False
-            app_config["MAIL_USERNAME"] = None
-            app_config["MAIL_PASSWORD"] = None
 
     return dict(app_config)
 
