@@ -24,7 +24,6 @@ from invenio_drafts_resources.resources.records.errors import DraftNotCreatedErr
 from invenio_pidstore.errors import PIDDoesNotExistError
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_records_resources.services.uow import (
-    RecordCommitOp,
     UnitOfWork,
     unit_of_work,
 )

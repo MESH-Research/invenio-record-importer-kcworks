@@ -7,7 +7,6 @@ from invenio_stats.proxies import current_stats
 from invenio_record_importer_kcworks.services.communities import CommunitiesHelper
 
 
-
 @shared_task(ignore_result=False)
 def aggregate_events(
     aggregations: list,

@@ -9,7 +9,6 @@
 """Helper class to perform operations on Records."""
 
 import datetime
-import time
 from pprint import pformat
 from typing import Any
 
@@ -41,11 +40,9 @@ from invenio_records_resources.services.uow import (
     unit_of_work,
 )
 from invenio_search import current_search_client
-from invenio_search.engine import dsl
 from invenio_search.utils import prefix_index
 from marshmallow.exceptions import ValidationError
 from opensearchpy.exceptions import ConnectionError, ConnectionTimeout
-from opensearchpy.helpers.search import Search
 from sqlalchemy.exc import NoResultFound
 
 from invenio_record_importer_kcworks.errors import (

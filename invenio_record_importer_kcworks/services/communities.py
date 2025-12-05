@@ -26,6 +26,7 @@ from invenio_group_collections_kcworks.errors import (
 from invenio_group_collections_kcworks.proxies import (
     current_group_collections_service as collections_service,
 )
+from invenio_notifications.services.uow import NotificationOp
 from invenio_pidstore.errors import PIDDoesNotExistError, PIDUnregistered
 from invenio_rdm_records.proxies import (
     current_community_records_service,
@@ -40,10 +41,9 @@ from invenio_rdm_records.services.errors import (
 from invenio_records_resources.services.uow import (
     RecordCommitOp,
     RecordIndexOp,
-    unit_of_work,
     UnitOfWork,
+    unit_of_work,
 )
-from invenio_notifications.services.uow import NotificationOp
 from invenio_requests.errors import CannotExecuteActionError
 from invenio_requests.proxies import current_requests_service
 from invenio_search.proxies import current_search_client
