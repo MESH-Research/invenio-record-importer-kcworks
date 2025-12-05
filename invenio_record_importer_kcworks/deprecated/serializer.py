@@ -2,7 +2,7 @@
 #
 # Copyright (C) 2023 MESH Research
 #
-# core-migrate is free software; you can redistribute it and/or
+# invenio-record-importer-kcworks is free software; you can redistribute it and/or
 # modify it under the terms of the MIT License; see LICENSE file for more
 # details.
 

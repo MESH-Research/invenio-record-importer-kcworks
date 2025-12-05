@@ -331,6 +331,10 @@ class DateParser:
         pattern = r"^\d{2}[/,-\.]\d{2}[/,-\.]\d{2}$"
         if re.match(pattern, date):
             date = arrow.get(dateparser.parse(date)).date().isoformat()
+        # Also handle 8-digit dates without delimiters (YYYYMMDD format)
+        elif re.match(r"^\d{8}$", date):
+            # Delegate to reorder_date_parts to handle the splitting
+            date = DateParser.reorder_date_parts(date)
         return date
 
     @staticmethod
@@ -351,12 +355,14 @@ class DateParser:
         :return: A list of date parts
         """
         parts = [date]
-        if re.match(r"\d{8}", date):
-            if re.match(r"(19|20)\d{2}\d{2}", date) and not re.match(
-                r"\d{2}\d{2}(19|20)", date
+        if re.match(r"\d{8}$", date):
+            # Check if it starts with a 4-digit year (19xx or 20xx) followed by month and day
+            if re.match(r"(19|20)\d{2}\d{2}\d{2}$", date) and not re.match(
+                r"\d{2}\d{2}(19|20)\d{2}$", date
             ):
                 parts = [date[:4], date[4:6], date[6:]]
-            elif re.match(r"\d{2}\d{2}(19|20)", date):
+            # Check if it ends with a 4-digit year (19xx or 20xx) preceded by month and day
+            elif re.match(r"\d{2}\d{2}(19|20)\d{2}$", date):
                 parts = [date[:2], date[2:4], date[4:]]
         elif regex.match(r"\d{4}\p{L}+\d\d?", date) and (
             date[-2:] <= "31" or date[-1:] <= "9"

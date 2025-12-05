@@ -227,6 +227,12 @@ class BaseImportLoaderTest:
         # by the loader
         if not submitted_data.get("access"):
             submitted_data["access"] = {}
+        # Remove the parent and pids fields from submitted_data for comparison
+        # since they are excluded from comparison_data
+        if "parent" in submitted_data:
+            submitted_data.pop("parent")
+        if "pids" in submitted_data:
+            submitted_data.pop("pids")
         comparison_data = {
             k: v
             for k, v in result.submitted["data"].items()
@@ -261,6 +267,7 @@ class BaseImportLoaderTest:
         mock_send_remote_api_update_fixture,
         celery_worker,
         mailbox,
+        *args,
     ):
         """Test that a record can be imported via the API."""
         app = running_app.app
@@ -428,8 +435,8 @@ class BaseImportLoaderWithFilesTest(BaseImportLoaderTest):
     def check_result_uploaded_files(self, result: LoaderResult):
         """Check the uploaded files of the result."""
         assert result.uploaded_files == {
-            "sample.jpg": ["uploaded", []],
-            "sample.pdf": ["uploaded", []],
+            "sample.jpg": {"status": "uploaded", "messages": []},
+            "sample.pdf": {"status": "uploaded", "messages": []},
         }
 
     def check_result_record_created(
@@ -452,6 +459,7 @@ class BaseImportLoaderWithFilesTest(BaseImportLoaderTest):
         celery_worker,
         mailbox,
         test_sample_files_folder,
+        reindex_resource_types,
     ):
         """Test importing a record with files."""
         app = running_app.app
@@ -825,7 +833,8 @@ class BaseImportServiceTest:
 
     def _check_response_files(self, actual_files, record_files):
         assert actual_files == {
-            f.filename.split("/")[-1]: ["uploaded", []] for f in record_files
+            f.filename.split("/")[-1]: {"status": "uploaded", "messages": []}
+            for f in record_files
         }
 
     def check_result_errors(self, import_results: dict) -> None:
@@ -1342,10 +1351,13 @@ class TestImportServiceJArticleErrorMissingFile(BaseImportServiceTest):
                 {
                     "file_upload_error": {
                         "file upload failures": {
-                            "sample.pdf": [
-                                "failed",
-                                ["File sample.pdf not found in list of files."],
-                            ]
+                            "sample.pdf": {
+                                "status": "failed",
+                                "messages": [
+                                    "File sample.pdf not found in "
+                                    "list of files."
+                                ],
+                            }
                         },
                     },
                 },

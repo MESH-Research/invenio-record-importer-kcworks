@@ -11,6 +11,7 @@ import json
 import uuid
 from pathlib import Path
 from pprint import pformat
+from typing import Any
 
 import arrow
 from flask import current_app as app
@@ -168,7 +169,7 @@ class StatsFabricator:
         for record_id in record_ids:
             try:
                 self.create_stats_events(
-                    record_id,
+                    str(record_id),
                     downloads_field=downloads_field,
                     views_field=views_field,
                     date_field=date_field,
@@ -181,7 +182,7 @@ class StatsFabricator:
                     f"{e}"
                 )
                 print(
-                    f"Error creating view events for record {record_id['id']}:"
+                    f"Error creating view events for record {record_id}:"
                     f"{e}"
                 )
 
@@ -242,7 +243,7 @@ class StatsFabricator:
         record = rec_search._record
         print("record custom fields:", record["custom_fields"])
 
-        def get_field_value(record: dict, field: str) -> int:
+        def get_field_value(record: dict, field: str) -> Any:
             field_parts = field.split(".")
             if len(field_parts) > 1:
                 return get_field_value(
@@ -284,6 +285,7 @@ class StatsFabricator:
         else:
             try:
                 pub_date_string = get_field_value(metadata_record, date_field)
+                pub_date_string = str(pub_date_string)
                 if "/" in pub_date_string:
                     pub_date_string = pub_date_string.split("/")[1]
                 record_creation = arrow.get(pub_date_string)
@@ -361,8 +363,8 @@ class StatsFabricator:
                 if existing_view_count > 0:
                     views -= existing_view_count
                 view_events = []
-                unique_session_ids = []
-                for idx, dt in enumerate(
+                unique_session_ids: list[str] = []
+                for dt in (
                     self.generate_datetimes(record_creation, views, end=end_date)
                 ):
                     uid = str(uuid.uuid4())

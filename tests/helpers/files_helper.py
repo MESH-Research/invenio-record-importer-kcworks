@@ -20,7 +20,7 @@ from invenio_records_resources.services.uow import (
 )
 from sqlalchemy.orm.exc import NoResultFound
 
-from .types import FileData
+from invenio_record_importer_kcworks.types import FileData, FileUploadResult
 
 
 class FilesHelper:
@@ -119,7 +119,7 @@ class FilesHelper:
         existing_record: dict | None = None,
         source_filepaths: dict | None = None,
         uow: UnitOfWork | None = None,
-    ) -> dict[str, list[str | list[str]]]:
+    ) -> dict[str, FileUploadResult]:
         """Handle file uploads for a record."""
         if files is None:
             files = []
@@ -134,7 +134,7 @@ class FilesHelper:
         # Convert file_data to the expected format
         # Note: file_data conversion logic removed as it was unused
 
-        uploaded_files = {}
+        uploaded_files: dict[str, FileUploadResult] = {}
 
         # Upload each file
         for file_obj in files:
@@ -153,10 +153,10 @@ class FilesHelper:
                 # Commit file upload
                 self.files_service.commit_file(system_identity, metadata["id"], key)
 
-                uploaded_files[key] = ["uploaded", []]
+                uploaded_files[key] = {"status": "uploaded", "messages": []}
 
             except Exception as e:
                 app.logger.error(f"Failed to upload file {key}: {str(e)}")
-                uploaded_files[key] = ["failed", [str(e)]]
+                uploaded_files[key] = {"status": "failed", "messages": [str(e)]}
 
         return uploaded_files

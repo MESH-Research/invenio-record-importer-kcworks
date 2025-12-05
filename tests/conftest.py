@@ -16,6 +16,7 @@ from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any
 
+import jinja2
 import pytest
 from flask import Flask
 from invenio_app.factory import create_app as _create_app
@@ -31,14 +32,18 @@ from .fixtures.custom_fields import test_config_fields
 from .fixtures.identifiers import test_config_identifiers
 from .fixtures.saml import test_config_saml
 from .fixtures.stats import test_config_stats
+from .fixtures.users import CustomUserProfileSchema
 
 pytest_plugins = (
     "celery.contrib.pytest",
+    "tests.pytest_plugins.pytest_live_status",
     "tests.fixtures.communities",
     "tests.fixtures.custom_fields",
     "tests.fixtures.files",
     "tests.fixtures.fixtures",
+    "tests.fixtures.mail",
     "tests.fixtures.records",
+    "tests.fixtures.search_provisioning",
     "tests.fixtures.stats",
     "tests.fixtures.users",
     "tests.fixtures.vocabularies.affiliations",
@@ -96,7 +101,7 @@ test_config = {
     "MAIL_USE_SSL": False,
     "MAIL_USERNAME": os.getenv("SPARKPOST_USERNAME"),
     "MAIL_PASSWORD": os.getenv("SPARKPOST_API_KEY"),
-    "MAIL_DEFAULT_SENDER": os.getenv("INVENIO_ADMIN_EMAIL"),
+    "MAIL_DEFAULT_SENDER": "test@example.com",
     "SECRET_KEY": "test-secret-key",
     "SECURITY_PASSWORD_SALT": "test-secret-key",
     "TESTING": True,
@@ -143,6 +148,12 @@ test_config["SITE_UI_URL"] = os.environ.get(
     "INVENIO_SITE_UI_URL", "https://127.0.0.1:5000"
 )
 
+# OAI Server configuration
+test_config["OAISERVER_ID_PREFIX"] = test_config["SITE_UI_URL"]
+
+# custom user profile
+test_config["ACCOUNTS_USER_PROFILE_SCHEMA"] = CustomUserProfileSchema
+
 # Submodule-specific configuration
 test_config["RECORD_IMPORTER_COMMUNITIES_DATA"] = {
     "knowledgeCommons": {
@@ -168,9 +179,7 @@ test_config["RECORD_IMPORTER_COMMUNITIES_DATA"] = {
             "slug": "ajs",
             "metadata": {
                 "title": "AJS Commons",
-                "description": (
-                    "AJS is no longer a member of Knowledge Commons"
-                ),
+                "description": ("AJS is no longer a member of Knowledge Commons"),
                 "website": "https://ajs.hcommons.org",
                 "organizations": [{"name": "AJS Commons"}],
             },
@@ -206,9 +215,7 @@ test_config["RECORD_IMPORTER_COMMUNITIES_DATA"] = {
             "slug": "caa",
             "metadata": {
                 "title": "CAA Commons",
-                "description": (
-                    "CAA is no longer a member of Humanities Commons"
-                ),
+                "description": ("CAA is no longer a member of Humanities Commons"),
                 "website": "https://caa.hcommons.org",
                 "organizations": [{"name": "CAA Commons"}],
             },
@@ -226,9 +233,7 @@ test_config["RECORD_IMPORTER_COMMUNITIES_DATA"] = {
             "slug": "sah",
             "metadata": {
                 "title": "SAH Commons",
-                "description": (
-                    "A community representing the SAH Commons domain"
-                ),
+                "description": ("A community representing the SAH Commons domain"),
                 "website": "https://sah.hcommons.org",
                 "organizations": [{"name": "SAH Commons"}],
             },
@@ -242,13 +247,19 @@ test_config["RECORD_IMPORTER_COMMUNITIES_DATA"] = {
             "slug": "up",
             "metadata": {
                 "title": "UP Commons",
-                "description": (
-                    "A collection representing the UP Commons domain"
-                ),
+                "description": ("A collection representing the UP Commons domain"),
                 "website": "https://up.hcommons.org",
                 "organizations": [{"name": "UP Commons"}],
             },
         },
+    }
+}
+
+# Email configuration for communities (used by UsersHelper.send_welcome_email)
+test_config["RECORD_IMPORTER_COMMUNITIES"] = {
+    "neh": {
+        "email_subject_register": "Your NEH Open Access Deposit is Ready",
+        "email_template_register": "welcome_neh",
     }
 }
 
@@ -466,11 +477,77 @@ def records_service(app):
 
 
 @pytest.fixture(scope="module")
+def template_loader() -> Callable:
+    """Fixture providing overloaded and custom templates to test app.
+
+    Returns:
+        Callable: A function that loads templates for the test app.
+    """
+
+    def load_tempates(app):
+        """Load templates for the test app."""
+        test_file_path = Path(__file__).parent
+
+        # Package template paths
+        submodule_templates_path = test_file_path / "helpers" / "templates"
+        submodule_semantic_ui_path = (
+            test_file_path / "helpers" / "templates" / "semantic-ui"
+        )
+
+        # Find installed package template paths
+        theme_template_paths = []
+        # Package template path structures:
+        # - invenio_theme: templates/semantic-ui
+        # - invenio_app_rdm: theme/templates/semantic-ui
+        # - invenio_banners: templates/semantic-ui
+        package_template_paths = {
+            "invenio_theme": ["templates", "semantic-ui"],
+            "invenio_app_rdm": ["theme", "templates", "semantic-ui"],
+            "invenio_banners": ["templates", "semantic-ui"],
+        }
+        for package_name, path_parts in package_template_paths.items():
+            try:
+                package = __import__(package_name)
+                if hasattr(package, "__file__") and package.__file__:
+                    package_path = Path(package.__file__).parent
+                    template_path = package_path
+                    for part in path_parts:
+                        template_path = template_path / part
+                    if template_path.exists():
+                        theme_template_paths.append(str(template_path))
+            except (ImportError, AttributeError):
+                # Package not installed or doesn't have __file__ attribute
+                pass
+
+        # Build list of paths that exist
+        template_paths = []
+        all_paths: list[str | Path] = [
+            submodule_templates_path,  # Test templates (highest priority)
+            submodule_semantic_ui_path,  # Test semantic-ui templates
+            *[Path(p) for p in theme_template_paths],  # Installed packages
+        ]
+        for path in all_paths:
+            path_obj = Path(path) if isinstance(path, str) else path
+            if path_obj.exists():
+                template_paths.append(str(path_obj))
+
+        custom_loader = jinja2.ChoiceLoader([
+            app.jinja_loader,
+            jinja2.FileSystemLoader(template_paths),
+        ])
+        app.jinja_loader = custom_loader
+        app.jinja_env.loader = custom_loader
+
+    return load_tempates
+
+
+@pytest.fixture(scope="module")
 def app(
     app,
     app_config,
     database,
     search,
+    template_loader,
 ) -> Generator[Flask, None, None]:
     """This fixture provides an app with the typically needed basic fixtures.
 
@@ -483,6 +560,7 @@ def app(
     Yields:
         Flask: The Flask application instance.
     """
+    template_loader(app)
     current_queues.declare()
     yield app
 
@@ -496,6 +574,22 @@ def app_config(app_config) -> dict:
     """
     for k, v in test_config.items():
         app_config[k] = v
+
+    # Prevent Flask-Mail from trying to connect to SparkPost during tests
+    # The mailbox fixture intercepts emails via blinker signals, but Flask-Mail
+    # still tries to connect to SMTP first. Without valid SparkPost credentials,
+    # this fails. The main project has credentials so the connection succeeds,
+    # but the mailbox still intercepts. For the submodule, we prevent the connection
+    # attempt by using a dummy server that won't be connected to.
+    if app_config.get("TESTING"):
+        # Check if we have SparkPost credentials - if not, use dummy server
+        if not (os.getenv("SPARKPOST_USERNAME") and os.getenv("SPARKPOST_API_KEY")):
+            app_config["MAIL_SERVER"] = "localhost"
+            app_config["MAIL_PORT"] = 1025
+            app_config["MAIL_USE_TLS"] = False
+            app_config["MAIL_USE_SSL"] = False
+            app_config["MAIL_USERNAME"] = None
+            app_config["MAIL_PASSWORD"] = None
 
     return dict(app_config)
 

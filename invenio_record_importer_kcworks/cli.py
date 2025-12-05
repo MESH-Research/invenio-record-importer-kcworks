@@ -24,10 +24,12 @@ Normally these variables can be set in the .env file in your base
 knowledge_commons_works directory.
 """
 
+from pathlib import Path
 from pprint import pformat, pprint
 
 import arrow
 import click
+import jsonlines
 from flask import current_app as app
 from flask.cli import with_appcontext
 from halo import Halo
@@ -54,6 +56,68 @@ from invenio_record_importer_kcworks.tasks import (
 def cli():
     """Main cli command group."""
     pass
+
+
+def _extract_community_id_from_first_record(
+    start_idx: int,
+    nonconsec: list,
+) -> str:
+    """Extract primary community ID from the first record in the JSONL file.
+    
+    Args:
+        start_idx: The starting index for record loading (1-indexed)
+        nonconsec: List of nonconsecutive indices to load (1-indexed)
+    
+    Returns:
+        str: The community ID if found, empty string otherwise
+    """
+    community_id = ""
+    pathstring = app.config.get(
+        "RECORD_IMPORTER_SERIALIZED_PATH",
+        "record_importer_source_data_{}.jsonl",
+    ).format(1)  # Use user_id=1 for path determination
+    serialized_path = Path(pathstring)
+    if not serialized_path.exists():
+        return community_id
+    
+    try:
+        with jsonlines.open(serialized_path, mode="r") as reader:
+            # Determine which record to read based on parameters
+            # JSONL files are 0-indexed, but CLI arguments are 1-indexed
+            if nonconsec and isinstance(nonconsec[0], int):
+                # For nonconsecutive indices, use the first one
+                # (convert from 1-indexed to 0-indexed)
+                first_record_index = nonconsec[0] - 1
+            elif start_idx > 0:
+                # For ranges, use start_index
+                # (convert from 1-indexed to 0-indexed)
+                first_record_index = start_idx - 1
+            else:
+                # Default to first record (index 0)
+                first_record_index = 0
+
+            # Read records until we get to the first one we'll load
+            for i, record in enumerate(reader):
+                if i >= first_record_index:
+                    # Extract primary community from record metadata
+                    parent_communities = (
+                        record.get("parent", {}).get("communities", {})
+                    )
+                    if parent_communities:
+                        # Get the default community or the first entry
+                        default_id = parent_communities.get("default")
+                        entries = parent_communities.get("entries", [])
+                        if default_id:
+                            community_id = default_id
+                        elif entries:
+                            community_id = entries[0].get("id", "")
+                    break
+    except Exception as e:
+        app.logger.warning(
+            f"Could not extract community from first record: {e}"
+        )
+    
+    return community_id
 
 
 @cli.command(name="load")
@@ -157,6 +221,11 @@ def cli():
     default=False,
     help="If set, roll back all records if any record fails. If not set (default), continue importing other records even if some fail.",
 )
+@click.option(
+    "--community-id",
+    default=None,
+    help="The UUID or slug of the community to import records into. If not provided, will be extracted from the first record's metadata.",
+)
 @with_appcontext
 def load_records(
     records: list,
@@ -171,6 +240,7 @@ def load_records(
     verbose: bool,
     stop_on_error: bool,
     all_or_none: bool,
+    community_id: str | None,
 ):
     """Load serialized exported records into InvenioRDM.
 
@@ -331,12 +401,12 @@ def load_records(
                 "Ranges can only be specified using record indices, not source ids."
             )
             return
-        named_params["start_index"], named_params["stop_index"] = records[0].split("-")
-        named_params["start_index"] = int(named_params["start_index"])
-        if named_params["stop_index"] == "":
+        start_str, stop_str = records[0].split("-")
+        named_params["start_index"] = int(start_str)
+        if stop_str == "":
             named_params["stop_index"] = -1
         else:
-            named_params["stop_index"] = int(named_params["stop_index"])
+            named_params["stop_index"] = int(stop_str)
     else:
         if not use_sourceids:
             named_params["nonconsecutive"] = [int(arg) for arg in records]
@@ -344,7 +414,32 @@ def load_records(
             records = [arg.replace("\\-", "-") for arg in records]  # noqa
             named_params["nonconsecutive"] = records
 
-    RecordLoader().load_all(**named_params)
+    # Use system user ID for CLI commands (user_id=1 is typically the system user)
+    start_idx: int = named_params.get("start_index", 0)  # type: ignore[assignment]
+    stop_idx: int = named_params.get("stop_index", -1)  # type: ignore[assignment]
+    nonconsec: list = named_params.get("nonconsecutive", [])  # type: ignore[assignment]
+    
+    # Extract primary community from first record in JSONL file if not provided
+    if not community_id:
+        community_id = _extract_community_id_from_first_record(
+            start_idx, nonconsec
+        )
+    
+    RecordLoader(user_id=1, community_id=community_id or "").load_all(
+        start_index=start_idx,
+        stop_index=stop_idx,
+        nonconsecutive=nonconsec,
+        no_updates=bool(named_params.get("no_updates", False)),
+        use_sourceids=bool(named_params.get("use_sourceids", False)),
+        retry_failed=bool(named_params.get("retry_failed", False)),
+        aggregate=bool(named_params.get("aggregate", False)),
+        start_date=str(named_params.get("start_date", "")),
+        end_date=str(named_params.get("end_date", "")),
+        clean_filenames=bool(named_params.get("clean_filenames", False)),
+        verbose=bool(named_params.get("verbose", False)),
+        stop_on_error=bool(named_params.get("stop_on_error", False)),
+        all_or_none=bool(named_params.get("all_or_none", True)),
+    )
 
     # Make alert sound to signal end of loading process
     print("\a")
@@ -765,19 +860,23 @@ def create_stats(
     print("    views field: ", views_field)
     print("    date field: ", date_field)
 
-    args = {
-        "record_ids": record_ids,
-        "record_source": record_source,
-        "downloads_field": downloads_field,
-        "views_field": views_field,
-        "date_field": date_field,
-        "verbose": verbose,
-    }
-
     if not from_db:
-        StatsFabricator().fabricate_events_from_file(**args)
+        StatsFabricator().fabricate_events_from_file(
+            record_source=record_source,
+            downloads_field=downloads_field,
+            views_field=views_field,
+            date_field=date_field,
+            verbose=verbose,
+        )
     else:
-        StatsFabricator().fabricate_events_from_db(**args)
+        StatsFabricator().fabricate_events_from_db(
+            record_ids=record_ids,
+            record_source=record_source,
+            downloads_field=downloads_field,
+            views_field=views_field,
+            date_field=date_field,
+            verbose=verbose,
+        )
     print("All done creating stats events!")
     # Make alert sound to signal end of loading process
     print("\a")

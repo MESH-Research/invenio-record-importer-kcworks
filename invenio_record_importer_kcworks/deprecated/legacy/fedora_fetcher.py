@@ -2,7 +2,7 @@
 #
 # Copyright (C) 2023 MESH Research
 #
-# core-migrate is free software; you can redistribute it and/or
+# invenio-record-importer-kcworks is free software; you can redistribute it and/or
 # modify it under the terms of the MIT License; see LICENSE file for more
 # details.
 
@@ -62,7 +62,7 @@ def fetch_fedora_records(
         username=os.environ["FEDORA_USER"],
         password=os.environ["FEDORA_PASSWORD"],
     )
-    r = ""
+    r: requests.Response | str = ""
     if protocol == "fedora-xml":
         fedora_url = (  # whole datastream object
             f"https://comcore.devel.lib.msu.edu/fedora/objects/{pid}/objectXML"
@@ -128,7 +128,7 @@ def fetch_fedora_records(
 
     versions = root.findall(f"./{prefix}resultList/{prefix}objectFields")
     for v in versions:
-        newrec = {
+        newrec: dict[str, Any] = {
             "metadata": {
                 "resource_type": {},
                 "title": "",

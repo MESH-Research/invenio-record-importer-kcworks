@@ -82,6 +82,8 @@ class SerializationService:
                                 == i
                             ][0]
                         else:
+                            # id_fetch_path is a callable when not a string
+                            assert callable(id_fetch_path)
                             record_val = [
                                 r for r in iterlist if id_fetch_path(r) == i
                             ][0]
@@ -133,7 +135,7 @@ class SerializationService:
         indices: list[int] = [],
         id_scheme: str = "doi",
         field_path: str = "",
-    ) -> dict:
+    ) -> list[dict]:
         """Read raw data."""
         file_path = Path(
             app.config["RECORD_IMPORTER_DATA_DIR"],
@@ -157,6 +159,8 @@ class SerializationService:
                             if i in cls._get_by_dot_string(d, id_fetch_path)
                         ][0]
                     else:
+                        # id_fetch_path is a callable when not a string
+                        assert callable(id_fetch_path)
                         record_val = [
                             d for d in data if id_fetch_path(d) == i
                         ][0]

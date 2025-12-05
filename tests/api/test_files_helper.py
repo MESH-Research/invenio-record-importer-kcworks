@@ -74,5 +74,5 @@ def test_upload_draft_files(
     pprint(actual_upload)
     for k, v in actual_upload.items():
         assert k in files_dict.keys()
-        assert v[0] == "uploaded"
+        assert v["status"] == "uploaded"
 

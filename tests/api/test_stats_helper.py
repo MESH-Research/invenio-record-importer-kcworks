@@ -81,7 +81,7 @@ def test_create_stats_events(  # noqa: D103
         source_filenames=source_filenames,
     )
     assert list(actual_upload.keys())[0] == filekey
-    assert actual_upload[filekey][0] == "uploaded"
+    assert actual_upload[filekey]["status"] == "uploaded"
 
     # Publish the record
     running_app.app.logger.warning("Publishing record...")

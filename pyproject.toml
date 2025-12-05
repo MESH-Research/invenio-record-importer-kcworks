@@ -24,7 +24,7 @@ keywords = [
   "record-importer",
   ]
 
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 dependencies = [
   'click',
   'halo',
@@ -35,12 +35,13 @@ dependencies = [
   'invenio-records-resources',
   'invenio-remote-user-data-kcworks',
   'invenio-saml',
+  'invenio-stats-dashboard',
   'invenio-utilities-tuw',
+  'kcworks',
   'isbnlib',
   'jsonlines',
   'langdetect ',
   'pydantic',
-  'pytest',
   'python-dateutil',
   'python-iso639',
   'python-stdnum',
@@ -55,7 +56,11 @@ dependencies = [
 [tool.uv.sources]
 # Local path for development (when running from main project)
 # CI script will modify this to use GitHub source
+kcworks = {path = "../../../../../knowledge-commons-works", editable = true}
+invenio-communities = {path = "../invenio-communities", editable = true}
 invenio-group-collections-kcworks = {path = "../invenio-group-collections-kcworks", editable = true}
+invenio-remote-user-data-kcworks = {path = "../invenio-remote-user-data-kcworks", editable = true}
+invenio-stats-dashboard = {path = "../invenio-stats-dashboard", editable = true}
 
 [project.urls]
 "Homepage" = "https://github.com/Knowledge-Commons-Works/invenio-record-importer-kcworks"
@@ -64,16 +69,21 @@ invenio-group-collections-kcworks = {path = "../invenio-group-collections-kcwork
 dev = [
   "bumpver",
   "check-manifest",
-  "coverage",
-  "docker-services-cli",
   "ipykernel",
   "pip-tools",
-  "pytest-invenio==2.2.2",
-  "requests-mock",
-  "selenium",
   "wheel",
+  "mypy>=1.8.0",
   ]
-test = ["coverage", "requests-mock"]
+test = [
+  "coverage",
+  "docker-services-cli",
+  "requests-mock",
+  "pytest",
+  "pytest-invenio==2.2.2",
+  "pytest-mock",
+  "pytest-mypy>=0.10.0",
+  "selenium"
+  ]
 
 [project.scripts]
 importer = "invenio_record_importer_kcworks.cli:cli"
@@ -94,7 +104,7 @@ importer = "invenio_record_importer_kcworks.cli:cli"
 invenio-record-importer-kcworks = "invenio_record_importer_kcworks.tasks"
 
 [tool.pytest.ini_options]
-addopts = "--doctest-glob='*.rst' --doctest-modules --ignore=tests/helpers"
+addopts = "--doctest-glob='*.rst' --doctest-modules --ignore=tests/helpers --ignore=invenio_record_importer_kcworks/deprecated"
 testpaths = ["tests", "invenio_record_importer_kcworks"]
 plugins = [
   "tests.fixtures.communities",
@@ -195,6 +205,7 @@ line-length = 88
 target-version = "py312"
 exclude = [
     "**/*.ipynb",  # Exclude Jupyter notebook files
+    "invenio_record_importer_kcworks/deprecated/**",  # Exclude deprecated files
 ]
 
 [tool.ruff.lint]
@@ -215,6 +226,9 @@ convention = "google"
 python_version = "3.12"
 ignore_missing_imports = true
 follow_imports = "skip"
+exclude = [
+    "invenio_record_importer_kcworks/deprecated/.*",
+]
 
 [build-system]
 requires = ["setuptools>=61.0.0", "wheel", "build"]

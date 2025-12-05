@@ -31,7 +31,7 @@ from invenio_stats_dashboard.services.components.components import (
 )
 
 from ..helpers.files_helper import FilesHelper
-from ..helpers.types import FileData
+from invenio_record_importer_kcworks.types import FileData
 from ..helpers.utils import remove_value_by_path, replace_value_in_nested_dict
 from .communities import add_community_to_record
 from .files import build_file_links

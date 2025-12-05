@@ -104,8 +104,9 @@ class RecordImporterService(Service):
             f"Importing records with strict validation: {strict_validation}"
         )
         app.logger.debug(f"Importing records with all or none: {all_or_none}")
+        # user added to identity by flask_security
         import_result: APIResponsePayload = RecordLoader(
-            user_id=identity.user.id,  # type: ignore  (user added by flask_security)
+            user_id=identity.user.id,  # type: ignore[attr-defined]
             community_id=community_id,
             views_field=views_field,
             downloads_field=downloads_field,

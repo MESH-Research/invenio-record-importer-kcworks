@@ -2,17 +2,18 @@
 #
 # Copyright (C) 2023 MESH Research
 #
-# core-migrate is free software; you can redistribute it and/or
+# invenio-record-importer-kcworks is free software; you can redistribute it and/or
 # modify it under the terms of the MIT License; see LICENSE file for more
 # details.
 
-"""Utility functions for core-migrate."""
+"""Utility functions for invenio-record-importer-kcworks."""
 
 import json
 import random
 import re
 import string
 import unicodedata
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -22,7 +23,6 @@ from flask_security.utils import hash_password
 from invenio_search.proxies import current_search_client
 from isbnlib import clean, is_isbn10, is_isbn13
 from requests.exceptions import JSONDecodeError as RequestsJSONDecodeError
-from simplejson.errors import JSONDecodeError as SimpleJSONDecodeError
 
 
 # TODO: Deprecated; remove
@@ -45,13 +45,13 @@ def api_request(
     if not protocol:
         protocol = app.config.get("RECORD_IMPORTER_PROTOCOL", "http")
 
-    payload_args = {}
+    payload_args: dict[str, str | bytes] = {}
 
     api_url = f"{protocol}://{server}/api/{endpoint}"
     if args:
         api_url = f"{api_url}/{args}"
 
-    callfuncs = {
+    callfuncs: dict[str, Callable[..., requests.Response]] = {
         "GET": requests.get,
         "POST": requests.post,
         "DELETE": requests.delete,
@@ -69,9 +69,6 @@ def api_request(
         # headers['content-length'] = str(len(file_data.read()))
         payload_args["data"] = file_data
 
-    # files = {'file': ('report.xls', open('report.xls', 'rb'),
-    # 'application/vnd.ms-excel', {'Expires': '0'})}
-    # print(f'headers: {headers}')
     response = callfunc(
         api_url, headers=headers, params=params, **payload_args, verify=False
     )
@@ -79,13 +76,15 @@ def api_request(
     try:
         json_response = response.json() if method != "DELETE" else None
     except (
-        SimpleJSONDecodeError,
         RequestsJSONDecodeError,
         json.decoder.JSONDecodeError,
-    ):
-        raise requests.HTTPError(
-            f"Failed to decode JSON response from API request to {api_url}"
-        ) from None
+    ) as e:
+        # Create HTTPError with response parameter
+        http_error = requests.HTTPError(
+            f"Failed to decode JSON response from API request to {api_url}",
+            response=response,
+        )
+        raise http_error from e
 
     result_dict = {
         "status_code": response.status_code,
@@ -630,7 +629,9 @@ def normalize_string(mystring: str) -> str:
     comparison but not for display.
     """
     mystring = _clean_backslashes_and_spaces(mystring)
-    mystring = _normalize_punctuation(mystring)
+    result = _normalize_punctuation(mystring)
+    assert isinstance(result, str), "normalize_string expects string input/output"
+    mystring = result
     mystring = _strip_surrounding_quotes(mystring)
     return mystring
 
@@ -647,7 +648,9 @@ def normalize_string_lowercase(mystring: str) -> str:
     """
     mystring = mystring.casefold()
     mystring = _clean_backslashes_and_spaces(mystring)
-    mystring = _normalize_punctuation(mystring)
+    result = _normalize_punctuation(mystring)
+    assert isinstance(result, str), "normalize_string_lowercase expects string input/output"
+    mystring = result
     mystring = _strip_surrounding_quotes(mystring)
     return mystring
 
@@ -668,7 +671,7 @@ def _strip_surrounding_quotes(mystring: str) -> str:
     return mystring
 
 
-def _normalize_punctuation(mystring) -> str:
+def _normalize_punctuation(mystring: str | list | dict) -> str | list[str] | dict[str, Any]:
     """Normalize the punctuation in a string.
 
     Converts fancy quotes to simple ones, html escaped
@@ -695,7 +698,7 @@ def _normalize_punctuation(mystring) -> str:
         mystring = mystring.replace("\r\n", "\n")
         return mystring
     elif isinstance(mystring, list):
-        return [_normalize_punctuation(i) for i in mystring]
+        return [_normalize_punctuation(i) for i in mystring]  # type: ignore[misc]
     elif isinstance(mystring, dict):
         return {k: _normalize_punctuation(v) for k, v in mystring.items()}
     else:
@@ -764,11 +767,11 @@ def replace_value_in_nested_dict(d: dict, path: str, new_value: Any) -> dict | b
                 current[key] = new_value
         else:
             if key.isdigit():  # Next level is a list
-                key = int(key)  # Convert to integer for list access
-                if not isinstance(current, list) or key >= len(current):
+                key_int = int(key)  # Convert to integer for list access
+                if not isinstance(current, list) or key_int >= len(current):
                     # If current is not a list or index is out of bounds
                     return False
-                current = current[key]
+                current = current[key_int]
             else:  # Next level is a dictionary
                 if isinstance(current, dict) and key not in current:
                     # Add new dictionary or list at this level to hold deeper keys

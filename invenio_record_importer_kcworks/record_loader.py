@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 from pprint import pformat
 from traceback import format_exc, print_exc
+from typing import TypedDict
 
 import arrow
 import jsonlines
@@ -56,6 +57,15 @@ from invenio_record_importer_kcworks.types import (
 from invenio_record_importer_kcworks.utils.utils import (
     replace_value_in_nested_dict,
 )
+
+
+class RecordListsDict(TypedDict):
+    """Type definition for the lists dictionary used in record loading."""
+    successful_records: list[LoaderResult]
+    failed_records: list[LoaderResult]
+    skipped_records: list[dict]
+    no_updates_records: list[dict]
+    repaired_failed: list[dict]
 
 
 class RecordLoader:
@@ -454,7 +464,7 @@ class RecordLoader:
                 if result.existing_record:
                     result.existing_record["files"]["enabled"] = False
             failed_files = [
-                k for k, f in result.uploaded_files.items() if f[0] == "failed"
+                k for k, f in result.uploaded_files.items() if f["status"] == "failed"
             ]
             if any(failed_files):
                 app.logger.error(f"failed files: {pformat(result.uploaded_files)}")
@@ -484,7 +494,8 @@ class RecordLoader:
             # - if the metadata and/or files were changed, a new draft of the
             #   record should already exist and we publish that
             if result.community_review_result["status"] == "already_published":
-                if result.uploaded_files.get("status") != "skipped":
+                # Check if any files were uploaded (not all skipped)
+                if any(f.get("status") != "skipped" for f in result.uploaded_files.values()):
                     app.logger.info("    publishing new draft record version...")
                     try:
                         check_rec = records_service.read_draft(
@@ -591,8 +602,8 @@ class RecordLoader:
     def _log_success(
         self,
         load_result: LoaderResult,
-        lists: dict[str, list[LoaderResult]],
-    ) -> dict[str, list[LoaderResult]]:
+        lists: RecordListsDict,
+    ) -> RecordListsDict:
         """Log a created record to the created records log file.
 
         This does not update the log file if the record has already been
@@ -644,11 +655,10 @@ class RecordLoader:
     def _log_failed_record(
         self,
         result: LoaderResult,
-        lists: dict,
+        lists: RecordListsDict,
         reason: str = "",
-    ) -> dict[str, list[LoaderResult | dict]]:
-        """Log a failed record to the failed records log file.
-        """
+    ) -> RecordListsDict:
+        """Log a failed record to the failed records log file."""
         failed_list = lists["failed_records"]
         index = result.log_object.get("index", -1)
         failed_obj = result.log_object.copy()
@@ -665,9 +675,8 @@ class RecordLoader:
 
         return lists
 
-    def _update_failed_logfile(self, lists: dict) -> None:
-        """Update the failed records logfile.
-        """
+    def _update_failed_logfile(self, lists: RecordListsDict) -> None:
+        """Update the failed records logfile."""
         failed_list = lists["failed_records"]
         skipped_ids = []
         if len(lists["skipped_records"]) > 0:
@@ -690,10 +699,9 @@ class RecordLoader:
     def _log_repaired_record(
         self,
         result: LoaderResult,
-        lists: dict,
-    ) -> dict[str, list[dict]]:
-        """Log a repaired record.
-        """
+        lists: RecordListsDict,
+    ) -> RecordListsDict:
+        """Log a repaired record."""
         app.logger.info("repaired previously failed record...")
         app.logger.info(
             f"    {result.log_object.get('doi')} {result.log_object.get('source_id')}"
@@ -751,8 +759,7 @@ class RecordLoader:
         range_args: list[int] = [],
         nonconsecutive: list[int] = [],
     ) -> list[dict]:
-        """Get the record set from the metadata.
-        """
+        """Get the record set from the metadata."""
         retry_failed = flags.get("retry_failed")
         no_updates = flags.get("no_updates")
         use_sourceids = flags.get("use_sourceids")
@@ -844,8 +851,7 @@ class RecordLoader:
         current_record_index: int,
         record: dict,
     ) -> dict[str, str]:
-        """Get the record ids from the record.
-        """
+        """Get the record ids from the record."""
         rec_doi = record.get("pids", {}).get("doi", {}).get("identifier", "")
         scheme_ids = []
         for scheme in [self.sourceid_scheme, self.sourceid_scheme2]:
@@ -875,8 +881,8 @@ class RecordLoader:
         self,
         e: Exception,
         result: LoaderResult,
-        lists: dict[str, list[LoaderResult | dict]],
-    ) -> dict[str, list[LoaderResult | dict]]:
+        lists: RecordListsDict,
+    ) -> RecordListsDict:
         """Handle a raised exception and log the error.
 
         :param e: the raised exception
@@ -979,8 +985,7 @@ class RecordLoader:
         return skip, overrides
 
     def _update_counts(self, counts: dict, result: LoaderResult) -> dict:
-        """Update the counts based on the result of the load operation.
-        """
+        """Update the counts based on the result of the load operation."""
         if not result.existing_record:
             counts["new_records"] += 1
         if "unchanged_existing" in result.status:
@@ -995,12 +1000,19 @@ class RecordLoader:
     def _report_counts(
         self,
         counts: dict = {},
-        lists: dict[str, list[dict]] = {},
+        lists: RecordListsDict | None = None,
         nonconsecutive: list[int] = [],
         start_index: int = 0,
     ) -> None:
-        """Log and report the final counts of the load operation.
-        """
+        """Log and report the final counts of the load operation."""
+        if lists is None:
+            lists = {
+                "successful_records": [],
+                "failed_records": [],
+                "skipped_records": [],
+                "no_updates_records": [],
+                "repaired_failed": [],
+            }
         counter = counts["record_counter"]
         app.logger.info("All done loading records into InvenioRDM")
         set_string = ""
@@ -1051,8 +1063,7 @@ class RecordLoader:
             app.logger.info(f"Failed records written to {self.failed_log_path}")
 
     def _update_record_log_object(self, result: LoaderResult) -> dict:
-        """Update the record log object with the result of the load operation.
-        """
+        """Update the record log object with the result of the load operation."""
         result.log_object["invenio_recid"] = result.record_created.get(
             "record_data", {}
         ).get("id")
@@ -1065,8 +1076,7 @@ class RecordLoader:
         return result.log_object
 
     def _roll_back_created_records(self, records: list[LoaderResult]) -> None:
-        """Roll back the created records.
-        """
+        """Roll back the created records."""
         for record in records:
             record_id = record.record_created.get("record_data", {}).get("id")
             record_status = record.record_created.get("record_data", {}).get("status")
@@ -1080,8 +1090,7 @@ class RecordLoader:
         start_date: str = "",
         end_date: str = "",
     ) -> list | bool:
-        """Aggregate the stats for the load operation.
-        """
+        """Aggregate the stats for the load operation."""
         start_date = (
             start_date
             if start_date
@@ -1173,12 +1182,12 @@ class RecordLoader:
             "unchanged_existing": 0,
             "new_records": 0,
         }
-        lists: dict = {
-            "successful_records": [],  # type: list[LoaderResult]
-            "failed_records": [],  # type: list[LoaderResult]
-            "skipped_records": [],  # type: list[dict]
-            "no_updates_records": [],  # type: list[dict]
-            "repaired_failed": [],  # type: list[dict]
+        lists: RecordListsDict = {
+            "successful_records": [],
+            "failed_records": [],
+            "skipped_records": [],
+            "no_updates_records": [],
+            "repaired_failed": [],
         }
         flags: dict[str, bool] = {
             "no_updates": no_updates,
@@ -1232,7 +1241,7 @@ class RecordLoader:
                     lists["skipped_records"].append(rec_log_object)
                     raise SkipRecord("Record marked for skipping in override file")
                 try:
-                    result: LoaderResult = self.load(
+                    result = self.load(
                         index=current_record_index,
                         log_object=rec_log_object,
                         import_data=record_metadata,
@@ -1247,7 +1256,7 @@ class RecordLoader:
                 # to arise when a record is being added to several
                 # communities at once
                 except StaleDataError:
-                    result: LoaderResult = self.load(
+                    result = self.load(
                         index=current_record_index,
                         log_object=rec_log_object,
                         import_data=record_metadata,

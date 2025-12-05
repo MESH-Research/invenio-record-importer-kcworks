@@ -84,7 +84,15 @@ def send_security_email(
     msg.html = html_body
 
     mail = app.extensions.get("mail")
+    app.logger.error(f"Mail extension: {mail}")
+    app.logger.error(f"Mail extension type: {type(mail)}")
+    app.logger.error(f"MAIL_SUPPRESS_SEND: {app.config.get('MAIL_SUPPRESS_SEND')}")
+    app.logger.error(f"TESTING: {app.config.get('TESTING')}")
+    app.logger.error(f"MAIL_SERVER: {app.config.get('MAIL_SERVER')}")
+    app.logger.error(f"MAIL_PORT: {app.config.get('MAIL_PORT')}")
     if mail:
+        app.logger.error(f"About to send mail: {msg}")
+        app.logger.error(f"Mail connection type: {type(mail.connection) if hasattr(mail, 'connection') else 'no connection attr'}")
         mail.send(msg)
     else:
         app.logger.error("Mail extension not found")

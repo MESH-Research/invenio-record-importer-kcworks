@@ -21,7 +21,7 @@ class InvenioRecordImporter:
     def __init__(self, app=None, **kwargs) -> None:
         """Extention initialization."""
         if app:
-            self._state = self.init_app(app, **kwargs)
+            self.init_app(app, **kwargs)
 
     def init_app(self, app, **kwargs) -> None:
         """Registers the Flask extension during app initialization.

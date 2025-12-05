@@ -38,7 +38,7 @@ from invenio_record_importer_kcworks.errors import (
     FileUploadError,
     UploadFileNotFoundError,
 )
-from invenio_record_importer_kcworks.types import FileData
+from invenio_record_importer_kcworks.types import FileData, FileUploadResult
 from invenio_record_importer_kcworks.utils.utils import (
     normalize_string,
     valid_date,
@@ -273,7 +273,7 @@ class FilesHelper:
         existing_record: dict | None = {},
         source_filepaths: dict | None = {},
         uow: UnitOfWork | None = None,
-    ) -> dict[str, list[str | list[str]]]:
+    ) -> dict[str, FileUploadResult]:
         """Ensure that the files for a record are uploaded correctly.
 
         If the record already exists, we need to check if the files have
@@ -348,10 +348,9 @@ class FilesHelper:
         that only `file_data` provides the file data for the current import.
 
         Returns:
-            dict[str, tuple[str, list[str]]]: A dictionary with the new draft's
-            filenames as keys. The values are tuples including [0] the file's
-            status after the upload was attempted, and [1] any error messages
-            that were generated.
+            dict[str, FileUploadResult]: A dictionary with the new draft's
+            filenames as keys. The values are FileUploadResult objects with
+            'status' (str) and 'messages' (list[str]) fields.
 
         """
         assert metadata["files"]["enabled"] is True
@@ -359,7 +358,7 @@ class FilesHelper:
             files_to_upload = {f["key"]: f for f in file_data}
         else:
             files_to_upload = file_data
-        uploaded_files = {}
+        uploaded_files: dict[str, FileUploadResult] = {}
         same_files = False
 
         if existing_record:
@@ -400,7 +399,7 @@ class FilesHelper:
                 print(pformat(check_record.files.entries))
 
             uploaded_files = {
-                k: ["already_uploaded", []] for k in files_to_upload.keys()
+                k: {"status": "already_uploaded", "messages": []} for k in files_to_upload.keys()
             }
 
         elif len(files_to_upload) > 0:
@@ -437,7 +436,6 @@ class FilesHelper:
         else:
             app.logger.info("no files to upload marking as metadata-only...")
             self.set_to_metadata_only(metadata["id"])
-            uploaded_files = {}
         print("returning uploaded_files:", pformat(uploaded_files))
 
         return uploaded_files
@@ -568,7 +566,7 @@ class FilesHelper:
         source_filenames: dict[str, str] = {},
         files: list[FileData] = [],
         uow: UnitOfWork | None = None,
-    ) -> dict[str, list[str | list[str]]]:
+    ) -> dict[str, FileUploadResult]:
         """Upload files to a draft record.
 
         :param draft_id: The ID of the draft record to upload files to.
@@ -582,11 +580,10 @@ class FilesHelper:
             record if we are locking and unlocking a record
             (provided by the unit of work decorator if not provided by the caller)
 
-        :returns: A dictionary with file keys as keys. The values are tuples
-            including [0] the file's status after the upload was attempted, and
-            [1] any error messages that were generated.
+        :returns: A dictionary with file keys as keys. The values are FileUploadResult
+            objects with 'status' (str) and 'messages' (list[str]) fields.
         """
-        output = {}
+        output: dict[str, FileUploadResult] = {}
 
         # Ensure a draft exists for a published record
         try:
@@ -599,15 +596,15 @@ class FilesHelper:
         prior_failed = False
         for k, v in files_dict.items():
             if prior_failed:  # Don't try to upload more files if one has failed
-                output[k] = ["skipped", ["Prior file upload failed."]]
+                output[k] = {"status": "skipped", "messages": ["Prior file upload failed."]}
                 continue
             app.logger.debug(f"uploading file: {k}")
 
             try:  # initialize try/catch for single file
-                output[k] = ["uploaded", []]
+                output[k] = {"status": "uploaded", "messages": []}
 
                 # first check that the binary file data is available to upload
-                binary_file_data = None
+                binary_file_data: SpooledTemporaryFile | BufferedReader | None = None
                 if not files:  # we expect to find file paths in the source_filenames
                     if not source_filenames or not source_filenames[k]:
                         msg = f"No source file content or file path found for file {k}."
@@ -705,8 +702,8 @@ class FilesHelper:
             except FileUploadError as e:  # catches anticipated errors for file
                 app.logger.error(e.message)
                 prior_failed = True
-                output[k][0] = "failed"
-                output[k][1].append(e.message)
+                output[k]["status"] = "failed"
+                output[k]["messages"].append(e.message)
                 # clean up pending initialization
                 try:
                     self.files_service.delete_file(system_identity, draft_id, k)
@@ -721,8 +718,8 @@ class FilesHelper:
                 prior_failed = True
                 msg = f"Failed to upload file {k}: {str(e)}."
                 app.logger.error(msg)
-                output[k][0] = "failed"
-                output[k][1].append(msg)
+                output[k]["status"] = "failed"
+                output[k]["messages"].append(msg)
                 # clean up pending initialization
                 try:
                     self.files_service.delete_file(system_identity, draft_id, k)
@@ -765,8 +762,8 @@ class FilesHelper:
                                 "updated dates."
                             )
                     except FileUploadError as e:
-                        output[v["key"]][0] = "failed"
-                        output[v["key"]][1].append(str(e.message))
+                        output[v["key"]]["status"] = "failed"
+                        output[v["key"]]["messages"].append(str(e.message))
                         # clean up pending initialization
                         try:
                             self.files_service.delete_file(
@@ -785,8 +782,8 @@ class FilesHelper:
                     f" {str(e)}."
                 )
                 for k in files_dict.keys():
-                    output[k][0] = "failed"
-                    output[k][1].append(msg)
+                    output[k]["status"] = "failed"
+                    output[k]["messages"].append(msg)
             # except PIDDoesNotExistError:  # triggered by a lot of attempts to delete file
             #     for k in files_dict.keys():
             #         output[k][0] = "failed"

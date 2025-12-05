@@ -1,9 +1,15 @@
 from io import BufferedReader
 from pprint import pformat
 from tempfile import SpooledTemporaryFile
-from typing import Any
+from typing import Any, TypedDict
 
 from pydantic import BaseModel, field_validator
+
+
+class FileUploadResult(TypedDict):
+    """Type definition for file upload result structure."""
+    status: str
+    messages: list[str]
 
 
 class FileData(BaseModel):
@@ -45,7 +51,7 @@ class ImportedRecord(BaseModel):
     record_id: str
     source_id: str
     record_url: str
-    files: dict[str, list[str | list[str]]]
+    files: dict[str, FileUploadResult]
     collection_id: str
     errors: list[dict]
     metadata: dict
@@ -71,7 +77,7 @@ class LoaderResult(BaseModel):
     primary_community: dict = {}
     record_created: dict = {}
     existing_record: dict = {}
-    uploaded_files: dict[str, list[str | list[str]]] = {}
+    uploaded_files: dict[str, FileUploadResult] = {}
     community_review_result: dict = {}
     assigned_owners: dict = {}
     added_to_collections: list = []
