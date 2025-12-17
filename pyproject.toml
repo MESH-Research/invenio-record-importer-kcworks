@@ -34,7 +34,6 @@ dependencies = [
   'invenio-rdm-records',
   'invenio-records-resources',
   'invenio-remote-user-data-kcworks',
-  'invenio-saml',
   'invenio-stats-dashboard',
   'invenio-utilities-tuw',
   'kcworks',
@@ -51,7 +50,7 @@ dependencies = [
   'titlecase',
   'unidecode',
   'validators',
-  ]
+]
 
 [tool.uv.sources]
 # Local path for development (when running from main project)
