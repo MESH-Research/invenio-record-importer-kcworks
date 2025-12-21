@@ -1,4 +1,6 @@
 import json
+import mimetypes
+import zipfile
 
 import marshmallow as ma
 from flask import current_app as app
@@ -11,6 +13,7 @@ from flask_resources.resources import route
 from flask_resources.responses import ResponseHandler
 from flask_resources.serializers.json import JSONSerializer
 from invenio_records_resources.services.errors import PermissionDeniedError
+from tempfile import SpooledTemporaryFile
 from werkzeug.datastructures import ImmutableMultiDict
 from werkzeug.exceptions import (
     BadRequest,
@@ -19,6 +22,7 @@ from werkzeug.exceptions import (
     NotFound,
     UnprocessableEntity,
 )
+from werkzeug.utils import secure_filename
 
 from .parser import RequestMultipartParser, request_body_parser
 from .types import FileData
@@ -36,6 +40,116 @@ def bool_from_string(value: str) -> bool:
         return False
     else:
         raise BadRequest(f"Invalid boolean value: {value}")
+
+
+def is_zip_file(file) -> bool:
+    """Check if a file is a zip archive.
+
+    Args:
+        file: A werkzeug FileStorage object.
+
+    Returns:
+        True if the file is a zip archive, False otherwise.
+    """
+    if file.filename and file.filename.lower().endswith(".zip"):
+        return True
+    if file.mimetype and file.mimetype == "application/zip":
+        return True
+    if file.content_type and file.content_type == "application/zip":
+        return True
+    return False
+
+
+def extract_zip_files(zip_file) -> list[FileData]:
+    """Extract files from a zip archive.
+
+    Args:
+        zip_file: A werkzeug FileStorage object containing a zip archive.
+
+    Returns:
+        A list of FileData objects for each file in the zip archive.
+
+    Raises:
+        BadRequest: If the zip file is invalid or contains subfolders.
+    """
+    extracted_files = []
+
+    try:
+        zip_file.stream.seek(0)
+
+        with zipfile.ZipFile(zip_file.stream, "r") as zip_archive:
+            file_names = zip_archive.namelist()
+
+            if not file_names:
+                raise BadRequest("Zip archive is empty")
+
+            # Check for subfolders - files must be in a single folder with no subfolders
+            root_dirs = set()
+            for file_name in file_names:
+                if file_name.endswith("/"):
+                    continue
+
+                # Split the path to check for subfolders
+                parts = file_name.split("/")
+                if len(parts) > 1:
+                    root_dir = parts[0]
+                    root_dirs.add(root_dir)
+                    if len(parts) > 2:
+                        raise BadRequest(
+                            f"Zip archive contains subfolders. "
+                            f"Files must be in a single compressed folder with no subfolders. "
+                            f"Found: {file_name}"
+                        )
+
+            # If all files are in a single root directory, extract them
+            # Otherwise, if files are at the root, extract them directly
+            if len(root_dirs) > 1:
+                raise BadRequest(
+                    f"Zip archive contains files in multiple folders. "
+                    f"Files must be in a single compressed folder. "
+                    f"Found folders: {', '.join(root_dirs)}"
+                )
+
+            for file_name in file_names:
+                # Skip directory entries
+                if file_name.endswith("/"):
+                    continue
+
+                file_content = zip_archive.read(file_name)
+
+                extracted_stream = SpooledTemporaryFile(
+                    max_size=10 * 1024 * 1024
+                )  # 10MB
+                extracted_stream.write(file_content)
+                extracted_stream.seek(0)
+
+                display_filename = (
+                    file_name.split("/")[-1] if "/" in file_name else file_name
+                )
+
+                mimetype, _ = mimetypes.guess_type(display_filename)
+                content_type = mimetype or "application/octet-stream"
+
+                extracted_file = FileData(
+                    filename=secure_filename(display_filename),
+                    content_type=content_type,
+                    mimetype=content_type,
+                    mimetype_params={},
+                    stream=extracted_stream,
+                )
+
+                extracted_files.append(extracted_file)
+
+        zip_file.stream.seek(0)
+
+    except zipfile.BadZipFile:
+        raise BadRequest(f"Invalid zip archive: {zip_file.filename}")
+    except Exception as e:
+        if isinstance(e, BadRequest):
+            raise
+        raise BadRequest(f"Error extracting zip archive: {str(e)}")
+
+    return extracted_files
 
 
 # Decorators
@@ -115,7 +229,6 @@ class RecordImporterResourceConfig(ResourceConfig):
 
 
 class RecordImporterResource(Resource):
-
     def __init__(self, config, service):
         super().__init__(config)
         self.service = service
@@ -152,6 +265,8 @@ class RecordImporterResource(Resource):
         - review_required(bool): Whether to require review of the records.
         - strict_validation(bool): Whether to strictly validate the records.
         - all_or_none(bool): Whether to import all records or none.
+        - notify_record_owners(bool): Whether to send email notifications to users
+          identified as record owners.
         """
         community_id = resource_requestctx.view_args.get("community")
         file_data = resource_requestctx.data["files"]
@@ -181,20 +296,31 @@ class RecordImporterResource(Resource):
             resource_requestctx.data["form"].get("all_or_none", True)
         )
         notify_record_owners = bool_from_string(
-            resource_requestctx.data["form"].get("notify_record_owners", True)
+            resource_requestctx.data["form"].get("notify_record_owners", False)
         )
 
-        file_data = [
-            FileData(
-                filename=file.filename,
-                content_type=file.content_type,
-                mimetype=file.mimetype,
-                mimetype_params=file.mimetype_params,
-                stream=file.stream,
-            )
-            for file in file_data
-        ]
-        #  TODO: use the Flask secure_filename function to sanitize the file name
+        processed_files = []
+        for file in file_data:
+            if is_zip_file(file):
+                app.logger.debug(f"Extracting zip archive: {file.filename}")
+                extracted_files = extract_zip_files(file)
+                processed_files.extend(extracted_files)
+                app.logger.debug(
+                    f"Extracted {len(extracted_files)} files from zip archive"
+                )
+            else:
+                filename = secure_filename(file.filename)
+                processed_files.append(
+                    FileData(
+                        filename=filename,
+                        content_type=file.content_type,
+                        mimetype=file.mimetype,
+                        mimetype_params=file.mimetype_params,
+                        stream=file.stream,
+                    )
+                )
+
+        file_data = processed_files
 
         import_result = self.service.import_records(
             identity=g.identity,

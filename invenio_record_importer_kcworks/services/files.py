@@ -46,23 +46,133 @@ from invenio_record_importer_kcworks.utils.utils import (
 
 
 class FilesHelper:
+    """Helper functions for dealing with uploaded files."""
+
     def __init__(self, is_draft: bool):
+        """Initialize a FilesHelper instance."""
         self.files_service = (
             records_service.draft_files if is_draft else records_service.files
         )
 
     @staticmethod
     def sanitize_filenames(directory) -> list:
+        """Sanitize all filenames in a directory.
+
+        Uses sanitize_filename() to remove dangerous characters and
+        problematic Unicode punctuation from filenames, then renames
+        the files if their names changed.
+
+        Args:
+            directory: The directory path to walk through and sanitize filenames.
+
+        Returns:
+            list: A list of file paths with the filenames sanitized.
+        """
         changed = []
         for path, dirs, files in os.walk(directory):
-            for filename in fnmatch.filter(files, "*[“”‘’]*"):
+            for filename in files:
                 file_path = os.path.join(path, filename)
-                newname = re.sub(r"[“”‘’]", "", filename)
-                new_file_path = os.path.join(path, newname)
-                if file_path != new_file_path:
+                sanitized_name = FilesHelper.sanitize_filename(filename)
+                if filename != sanitized_name:
+                    new_file_path = os.path.join(path, sanitized_name)
                     os.rename(file_path, new_file_path)
                     changed.append(new_file_path)
         return changed
+
+    def sanitize_all_filenames(
+        self, files_to_upload: dict[str, dict], files: list[FileData]
+    ) -> dict[str, dict]:
+        """Sanitize filenames in metadata and file objects."""
+        sanitized_files_to_upload = {}
+        filename_mapping = {}  # old_key -> sanitized_key
+
+        for old_key, file_info in files_to_upload.items():
+            sanitized_key = FilesHelper.sanitize_filename(old_key)
+            filename_mapping[old_key] = sanitized_key
+            sanitized_files_to_upload[sanitized_key] = file_info
+
+        # Update FileData.filename values to match sanitized keys
+        for file_data_obj in files:
+            if file_data_obj.filename:
+                filename_part = file_data_obj.filename.split("/")[-1]
+                # Find the matching sanitized key
+                sanitized_filename = filename_mapping.get(
+                    filename_part, FilesHelper.sanitize_filename(filename_part)
+                )
+                # Update filename, preserving path if present
+                if "/" in file_data_obj.filename:
+                    path_part = "/".join(file_data_obj.filename.split("/")[:-1])
+                    file_data_obj.filename = f"{path_part}/{sanitized_filename}"
+                else:
+                    file_data_obj.filename = sanitized_filename
+
+        return sanitized_files_to_upload
+
+    @staticmethod
+    def sanitize_filename(filename: str) -> str:
+        r"""Sanitize filename.
+
+        Removes dangerous and problematic characters that could:
+        - Break HTTP header parsing (control chars, quotes, backslashes, newlines)
+        - Be used in code injection attempts
+
+        Preserves:
+        - Non-Latin scripts (Arabic, Chinese, etc.) for proper UTF-8 encoding
+        - Standard alphanumeric characters and safe punctuation
+
+        Args:
+            filename: The original filename to sanitize.
+
+        Returns:
+            A sanitized filename safe for use in Content-Disposition headers.
+
+        Examples:
+            >>> sanitize_filename('file"name.pdf')
+            'filename.pdf'
+            >>> sanitize_filename('file\nname.pdf')
+            'filename.pdf'
+        """
+        # Remove control characters
+        filename = re.sub(r"[\x00-\x1f\x7f]", "", filename)
+
+        # Replace problematic characters that can confuse header
+        # parsers or be used for injection
+        problematic_punctuation = {
+            "\n": "",  # Remove newlines
+            "\r": "",  # Remove carriage returns
+            '"': "",  # Remove straight double quotes (injection risk)
+            "\\": "",  # Remove backslashes (injection risk)
+            "/": "",  # Remove forward slashes (path traversal risk)
+            "\u201c": '"',  # Left double quotation mark (U+201C)
+            "\u201d": '"',  # Right double quotation mark (U+201D)
+            "\u2018": "'",  # Left single quotation mark (U+2018)
+            "\u2019": "'",  # Right single quotation mark (U+2019)
+            "–": "-",  # En dash (U+2013)
+            "—": "-",  # Em dash (U+2014)
+            "…": "...",  # Horizontal ellipsis (U+2026)
+            "«": '"',  # Left-pointing double angle quotation mark (U+00AB)
+            "»": '"',  # Right-pointing double angle quotation mark (U+00AE)
+            "‹": "'",  # Single left-pointing angle quotation mark (U+2039)
+            "›": "'",  # Single right-pointing angle quotation mark (U+203A)
+        }
+        for old_char, new_char in problematic_punctuation.items():
+            filename = filename.replace(old_char, new_char)
+
+        # Remove other potentially dangerous characters
+        filename = re.sub(r"[^\w\s.\-()\[\]{}@!#$%&*+=,;:?]", "", filename)
+
+        # Clean up whitespace
+        filename = re.sub(r"\s+", " ", filename)
+        filename = filename.strip()
+
+        # Collapse multiple consecutive dots
+        # Handles file system traversal remnants
+        filename = re.sub(r"\.{2,}", ".", filename)
+
+        # Strip leading/trailing dots
+        filename = filename.strip(".")
+
+        return filename
 
     @unit_of_work()
     def set_to_metadata_only(self, draft_id: str, uow: UnitOfWork | None = None):
@@ -97,7 +207,6 @@ class FilesHelper:
         is_published: bool,
         uow: UnitOfWork | None = None,
     ):
-
         def inner_clear_manager(record, is_published):
             if is_published:
                 record.files.unlock()
@@ -127,8 +236,7 @@ class FilesHelper:
             app.logger.info("deleted all files from existing published record")
         else:
             app.logger.info(
-                "no files attached to existing record "
-                "and no new files to be uploaded"
+                "no files attached to existing record and no new files to be uploaded"
             )
 
     @unit_of_work()
@@ -211,7 +319,6 @@ class FilesHelper:
 
     @unit_of_work()
     def _unlock_files(self, existing_record, uow: UnitOfWork | None = None):
-
         need_to_unlock = (
             existing_record.get("is_published") if existing_record else False
         )
@@ -240,7 +347,6 @@ class FilesHelper:
 
     @unit_of_work()
     def _lock_files(self, existing_record, uow: UnitOfWork | None = None):
-
         need_to_lock = existing_record.get("is_published") if existing_record else False
         record = None
 
@@ -272,9 +378,10 @@ class FilesHelper:
         files: list[FileData] = [],
         existing_record: dict | None = {},
         source_filepaths: dict | None = {},
+        clean_filenames: bool = True,
         uow: UnitOfWork | None = None,
     ) -> dict[str, FileUploadResult]:
-        """Ensure that the files for a record are uploaded correctly.
+        r"""Ensure that the files for a record are uploaded correctly.
 
         If the record already exists, we need to check if the files have
         changed. If they have, we need to upload the new files and delete the
@@ -292,7 +399,7 @@ class FilesHelper:
         for the file data. In a straightforward upload for a new draft, the
         record service's file service handles operations on the record's file
         manager. But when a previous draft or published record is involved,
-        we need to inspect and possibly alter the file manager's state
+        we need to inspect and possibly alter the file manager\'s state
         directly.
 
         This is complicated by the fact that the record service actually has
@@ -331,6 +438,8 @@ class FilesHelper:
                 source file paths for the files to be uploaded. FIXME: We
                 need to implement an input pathway to provide this value
                 for all imports.
+            clean_filenames (bool): If True, sanitize filenames before
+                uploading.
             uow (UnitOfWork): the unit of work to register the commit operation
                 for the record if we are locking and unlocking a record
                 (provided by the unit of work decorator if
@@ -358,6 +467,10 @@ class FilesHelper:
             files_to_upload = {f["key"]: f for f in file_data}
         else:
             files_to_upload = file_data
+
+        if clean_filenames:
+            files_to_upload = self.sanitize_all_filenames(files_to_upload, files)
+
         uploaded_files: dict[str, FileUploadResult] = {}
         same_files = False
 
@@ -399,7 +512,8 @@ class FilesHelper:
                 print(pformat(check_record.files.entries))
 
             uploaded_files = {
-                k: {"status": "already_uploaded", "messages": []} for k in files_to_upload.keys()
+                k: {"status": "already_uploaded", "messages": []}
+                for k in files_to_upload.keys()
             }
 
         elif len(files_to_upload) > 0:
@@ -495,7 +609,6 @@ class FilesHelper:
             )
 
     def _sanitize_filename(self, filename: str) -> str:
-
         long_filename = filename.replace(
             "/srv/www/commons/current/web/app/uploads/humcore/", ""
         )
@@ -514,7 +627,6 @@ class FilesHelper:
         return long_filename
 
     def _find_file_path(self, filename: str, key: str) -> Path:
-
         file_path = Path(app.config["RECORD_IMPORTER_FILES_LOCATION"]) / filename
         try:
             assert file_path.is_file()
@@ -596,7 +708,10 @@ class FilesHelper:
         prior_failed = False
         for k, v in files_dict.items():
             if prior_failed:  # Don't try to upload more files if one has failed
-                output[k] = {"status": "skipped", "messages": ["Prior file upload failed."]}
+                output[k] = {
+                    "status": "skipped",
+                    "messages": ["Prior file upload failed."],
+                }
                 continue
             app.logger.debug(f"uploading file: {k}")
 
@@ -647,13 +762,9 @@ class FilesHelper:
                         system_identity, draft_id, data=[{"key": k}]
                     ).to_dict()
                     assert (
-                        len(
-                            [
-                                e["key"]
-                                for e in initialization["entries"]
-                                if e["key"] == k
-                            ]
-                        )
+                        len([
+                            e["key"] for e in initialization["entries"] if e["key"] == k
+                        ])
                         == 1
                     )
                 except InvalidKeyError as e:
