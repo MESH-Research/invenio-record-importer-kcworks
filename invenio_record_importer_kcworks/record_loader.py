@@ -11,6 +11,7 @@
 import copy
 import itertools
 import json
+import os
 from pathlib import Path
 from pprint import pformat
 from traceback import format_exc, print_exc
@@ -60,6 +61,7 @@ from invenio_record_importer_kcworks.utils.utils import (
 
 class RecordListsDict(TypedDict):
     """Type definition for the lists dictionary used in record loading."""
+
     successful_records: list[LoaderResult]
     failed_records: list[LoaderResult]
     skipped_records: list[dict]
@@ -93,10 +95,15 @@ class RecordLoader:
             f"{app.config.get('RECORD_IMPORTER_LOGS_LOCATION')}/"
             f"record_importer_failed_log_{self.import_identifier}.jsonl"
         )
+        if not os.path.exists(os.path.dirname(self.failed_log_path)):
+            os.makedirs(os.path.dirname(self.failed_log_path), exist_ok=True)
+
         self.created_log_path = Path(
             f"{app.config.get('RECORD_IMPORTER_LOGS_LOCATION')}/"
             f"record_importer_created_log_{self.import_identifier}.jsonl"
         )
+        if not os.path.exists(os.path.dirname(self.created_log_path)):
+            os.makedirs(os.path.dirname(self.created_log_path), exist_ok=True)
         self.sourceid_scheme, self.sourceid_scheme2 = sourceid_schemes
 
         self.created_records = self._get_created_records()
@@ -231,7 +238,8 @@ class RecordLoader:
         user_system: str = "knowledgeCommons",
         overrides: dict = {},
         strict_validation: bool = True,
-        notify_record_owners: bool = True,
+        notify_record_owners: bool = False,
+        clean_filenames: bool = True,
     ) -> LoaderResult:
         """Create an invenio record with file uploads, ownership, communities.
 
@@ -291,6 +299,8 @@ class RecordLoader:
                 If True, notify the owners of the records by email when their records
                 are created. If False, do not notify the owners of the records.
                 Defaults to True.
+            clean_filenames : bool
+                If True, sanitize filenames before uploading.
 
         Returns:
             LoaderResult
@@ -456,6 +466,7 @@ class RecordLoader:
                     result.submitted["files"]["entries"],
                     files=files,
                     existing_record=result.existing_record,
+                    clean_filenames=clean_filenames,
                 )
             else:
                 FilesHelper(is_draft=is_draft).set_to_metadata_only(draft_id)
@@ -494,7 +505,9 @@ class RecordLoader:
             #   record should already exist and we publish that
             if result.community_review_result["status"] == "already_published":
                 # Check if any files were uploaded (not all skipped)
-                if any(f.get("status") != "skipped" for f in result.uploaded_files.values()):
+                if any(
+                    f.get("status") != "skipped" for f in result.uploaded_files.values()
+                ):
                     app.logger.info("    publishing new draft record version...")
                     try:
                         check_rec = records_service.read_draft(
@@ -1120,7 +1133,7 @@ class RecordLoader:
         aggregate: bool = False,
         start_date: str = "",
         end_date: str = "",
-        clean_filenames: bool = False,
+        clean_filenames: bool = True,
         verbose: bool = False,
         stop_on_error: bool = False,
         files: list[FileData] = [],
@@ -1151,7 +1164,7 @@ class RecordLoader:
             end_date (str): the ending date of usage events to aggregate if
                 aggregate is True
             clean_filenames (bool): whether to sanitize the filenames of the
-                files to upload
+                files to upload (Defaults to True.)
             verbose (bool): whether to print and log verbose output during the
                 loading process
             stop_on_error (bool): whether to stop the loading process if an
@@ -1249,6 +1262,7 @@ class RecordLoader:
                         overrides=overrides,
                         strict_validation=flags["strict_validation"],
                         notify_record_owners=flags["notify_record_owners"],
+                        clean_filenames=flags["clean_filenames"],
                     )
                 # FIXME: This is a hack to handle StaleDataError which
                 # is consistently resolved on a second attempt -- seems
