@@ -88,17 +88,21 @@ class RecordImporterService(Service):
         """
         # load_community_needs(identity)
 
-        community = CommunitiesHelper().look_up_community(community_id)._record
+        community_item = CommunitiesHelper().look_up_community(community_id)
+        community = community_item._record
         self.require_permission(
             identity,
             "import_records",
             record=community,
         )
+        # Resolve community_id to UUID if a slug was provided
+        resolved_community_id = community_item.id
         app.logger.debug(f"Importing records with metadata: {pformat(metadata)}")
         app.logger.debug(f"Importing records with metadata: {type(metadata)}")
         app.logger.debug(f"Importing records with form: {pformat(type(file_data))}")
         app.logger.debug(f"Importing records with file data: " f"{pformat(file_data)}")
-        app.logger.debug(f"Importing records with community id: {community_id}")
+        app.logger.debug(f"Importing records with community id: {community_id} "
+                         f"(resolved to: {resolved_community_id})")
         app.logger.debug(f"Importing records with review required: {review_required}")
         app.logger.debug(
             f"Importing records with strict validation: {strict_validation}"
@@ -107,7 +111,7 @@ class RecordImporterService(Service):
         # user added to identity by flask_security
         import_result: APIResponsePayload = RecordLoader(
             user_id=identity.user.id,  # type: ignore[attr-defined]
-            community_id=community_id,
+            community_id=resolved_community_id,
             views_field=views_field,
             downloads_field=downloads_field,
             sourceid_schemes=[id_scheme, alternate_id_scheme],
