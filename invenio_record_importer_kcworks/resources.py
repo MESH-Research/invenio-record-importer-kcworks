@@ -309,10 +309,9 @@ class RecordImporterResource(Resource):
                     f"Extracted {len(extracted_files)} files from zip archive"
                 )
             else:
-                filename = secure_filename(file.filename)
                 processed_files.append(
                     FileData(
-                        filename=filename,
+                        filename=file.filename,
                         content_type=file.content_type,
                         mimetype=file.mimetype,
                         mimetype_params=file.mimetype_params,
