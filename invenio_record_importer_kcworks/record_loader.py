@@ -1238,11 +1238,16 @@ class RecordLoader:
 
             skip, overrides = self._get_overrides(record_metadata)
             rec_log_object = self._get_log_object(current_record_index, record_metadata)
+            # Match files by checking both the entry dictionary keys and the 'key' field
+            # within each entry, since the dictionary key may not include the file extension
+            entries = record_metadata.get("files", {}).get("entries", {})
+            entry_keys = set(entries.keys())
+            entry_key_values = {entry.get("key", key) for key, entry in entries.items()}
+            all_possible_keys = entry_keys | entry_key_values
             current_files = [
                 f
                 for f in files
-                if f.filename.split("/")[-1]
-                in record_metadata.get("files", {}).get("entries", {}).keys()
+                if f.filename.split("/")[-1] in all_possible_keys
             ]
 
             try:

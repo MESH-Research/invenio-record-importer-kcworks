@@ -733,8 +733,14 @@ class FilesHelper:
                 else:  # if binary file data is provided in the files list
                     app.logger.debug(f"uploading file {k} from submitted binary data")
                     try:
+                        # Use the 'key' field from the entry if available,
+                        # otherwise use the dict key.
+                        # The 'key' field contains the full filename with extension
+                        file_key = v.get("key", k)
                         file_item = [
-                            f for f in files if f.filename.split("/")[-1] == k
+                            f
+                            for f in files
+                            if f.filename.split("/")[-1] == file_key
                         ][0]
                         binary_file_data = file_item.stream
                     except IndexError:
