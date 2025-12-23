@@ -82,7 +82,7 @@ class UsersHelper:
             return response.json()
         except requests.exceptions.JSONDecodeError:
             app.logger.error(
-                "JSONDecodeError: User group data API response was not" " JSON:"
+                "JSONDecodeError: User group data API response was not JSON:"
             )
             return {}
 
@@ -184,6 +184,10 @@ class UsersHelper:
                 f"During user creation, record_source {idp} not found in SSO_SAML_IDPS"
             )
 
+        remote_service = idp
+        if idp in current_app.config.get("KC_REMOTE_IDPS"):
+            remote_service = "knowledgeCommons"
+
         if idp_username and idp and not user_email:
             email = UsersHelper.get_user_by_source_id(idp_username, idp).get("email")
             if not email:
@@ -261,15 +265,13 @@ class UsersHelper:
                     ).one_or_none()
 
                     app.logger.info(active_user.external_identifiers)
-                    assert any(
-                        [
-                            a
-                            for a in active_user.external_identifiers
-                            if a.method == idp
-                            and a.id == idp_username
-                            and a.id_user == active_user.id
-                        ]
-                    )
+                    assert any([
+                        a
+                        for a in active_user.external_identifiers
+                        if a.method == idp
+                        and a.id == idp_username
+                        and a.id_user == active_user.id
+                    ])
                 except AlreadyLinkedError as e:
                     if idp_username in str(e):
                         app.logger.warning(

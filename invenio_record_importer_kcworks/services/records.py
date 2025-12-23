@@ -43,6 +43,7 @@ from invenio_search import current_search_client
 from invenio_search.utils import prefix_index
 from marshmallow.exceptions import ValidationError
 from opensearchpy.exceptions import ConnectionError, ConnectionTimeout
+from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound
 
 from invenio_record_importer_kcworks.errors import (
@@ -125,12 +126,6 @@ class RecordsHelper:
                 ),
                 None,
             )
-            # FIXME: Look up using other identifiers
-            # other_user_ids = [
-            #     d.get("identifier")
-            #     for d in owner.get("identifiers", [])
-            #     if d.get("scheme") != "kc_username"
-            # ]
             try:
                 if user_id:
                     existing_user = current_accounts.datastore.get_user_by_id(
@@ -144,15 +139,13 @@ class RecordsHelper:
                 pass
             if not existing_user and user_username:
                 try:
-                    existing_user = current_accounts.datastore.find_user(
-                        username=f"{user_system.lower()}-{user_username}",
+                    stmt = select(User).where(
+                        User._user_profile.op("->>")("identifier_kc_username")
+                        == user_username
                     )
-                except NoResultFound:
-                    pass
-            if not existing_user and user_username:
-                try:
-                    existing_user = current_accounts.datastore.find_user(
-                        username=user_username,
+                    existing_user_result = db.session.execute(stmt).scalar_one_or_none()
+                    existing_user = current_accounts.datastore.get_user_by_id(
+                        existing_user_result.id
                     )
                 except NoResultFound:
                     pass
@@ -212,7 +205,7 @@ class RecordsHelper:
                     lookup by username or other identifiers)
                     - scheme: the scheme of the identifier
                     - identifier: the identifier
-                
+
                 For existing users, only "user" (ID) is required. "email" is recommended
                 as a fallback. "full_name" and "identifiers" are only needed if the
                 user doesn't exist and needs to be created.
@@ -233,6 +226,9 @@ class RecordsHelper:
         """
         # Create/find the necessary user account
         app.logger.info("creating or finding the user (submitter)...")
+        idp = user_system
+        if user_system == "knowledgeCommons":
+            idp = app.config("KC_REMOTE_IDPS")[0]
         new_owners = []
         new_grants = []
         missing_owners: list[dict] = []
@@ -275,7 +271,7 @@ class RecordsHelper:
                     user_email=missing_owner["email"],
                     idp_username=missing_owner_kcid,
                     full_name=missing_owner.get("full_name", ""),
-                    idp=user_system,
+                    idp=idp,
                     orcid=missing_owner_orcid,
                     other_user_ids=other_user_ids,
                 )
@@ -292,19 +288,19 @@ class RecordsHelper:
 
         # Check to make sure the record is not already owned by the new owners
         existing_owner_id = (
-            existing_record.get("parent", {}).get("access", {}).get("owned_by", {}).get("user")
+            existing_record.get("parent", {})
+            .get("access", {})
+            .get("owned_by", {})
+            .get("user")
             if existing_record
             else None
         )
-        if (
-            existing_owner_id is not None
-            and new_owner.id == int(existing_owner_id)
-        ):
+        if existing_owner_id is not None and new_owner.id == int(existing_owner_id):
             app.logger.info("skipping re-assigning ownership of the record ")
             app.logger.info(f"(already belongs to owner {new_owner.id})")
-            record: RDMRecord = (
-                records_service.read(id_=draft_id, identity=system_identity)._record
-            )
+            record: RDMRecord = records_service.read(
+                id_=draft_id, identity=system_identity
+            )._record
             changed_ownership = record.parent.access.owned_by
         else:
             # Change the ownership of the record
@@ -474,9 +470,7 @@ class RecordsHelper:
             uow.register(RecordCommitOp(record))
             return True
         except Exception as e:
-            app.logger.error(
-                f"Failed to update record created date: {str(e)}"
-            )
+            app.logger.error(f"Failed to update record created date: {str(e)}")
             raise
 
     @unit_of_work()
@@ -1104,9 +1098,7 @@ class RecordsHelper:
                 record, new_created_date, uow
             ):
                 # Parsing failed (shouldn't happen since we validated)
-                raise ValueError(
-                    f"Failed to parse created date: {new_created_date}"
-                )
+                raise ValueError(f"Failed to parse created date: {new_created_date}")
             updated = True
             # Check if the date actually changed
             if record.model.created != original_created:
@@ -1122,4 +1114,3 @@ class RecordsHelper:
                     uow.register(RecordCommitOp(record))  # type:ignore
 
         return updated
-

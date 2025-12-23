@@ -1245,9 +1245,7 @@ class RecordLoader:
             entry_key_values = {entry.get("key", key) for key, entry in entries.items()}
             all_possible_keys = entry_keys | entry_key_values
             current_files = [
-                f
-                for f in files
-                if f.filename.split("/")[-1] in all_possible_keys
+                f for f in files if f.filename.split("/")[-1] in all_possible_keys
             ]
 
             try:

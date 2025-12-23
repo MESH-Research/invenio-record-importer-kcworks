@@ -81,7 +81,7 @@ class ConfigVariables:
 
         self.RECORD_IMPORTER_USAGE_STATS_PATH = app.config.get(
             "RECORD_IMPORTER_USAGE_STATS_PATH",
-            f"{self.RECORD_IMPORTER_DATA_DIR}/" "usage_stats_{}.jsonl",
+            f"{self.RECORD_IMPORTER_DATA_DIR}/usage_stats_{{}}.jsonl",
         )
 
         self.RECORD_IMPORTER_START_DATE = app.config.get(
@@ -91,13 +91,13 @@ class ConfigVariables:
 
         self.RECORD_IMPORTER_COMMUNITIES_DATA = {
             "knowledgeCommons": {
-                "hcommons": {
-                    "slug": "hcommons",
+                "kcommons": {
+                    "slug": "kcommons",
                     "metadata": {
-                        "title": "Humanities Commons",
-                        "description": ("A collection representing Humanities Commons"),
+                        "title": "Knowledge Commons",
+                        "description": ("A collection representing Knowledge Commons"),
                         "website": "https://hcommons.org",
-                        "organizations": [{"name": "Humanities Commons"}],
+                        "organizations": [{"name": "Knowledge Commons"}],
                     },
                 },
                 "msu": {
