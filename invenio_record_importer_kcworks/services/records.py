@@ -196,7 +196,8 @@ class RecordsHelper:
                 For system operations, use 0 or a system user ID.
             submitted_owners: a list of users to assign ownership to. Each
                 user is a dict with the following keys:
-                - user: the user ID as a string (optional, fastest lookup for existing users)
+                - user: the user ID as a string (optional, fastest lookup for existing
+                    users)
                 - email: the email address of the user (required for user creation,
                     optional but recommended for existing user lookup)
                 - full_name: the full name of the user (required only for user creation,
@@ -228,7 +229,7 @@ class RecordsHelper:
         app.logger.info("creating or finding the user (submitter)...")
         idp = user_system
         if user_system == "knowledgeCommons":
-            idp = app.config("KC_REMOTE_IDPS")[0]
+            idp = app.config.get("KC_REMOTE_IDPS", [])[0]
         new_owners = []
         new_grants = []
         missing_owners: list[dict] = []

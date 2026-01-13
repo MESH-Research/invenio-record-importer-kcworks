@@ -281,7 +281,7 @@ class BaseImportLoaderTest:
             first_user_email = owners[0].get("email")
         else:
             first_user_email = "test@example.com"
-        u = user_factory(email=first_user_email, token=True, saml_id="")
+        u = user_factory(email=first_user_email, token=True, oauth_id="")
         user_id = u.user.id
         identity = get_identity(u.user)
         identity.provides.add(authenticated_user)
@@ -311,7 +311,7 @@ class BaseImportLoaderTest:
                 user_factory(
                     email=u["email"],
                     token=False,
-                    saml_id=None,
+                    oauth_id=None,
                 )
 
         result: LoaderResult = RecordLoader(
@@ -489,7 +489,7 @@ class BaseImportLoaderWithFilesTest(BaseImportLoaderTest):
                 f"resource type: ID: {rt['id']}, Title: {rt['title']['en']}"
             )
 
-        u = user_factory(email="test@example.com", token=True, saml_id=None)
+        u = user_factory(email="test@example.com", token=True, oauth_id=None)
         user_id = u.user.id
         identity = get_identity(u.user)
         identity.provides.add(authenticated_user)
@@ -554,7 +554,7 @@ class BaseImportLoaderWithFilesTest(BaseImportLoaderTest):
                 user_factory(
                     email=u["email"],
                     token=False,
-                    saml_id=None,
+                    oauth_id=None,
                 )
 
         # Create group communities
@@ -1187,7 +1187,7 @@ class BaseImportServiceTest:
         """Test importing a record via the service."""
         self.app = running_app.app
         self.test_sample_files_folder = test_sample_files_folder
-        u = user_factory(email="test@example.com", token=True, saml_id=None)
+        u = user_factory(email="test@example.com", token=True, oauth_id=None)
         user_id = u.user.id
         identity = get_identity(u.user)
         identity.provides.add(authenticated_user)
@@ -1356,8 +1356,7 @@ class TestImportServiceJArticleErrorMissingFile(BaseImportServiceTest):
                             "sample.pdf": {
                                 "status": "failed",
                                 "messages": [
-                                    "File sample.pdf not found in "
-                                    "list of files."
+                                    "File sample.pdf not found in list of files."
                                 ],
                             }
                         },
@@ -1417,7 +1416,7 @@ class TestImportAPIInsufficientPermissionsReader(BaseInsufficientPermissionsTest
         Returns:
             tuple: User ID and token.
         """
-        new_user = user_factory(email="another@example.com", token=True, saml_id=None)
+        new_user = user_factory(email="another@example.com", token=True, oauth_id=None)
         make_community_member(new_user.user.id, "reader", community_id)
         return new_user.user.id, new_user.allowed_token
 
@@ -1439,7 +1438,7 @@ class TestImportAPIInsufficientPermissionsCurator(BaseInsufficientPermissionsTes
         Returns:
             tuple: User ID and token.
         """
-        new_user = user_factory(email="another@example.com", token=True, saml_id=None)
+        new_user = user_factory(email="another@example.com", token=True, oauth_id=None)
         make_community_member(new_user.user.id, "manager", community_id)
         return new_user.user.id, new_user.allowed_token
 
@@ -1462,7 +1461,7 @@ class TestImportAPIInsufficientPermissionsOwner(BaseInsufficientPermissionsTest)
             tuple[int, str]: A tuple of the new User's id [0] and bearer
                 token [1]
         """
-        new_user = user_factory(email="another@example.com", token=True, saml_id=None)
+        new_user = user_factory(email="another@example.com", token=True, oauth_id=None)
         return new_user.user.id, new_user.allowed_token
 
 

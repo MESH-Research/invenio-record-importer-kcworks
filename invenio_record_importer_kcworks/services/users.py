@@ -135,7 +135,7 @@ class UsersHelper:
         orcid: str = "",
         other_user_ids: list = [],
     ) -> dict:
-        """Create a new user account in the Invenio instance
+        """Create a new user account in the Invenio instance.
 
         Where a user account already exists with the provided email address,
         the existing account is returned. If the user account does not exist,
@@ -178,14 +178,14 @@ class UsersHelper:
         """
         new_user_flag = True
         active_user = None
-        idps = app.config.get("SSO_SAML_IDPS")
+        idps = app.config.get("OAUTHCLIENT_REMOTE_APPS")
         if not idps or idp not in idps.keys():
             app.logger.warning(
                 f"During user creation, record_source {idp} not found in SSO_SAML_IDPS"
             )
 
         remote_service = idp
-        if idp in current_app.config.get("KC_REMOTE_IDPS"):
+        if idp in app.config.get("KC_REMOTE_IDPS"):
             remote_service = "knowledgeCommons"
 
         if idp_username and idp and not user_email:
@@ -213,7 +213,7 @@ class UsersHelper:
                 "user_profile": profile,
             }
             if idp and idp_username:
-                info_args["username"] = f"{idp}-{idp_username}"
+                info_args["username"] = f"{remote_service}-{idp_username}"
             new_user = current_accounts.datastore.create_user(**info_args)
             current_accounts.datastore.commit()
             assert new_user.id
@@ -244,18 +244,18 @@ class UsersHelper:
         current_accounts.datastore.commit()
 
         if idp and idp_username:
-            existing_saml = UserIdentity.query.filter_by(
+            existing_connection = UserIdentity.query.filter_by(
                 id_user=active_user.id,
                 method=idp,
                 id=idp_username,
             ).one_or_none()
 
-            if not existing_saml:
+            if not existing_connection:
                 try:
                     UserIdentity.create(active_user, idp, idp_username)
                     db.session.commit()  # type: ignore
                     app.logger.info(
-                        f"    configured SAML login for {user_email} as"
+                        f"    configured login for {user_email} as"
                         f" {idp_username} on {idp}..."
                     )
                     assert UserIdentity.query.filter_by(
@@ -275,15 +275,15 @@ class UsersHelper:
                 except AlreadyLinkedError as e:
                     if idp_username in str(e):
                         app.logger.warning(
-                            f"    SAML login already configured for"
+                            f"    login already configured for"
                             f" {idp_username} on {idp}..."
                         )
                     else:
                         raise e
             else:
                 app.logger.info(
-                    f"   found existing SAML login for {user_email},"
-                    f" {existing_saml.method}, {existing_saml.id}..."
+                    f"   found existing login for {user_email},"
+                    f" {existing_connection.method}, {existing_connection.id}..."
                 )
 
         communities_owned = []

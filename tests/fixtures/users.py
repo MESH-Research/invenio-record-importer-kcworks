@@ -60,10 +60,10 @@ def mock_user_data_api(requests_mock) -> Callable:
         Callable: Mock API call function.
     """
 
-    def mock_api_call(saml_id: str, mock_remote_data: dict) -> Matcher:
+    def mock_api_call(oauth_id: str, mock_remote_data: dict) -> Matcher:
         protocol = os.environ.get("INVENIO_COMMONS_API_REQUEST_PROTOCOL", "https")  # noqa: E501
         base_url = f"{protocol}://hcommons-dev.org/wp-json/commons/v1/users"
-        remote_url = f"{base_url}/{saml_id}"
+        remote_url = f"{base_url}/{oauth_id}"
         mock_adapter = requests_mock.get(
             remote_url,
             json=mock_remote_data,
@@ -82,7 +82,7 @@ def user_data_to_remote_data(requests_mock):
     """
 
     def convert_user_data_to_remote_data(
-        saml_id: str, email: str, user_data: dict
+        oauth_id: str, email: str, user_data: dict
     ) -> dict[str, str | list[dict[str, str]]]:
         """Convert user fixture data to format for remote data.
 
@@ -90,7 +90,7 @@ def user_data_to_remote_data(requests_mock):
             dict: Converted user data in remote format.
         """
         mock_remote_data = {
-            "username": saml_id,
+            "username": oauth_id,
             "email": email,
             "name": user_data.get("name", ""),
             "first_name": user_data.get("first_name", ""),
@@ -136,8 +136,8 @@ def user_factory(
         password: str = "password",
         token: bool = False,
         admin: bool = False,
-        saml_src: str | None = "knowledgeCommons",
-        saml_id: str | None = "myuser",
+        oauth_src: str | None = "knowledgeCommons",
+        oauth_id: str | None = "myuser",
         orcid: str | None = "",
         kc_username: str | None = "",
         new_remote_data: dict | None = None,
@@ -149,8 +149,8 @@ def user_factory(
             password: The password of the user.
             token: Whether the user should have a token.
             admin: Whether the user should have admin access.
-            saml_src: The source of the user's saml authentication.
-            saml_id: The user's ID for saml authentication.
+            oauth_src: The source of the user's saml authentication.
+            oauth_id: The user's ID for saml authentication.
 
         Returns:
             The created UserFixture object. This has the following attributes:
@@ -164,10 +164,10 @@ def user_factory(
 
         # Mock remote data that's already in the user fixture.
         mock_remote_data = user_data_to_remote_data(
-            saml_id, new_remote_data.get("email") or email, new_remote_data
+            oauth_id, new_remote_data.get("email") or email, new_remote_data
         )
         # Mock the remote api call.
-        mock_adapter = mock_user_data_api(saml_id, mock_remote_data)
+        mock_adapter = mock_user_data_api(oauth_id, mock_remote_data)
 
         if not orcid and new_remote_data.get("orcid"):
             orcid = new_remote_data.get("orcid")
@@ -202,12 +202,12 @@ def user_factory(
             profile["identifier_kc_username"] = kc_username
             u.user.user_profile = profile
 
-        if u.user and saml_src and saml_id:
-            u.user.username = f"{saml_src}-{saml_id}"
+        if u.user and oauth_src and oauth_id:
+            u.user.username = f"{oauth_src}-{oauth_id}"
             profile = u.user.user_profile
-            profile["identifier_kc_username"] = saml_id
+            profile["identifier_kc_username"] = oauth_id
             u.user.user_profile = profile
-            UserIdentity.create(u.user, saml_src, saml_id)
+            UserIdentity.create(u.user, oauth_src, oauth_id)
             u.mock_adapter = mock_adapter
 
         current_accounts.datastore.commit()
@@ -252,8 +252,8 @@ def admin(user_factory) -> AugmentedUserFixture:
         password="password",
         admin=True,
         token=True,
-        saml_src="knowledgeCommons",
-        saml_id="admin",
+        oauth_src="knowledgeCommons",
+        oauth_id="admin",
     )
 
     return u
@@ -306,7 +306,7 @@ def user1_data() -> dict:
         dict: User data dictionary.
     """
     return {
-        "saml_id": "user1",
+        "oauth_id": "user1",
         "email": "user1@inveniosoftware.org",
         "name": "User Number One",
         "first_name": "User Number",
@@ -324,7 +324,7 @@ def user1_data() -> dict:
 
 user_data_set = {
     "joanjett": {
-        "saml_id": "joanjett",
+        "oauth_id": "joanjett",
         "email": "jj@inveniosoftware.com",
         "name": "Joan Jett",
         "first_name": "Joan",
@@ -334,7 +334,7 @@ user_data_set = {
         "groups": [],
     },
     "user1": {
-        "saml_id": "user1",
+        "oauth_id": "user1",
         "email": "user1@inveniosoftware.org",
         "name": "User Number One",
         "first_name": "User Number",
@@ -349,7 +349,7 @@ user_data_set = {
         ],
     },
     "user2": {
-        "saml_id": "janedoe",
+        "oauth_id": "janedoe",
         "email": "jane.doe@msu.edu",
         "name": "Jane Doe",
         "first_name": "Jane",
@@ -358,7 +358,7 @@ user_data_set = {
         "orcid": "0000-0002-1825-0097",  # official dummy orcid
     },
     "user3": {
-        "saml_id": "gihctester",
+        "oauth_id": "gihctester",
         "email": "ghosthc@email.ghostinspector.com",
         # FIXME: Unobfuscated email not sent by
         # KC because no email marked as official.
@@ -464,7 +464,7 @@ user_data_set = {
         ],
     },
     "user4": {
-        "saml_id": "ghostrjtester",
+        "oauth_id": "ghostrjtester",
         "email": "jrghosttester@email.ghostinspector.com",
         "name": "Ghost Tester",
         "first_name": "Ghost",
