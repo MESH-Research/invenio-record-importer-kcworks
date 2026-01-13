@@ -10,3 +10,6 @@
 	path = invenio_record_importer_kcworks/dependencies/invenio-records-resources
 	url = https://github.com/MESH-Research/invenio-records-resources.git
 	branch = local-working
+[submodule "tests/fixtures"]
+	path = tests/fixtures
+	url = git@github.com:MESH-Research/kcworks-test-fixtures.git
