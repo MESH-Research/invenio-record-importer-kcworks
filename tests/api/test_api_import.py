@@ -1182,6 +1182,8 @@ class BaseImportServiceTest:
         mock_send_remote_api_update_fixture,
         mailbox,
         mocker,
+        monkeypatch,
+        nested_unit_of_work,
         test_sample_files_folder,
     ):
         """Test importing a record via the service."""
@@ -1237,12 +1239,16 @@ class BaseImportServiceTest:
             metadata_source_objects.append(test_metadata)
 
         if self.by_api and submitter_token:
+            monkeypatch.setattr(
+                "invenio_records_resources.services.uow.UnitOfWork", nested_unit_of_work
+            )
             import_results, status_code = self._do_api_import(
                 community,
                 file_streams,
                 submitter_token,
                 metadata_source_objects,
             )
+
         else:
             load_community_needs(identity)
             service = current_record_importer_service
