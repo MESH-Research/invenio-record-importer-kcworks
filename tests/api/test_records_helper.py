@@ -71,9 +71,7 @@ from tests.helpers.sample_records import (
                                 "name": "Collins, Thomas",
                                 "type": "personal",
                             },
-                            "affiliations": [
-                                {"id": "cern", "name": "Entity One"}
-                            ],
+                            "affiliations": [{"id": "cern", "name": "Entity One"}],
                             "role": {
                                 "id": "author",
                                 "title": {"en": "Author"},
@@ -207,6 +205,8 @@ from tests.helpers.sample_records import (
 def test_create_invenio_record(
     app,
     db,
+    nested_unit_of_work,
+    monkeypatch,
     affiliations_v,
     contributors_role_v,
     date_type_v,
@@ -227,6 +227,9 @@ def test_create_invenio_record(
 ):
     """Test RecordsHelper.create_invenio_record method."""
     TESTING_SERVER_DOMAIN = app.config.get("SITE_UI_URL")
+    monkeypatch.setattr(
+        "invenio_records_resources.services.uow.UnitOfWork", nested_unit_of_work
+    )
 
     # fix because can't create duplicate dois
     if "doi" in json_payload["pids"].keys():
@@ -304,54 +307,30 @@ def test_create_invenio_record(
 
     links = {
         "access": f"{TESTING_SERVER_DOMAIN}/api/records/###/access",
-        "access_grants": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/access/grants"
-        ),
-        "access_groups": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/access/groups"
-        ),
-        "access_links": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/access/links"
-        ),
-        "access_request": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/access/request"
-        ),
-        "access_users": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/access/users"
-        ),
-        "archive": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/files-archive"
-        ),
+        "access_grants": (f"{TESTING_SERVER_DOMAIN}/api/records/###/access/grants"),
+        "access_groups": (f"{TESTING_SERVER_DOMAIN}/api/records/###/access/groups"),
+        "access_links": (f"{TESTING_SERVER_DOMAIN}/api/records/###/access/links"),
+        "access_request": (f"{TESTING_SERVER_DOMAIN}/api/records/###/access/request"),
+        "access_users": (f"{TESTING_SERVER_DOMAIN}/api/records/###/access/users"),
+        "archive": (f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/files-archive"),
         "archive_media": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/"
-            "media-files-archive"
+            f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/media-files-archive"
         ),
-        "communities": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/communities"
-        ),
+        "communities": (f"{TESTING_SERVER_DOMAIN}/api/records/###/communities"),
         "communities-suggestions": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/"
-            "communities-suggestions"
+            f"{TESTING_SERVER_DOMAIN}/api/records/###/communities-suggestions"
         ),
         "files": (f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/files"),
-        "media_files": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/media-files"
-        ),
-        "publish": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/actions/publish"
-        ),
+        "media_files": (f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/media-files"),
+        "publish": (f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/actions/publish"),
         "record": f"{TESTING_SERVER_DOMAIN}/api/records/###",
         "record_html": f"{TESTING_SERVER_DOMAIN}/records/###",
         "requests": (f"{TESTING_SERVER_DOMAIN}/api/records/###/requests"),
-        "reserve_doi": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/pids/doi"
-        ),
+        "reserve_doi": (f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/pids/doi"),
         "review": (f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/review"),
         "self": f"{TESTING_SERVER_DOMAIN}/api/records/###/draft",
         "self_html": f"{TESTING_SERVER_DOMAIN}/uploads/###",
-        "self_iiif_manifest": (
-            f"{TESTING_SERVER_DOMAIN}/api/iiif/draft:###/manifest"
-        ),
+        "self_iiif_manifest": (f"{TESTING_SERVER_DOMAIN}/api/iiif/draft:###/manifest"),
         "self_iiif_sequence": (
             f"{TESTING_SERVER_DOMAIN}/api/iiif/draft:###/sequence/default"
         ),
@@ -362,9 +341,7 @@ def test_create_invenio_record(
         actual_doi = actual_record["pids"]["doi"]["identifier"]
         links["doi"] = "https://handle.stage.datacite.org/$$$"
     for label, link in actual_record["links"].items():
-        assert link == links[label].replace("###", actual_id).replace(
-            "$$$", actual_doi
-        )
+        assert link == links[label].replace("###", actual_id).replace("$$$", actual_doi)
 
     assert actual_record["files"] == {
         "enabled": True,
@@ -404,4 +381,3 @@ def test_create_invenio_record(
     ).to_dict()
     pprint(confirm_deleted)
     assert confirm_deleted["hits"]["total"] == 0
-

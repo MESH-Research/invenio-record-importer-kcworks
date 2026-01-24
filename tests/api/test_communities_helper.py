@@ -121,15 +121,17 @@ class TestAddPublishedRecordToCommunity:
     ):
         """Test that adding a draft record raises InvalidParametersError."""
         with running_app.app.app_context():
-            draft_record = minimal_draft_record_factory()
             community = minimal_community_factory()
+            draft_record = minimal_draft_record_factory()
+            draft_record_id = draft_record.id
 
             helper = CommunitiesHelper()
 
             with pytest.raises(InvalidParametersError) as exc_info:
-                helper.add_published_record_to_community(
-                    draft_record.id, community.id
-                )
+                with db.session.begin_nested():
+                    helper.add_published_record_to_community(
+                        draft_record_id, community.id
+                    )
 
             assert "not published" in str(exc_info.value).lower()
             assert draft_record.id in str(exc_info.value)
@@ -346,4 +348,3 @@ def test_create_invenio_community(
     )
     # actual_community_id = actual_community["id"]
     assert actual_community["slug"] == slug
-

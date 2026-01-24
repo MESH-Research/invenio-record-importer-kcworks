@@ -696,9 +696,7 @@ class CommunitiesHelper:
         # Verify that the record is actually published
         record = self._get_record_or_draft(draft_id)
         if not record:
-            raise InvalidParametersError(
-                f"Record with id {draft_id} not found"
-            )
+            raise InvalidParametersError(f"Record with id {draft_id} not found")
         if record.get("status") in ["draft", "draft_with_review"]:
             raise InvalidParametersError(
                 f"Record with id {draft_id} is not published (status: {record.get('status')}). "
@@ -785,9 +783,7 @@ class CommunitiesHelper:
         else:
             # Request is already accepted, get service result to align
             # type with the return value of the include method
-            review_accepted = current_requests_service.read(
-                system_identity, request_id
-            )
+            review_accepted = current_requests_service.read(system_identity, request_id)
 
         # Suppress email notifications by stripping NotificationOp instances from uow
         if uow and hasattr(uow, "_operations") and suppress_notifications:
