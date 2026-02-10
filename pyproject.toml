@@ -53,9 +53,9 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-# Local path for development (when running from main project)
-# CI script will modify this to use GitHub source
-kcworks = {path = "../../../../../knowledge-commons-works", editable = true}
+# kcworks is not overridden here: the root workspace (knowledge-commons-works or kcworks-next)
+# provides it via its [tool.uv.sources], so both clones resolve to the current repo.
+# CI script will modify other entries as needed (e.g. GitHub source).
 invenio-communities = {path = "../invenio-communities", editable = true}
 invenio-group-collections-kcworks = {path = "../invenio-group-collections-kcworks", editable = true}
 invenio-remote-user-data-kcworks = {path = "../invenio-remote-user-data-kcworks", editable = true}
