@@ -1,129 +1,114 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["build", "setuptools>=61", "wheel"]
+
 [project]
 name = "invenio-record-importer-kcworks"
 version = "0.4.0"
 description = "Bulk import records into a InvenioRDM instance configured for Knowledge Commons Works"
 readme = "README.md"
-license = "MIT"
-authors = [{ name = "Mesh Research", email = "scottia4@msu.edu" }]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Programming Language :: Python",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
-    "Environment :: Web Environment",
-    "Intended Audience :: Developers",
-    "Operating System :: OS Independent",
-    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
-    "Topic :: Software Development :: Libraries :: Python Modules"
-]
 keywords = [
+  "bulk-import",
   "invenio",
   "invenio-rdm",
   "knowledge-commons-works",
-  "bulk-import",
   "record-importer",
-  ]
-
-requires-python = ">=3.12"
-dependencies = [
-  'click',
-  'halo',
-  'invenio-app-rdm[opensearch2]<13.0.0',
-  'invenio-communities',
-  'invenio-group-collections-kcworks',
-  'invenio-rdm-records',
-  'invenio-records-resources',
-  'invenio-remote-user-data-kcworks',
-  'invenio-stats-dashboard',
-  'invenio-utilities-tuw',
-  'kcworks',
-  'isbnlib',
-  'jsonlines',
-  'langdetect ',
-  'pydantic',
-  'python-dateutil',
-  'python-iso639',
-  'python-stdnum',
-  'pytz',
-  'requests',
-  'timefhuman',
-  'titlecase',
-  'unidecode',
-  'validators',
 ]
+
+license = "MIT"
+authors = [{ name = "Mesh Research", email = "scottia4@msu.edu" }]
+requires-python = ">=3.12"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Web Environment",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+  "click",
+  "halo",
+  "invenio-app-rdm[opensearch2]<14",
+  "invenio-communities",
+  "invenio-group-collections-kcworks",
+  "invenio-rdm-records",
+  "invenio-records-resources",
+  "invenio-remote-user-data-kcworks",
+  "invenio-stats-dashboard",
+  "invenio-utilities-tuw",
+  "isbnlib",
+  "jsonlines",
+  "kcworks",
+  "langdetect",
+  "pydantic",
+  "python-dateutil",
+  "python-iso639",
+  "python-stdnum",
+  "pytz",
+  "requests",
+  "timefhuman",
+  "titlecase",
+  "unidecode",
+  "validators",
+]
+
+optional-dependencies.dev = [
+  "bumpver",
+  "check-manifest",
+  "ipykernel",
+  "mypy>=1.8",
+  "pip-tools",
+  "wheel",
+]
+optional-dependencies.test = [
+  "coverage",
+  "docker-services-cli",
+  "pytest",
+  "pytest-invenio==2.2.2",
+  "pytest-mock",
+  "pytest-mypy>=0.10",
+  "requests-mock",
+  "selenium",
+]
+urls."Homepage" = "https://github.com/Knowledge-Commons-Works/invenio-record-importer-kcworks"
+scripts.importer = "invenio_record_importer_kcworks.cli:cli"
+entry-points."flask.commands".importer = "invenio_record_importer_kcworks.cli:cli"
+entry-points."invenio_base.api_apps".invenio_record_importer_kcworks = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
+entry-points."invenio_base.api_blueprints".invenio_record_importer_kcworks = "invenio_record_importer_kcworks.resources:create_api_blueprint"
+entry-points."invenio_base.apps".invenio_record_importer_kcworks = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
+entry-points."invenio_celery.tasks".invenio-record-importer-kcworks = "invenio_record_importer_kcworks.tasks"
 
 [tool.uv.sources]
 # kcworks is not overridden here: the root workspace (knowledge-commons-works or kcworks-next)
 # provides it via its [tool.uv.sources], so both clones resolve to the current repo.
 # CI script will modify other entries as needed (e.g. GitHub source).
-invenio-communities = {path = "../invenio-communities", editable = true}
-invenio-group-collections-kcworks = {path = "../invenio-group-collections-kcworks", editable = true}
-invenio-remote-user-data-kcworks = {path = "../invenio-remote-user-data-kcworks", editable = true}
-invenio-stats-dashboard = {path = "../invenio-stats-dashboard", editable = true}
+invenio-communities = { path = "../invenio-communities", editable = true }
+invenio-group-collections-kcworks = { path = "../invenio-group-collections-kcworks", editable = true }
+invenio-remote-user-data-kcworks = { path = "../invenio-remote-user-data-kcworks", editable = true }
+invenio-stats-dashboard = { path = "../invenio-stats-dashboard", editable = true }
 
-[project.urls]
-"Homepage" = "https://github.com/Knowledge-Commons-Works/invenio-record-importer-kcworks"
-
-[project.optional-dependencies]
-dev = [
-  "bumpver",
-  "check-manifest",
-  "ipykernel",
-  "pip-tools",
-  "wheel",
-  "mypy>=1.8.0",
-  ]
-test = [
-  "coverage",
-  "docker-services-cli",
-  "requests-mock",
-  "pytest",
-  "pytest-invenio==2.2.2",
-  "pytest-mock",
-  "pytest-mypy>=0.10.0",
-  "selenium"
-  ]
-
-[project.scripts]
-importer = "invenio_record_importer_kcworks.cli:cli"
-
-[project.entry-points."invenio_base.apps"]
-invenio_record_importer_kcworks = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
-
-[project.entry-points."invenio_base.api_apps"]
-invenio_record_importer_kcworks = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
-
-[project.entry-points."invenio_base.api_blueprints"]
-invenio_record_importer_kcworks = "invenio_record_importer_kcworks.resources:create_api_blueprint"
-
-[project.entry-points."flask.commands"]
-importer = "invenio_record_importer_kcworks.cli:cli"
-
-[project.entry-points."invenio_celery.tasks"]
-invenio-record-importer-kcworks = "invenio_record_importer_kcworks.tasks"
-
-[tool.pytest.ini_options]
-addopts = "--doctest-glob='*.rst' --doctest-modules --ignore=tests/helpers --ignore=invenio_record_importer_kcworks/deprecated"
-testpaths = ["tests", "invenio_record_importer_kcworks"]
-plugins = [
-  "tests.fixtures.communities",
-  "tests.fixtures.metadata_fields",
-  "tests.fixtures.custom_fields",
-  "tests.fixtures.identifiers",
-  "tests.fixtures.records",
-  "tests.fixtures.saml",
-  "tests.fixtures.stats",
-  "tests.fixtures.users",
-  "tests.fixtures.vocabularies.affiliations",
-  "tests.fixtures.vocabularies.community_types",
-  "tests.fixtures.vocabularies.date_types",
-  "tests.fixtures.vocabularies.descriptions",
-  "tests.fixtures.vocabularies.languages",
-  "tests.fixtures.vocabularies.licenses",
-  "tests.fixtures.vocabularies.resource_types",
-  "tests.fixtures.vocabularies.roles",
-  "tests.fixtures.vocabularies.subjects",
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+exclude = [
+  "**/*.ipynb",                                    # Exclude Jupyter notebook files
+  "invenio_record_importer_kcworks/deprecated/**", # Exclude deprecated files
 ]
+
+lint.select = ["B", "D", "DOC", "E", "F", "I", "UP"]
+lint.ignore = [
+  "W1", # Indentation warnings
+  "W2", # Whitespace warnings
+  "W3", # Blank line warnings
+]
+lint.per-file-ignores."__init__.py" = ["D104", "E402", "F401"]
+lint.pydocstyle.convention = "google"
 
 [tool.check-manifest]
 ignore = [
@@ -156,6 +141,35 @@ ignore = [
   ".vscode/*",
 ]
 
+[tool.pytest.ini_options]
+addopts = "--doctest-glob='*.rst' --doctest-modules --ignore=tests/helpers --ignore=invenio_record_importer_kcworks/deprecated"
+testpaths = ["tests", "invenio_record_importer_kcworks"]
+plugins = [
+  "tests.fixtures.communities",
+  "tests.fixtures.metadata_fields",
+  "tests.fixtures.custom_fields",
+  "tests.fixtures.identifiers",
+  "tests.fixtures.records",
+  "tests.fixtures.saml",
+  "tests.fixtures.stats",
+  "tests.fixtures.users",
+  "tests.fixtures.vocabularies.affiliations",
+  "tests.fixtures.vocabularies.community_types",
+  "tests.fixtures.vocabularies.date_types",
+  "tests.fixtures.vocabularies.descriptions",
+  "tests.fixtures.vocabularies.languages",
+  "tests.fixtures.vocabularies.licenses",
+  "tests.fixtures.vocabularies.resource_types",
+  "tests.fixtures.vocabularies.roles",
+  "tests.fixtures.vocabularies.subjects",
+]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+follow_imports = "skip"
+exclude = ["invenio_record_importer_kcworks/deprecated/.*"]
+
 # [tool.setuptools]
 # If there are data files included in your packages that need to be
 # installed, specify them here.
@@ -174,62 +188,18 @@ tag = false
 push = false
 
 [tool.bumpver.file_patterns]
-"pyproject.toml" = [
-    'version = "{version}"',
-    'current_version = "{version}"',
-]
-"README.md" = [
-    "Version {version}",
-]
-"VERSION" = [
-    '^"{version}"',
-]
-"invenio_record_importer_kcworks/__init__.py" = [
-    '^__version__ = "{version}"',
-]
+"pyproject.toml" = ['version = "{version}"', 'current_version = "{version}"']
+"README.md" = ["Version {version}"]
+"VERSION" = ['^"{version}"']
+"invenio_record_importer_kcworks/__init__.py" = ['^__version__ = "{version}"']
 
 [tool.pylsp-mypy]
 enabled = true
 live_mode = true
 strict = false
 overrides = [
-    "--ignore-missing-imports",
-    "--follow-imports=silent",
-    "--show-error-codes",
-    "--no-error-summary"
+  "--ignore-missing-imports",
+  "--follow-imports=silent",
+  "--show-error-codes",
+  "--no-error-summary",
 ]
-
-[tool.ruff]
-line-length = 88
-target-version = "py312"
-exclude = [
-    "**/*.ipynb",  # Exclude Jupyter notebook files
-    "invenio_record_importer_kcworks/deprecated/**",  # Exclude deprecated files
-]
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "D", "DOC"]
-ignore = [
-    "W1",   # Indentation warnings
-    "W2",   # Whitespace warnings
-    "W3",   # Blank line warnings
-]
-
-[tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401", "D104", "E402"]
-
-[tool.ruff.lint.pydocstyle]
-convention = "google"
-
-[tool.mypy]
-python_version = "3.12"
-ignore_missing_imports = true
-follow_imports = "skip"
-exclude = [
-    "invenio_record_importer_kcworks/deprecated/.*",
-]
-
-[build-system]
-requires = ["setuptools>=61.0.0", "wheel", "build"]
-build-backend = "setuptools.build_meta"
-
