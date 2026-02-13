@@ -70,7 +70,7 @@ optional-dependencies.test = [
   "coverage",
   "docker-services-cli",
   "pytest",
-  "pytest-invenio==2.2.2",
+  "pytest-invenio>=3.3,<4",
   "pytest-mock",
   "pytest-mypy>=0.10",
   "requests-mock",
