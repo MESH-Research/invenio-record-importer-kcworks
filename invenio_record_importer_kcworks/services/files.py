@@ -6,7 +6,6 @@
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
-import fnmatch
 import os
 import re
 import unicodedata
@@ -738,9 +737,7 @@ class FilesHelper:
                         # The 'key' field contains the full filename with extension
                         file_key = v.get("key", k)
                         file_item = [
-                            f
-                            for f in files
-                            if f.filename.split("/")[-1] == file_key
+                            f for f in files if f.filename.split("/")[-1] == file_key
                         ][0]
                         binary_file_data = file_item.stream
                     except IndexError:

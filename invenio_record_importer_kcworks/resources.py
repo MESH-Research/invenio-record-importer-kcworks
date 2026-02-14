@@ -1,6 +1,7 @@
 import json
 import mimetypes
 import zipfile
+from tempfile import SpooledTemporaryFile
 
 import marshmallow as ma
 from flask import current_app as app
@@ -13,7 +14,6 @@ from flask_resources.resources import route
 from flask_resources.responses import ResponseHandler
 from flask_resources.serializers.json import JSONSerializer
 from invenio_records_resources.services.errors import PermissionDeniedError
-from tempfile import SpooledTemporaryFile
 from werkzeug.datastructures import ImmutableMultiDict
 from werkzeug.exceptions import (
     BadRequest,
