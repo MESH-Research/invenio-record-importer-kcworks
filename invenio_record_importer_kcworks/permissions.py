@@ -1,7 +1,8 @@
 from invenio_communities.generators import (
     CommunityCurators,
+    CommunityMembers,
     CommunityOwners,
-    IfPolicyClosed,
+    ReviewPolicy,
 )
 from invenio_records_permissions.generators import (
     SystemProcess,
@@ -13,9 +14,10 @@ class RecordImporterPermissionPolicy(BasePermissionPolicy):
     """Permission policy for record importer."""
 
     can_import_records = [
-        IfPolicyClosed(
-            "review_policy",
-            then_=[CommunityOwners(), SystemProcess()],
-            else_=[CommunityCurators(), SystemProcess()],
+        ReviewPolicy(
+            closed_=[CommunityOwners()],
+            open_=[CommunityCurators()],
+            members_=[CommunityMembers()],
         ),
+        SystemProcess(),
     ]

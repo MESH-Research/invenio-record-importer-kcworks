@@ -35,8 +35,7 @@ jobs:
 
     - name: Setup dependencies for standalone installation
       run: |
-        chmod +x scripts/use-nested-dependencies.sh
-        ./scripts/use-nested-dependencies.sh
+        python scripts/use_nested_dependencies.py
 
     - name: Install dependencies
       run: |

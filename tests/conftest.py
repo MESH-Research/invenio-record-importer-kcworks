@@ -27,12 +27,11 @@ from invenio_queues import current_queues
 from invenio_rdm_records.proxies import current_rdm_records
 from invenio_records_resources.proxies import current_service_registry
 from invenio_search.proxies import current_search_client
+from marshmallow import Schema, fields
 
 from .fixtures.custom_fields import test_config_fields
 from .fixtures.identifiers import test_config_identifiers
-from .fixtures.saml import test_config_saml
 from .fixtures.stats import test_config_stats
-from .fixtures.users import CustomUserProfileSchema
 
 pytest_plugins = (
     "celery.contrib.pytest",
@@ -73,7 +72,6 @@ test_config = {
     **test_config_identifiers,
     **test_config_fields,
     **test_config_stats,
-    **test_config_saml,
     "SQLALCHEMY_DATABASE_URI": (
         "postgresql+psycopg2://invenio:invenio@localhost:5432/invenio"
     ),
@@ -148,6 +146,21 @@ test_config["SITE_UI_URL"] = os.environ.get(
 
 # OAI Server configuration
 test_config["OAISERVER_ID_PREFIX"] = test_config["SITE_UI_URL"]
+
+
+class CustomUserProfileSchema(Schema):
+    """The default user profile schema."""
+
+    full_name = fields.String()
+    affiliations = fields.String()
+    name_parts = fields.String()
+    name_parts_local = fields.String()
+    identifier_email = fields.String()
+    identifier_orcid = fields.String()
+    identifier_kc_username = fields.String()
+    identifier_other = fields.String()
+    unread_notifications = fields.String()
+
 
 # custom user profile
 test_config["ACCOUNTS_USER_PROFILE_SCHEMA"] = CustomUserProfileSchema
