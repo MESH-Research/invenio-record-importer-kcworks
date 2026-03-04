@@ -517,21 +517,6 @@ class FilesHelper:
 
         elif len(files_to_upload) > 0:
             app.logger.info("uploading new files...")
-            # FIXME: Below is an implementation detail for the CORE
-            # migration that should be removed when we use this method
-            # for all imports.
-            if not source_filepaths and not files:
-                first_file = next(iter(files_to_upload))
-                try:
-                    source_filepaths = {
-                        first_file: metadata["custom_fields"]["hclegacy:file_location"]
-                    }
-                except KeyError:
-                    raise FileUploadError(
-                        "No binary file data or source filepaths provided "
-                        f"to upload files for {metadata['id']}"
-                    )
-
             # If we're updating a draft of a published record, we need to
             # unlock the published record files before we can upload new
             # files.
