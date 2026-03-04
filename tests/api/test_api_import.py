@@ -123,7 +123,8 @@ class BaseImportLoaderTest:
     ):
         """Check the assigned owners of the result."""
         owners = (
-            test_metadata.metadata_in.get("parent", {})
+            test_metadata.metadata_in
+            .get("parent", {})
             .get("access", {})
             .get("owned_by")
         )
@@ -303,7 +304,8 @@ class BaseImportLoaderTest:
         self.modify_metadata(test_metadata)
 
         for u in (
-            test_metadata.metadata_in.get("parent", {})
+            test_metadata.metadata_in
+            .get("parent", {})
             .get("access", {})
             .get("owned_by", [])
         ):
@@ -546,7 +548,8 @@ class BaseImportLoaderWithFilesTest(BaseImportLoaderTest):
             ]
         })
         for u in (
-            test_metadata.metadata_in.get("parent", {})
+            test_metadata.metadata_in
+            .get("parent", {})
             .get("access", {})
             .get("owned_by", [])
         ):
@@ -1068,7 +1071,6 @@ class BaseImportServiceTest:
 
         assert actual.get("errors") == []
 
-        # comparing file list separately from file entries in metadata
         self._check_response_files(actual.get("files"), record_files)
 
         # add ids and checksums from actual file entries to the expected

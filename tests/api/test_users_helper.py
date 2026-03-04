@@ -17,7 +17,7 @@ from invenio_record_importer_kcworks.services.users import UsersHelper
 @pytest.mark.parametrize(
     "email_in,source_username,full_name,new_user_flag",
     [
-        ("myaddress3@somedomain.edu", "myuser", "My User", True),
+        ("myaddress3@somedomain.edu", "newuser", "My User", True),
         ("scottia4@msu.edu", "ianscott", "Ian Scott", False),
     ],
 )
@@ -42,6 +42,5 @@ def test_create_invenio_user(
         full_name=full_name,
         idp="knowledgeCommons",
     )
-    print(actual_user)
     assert re.match(r"\d+", str(actual_user["user"].id))
     assert actual_user["new_user"] == new_user_flag
