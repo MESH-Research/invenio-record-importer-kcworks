@@ -8,7 +8,6 @@
 
 import json
 import os
-from traceback import print_exc
 
 import arrow
 import requests
@@ -23,6 +22,9 @@ from invenio_rdm_records.proxies import current_rdm_records_service as records_s
 
 from invenio_record_importer_kcworks.services.communities import CommunityRecordHelper
 from invenio_record_importer_kcworks.tasks import send_security_email
+from invenio_remote_user_data_kcworks.utils import CILogonHelpers
+from invenio_remote_user_data_kcworks.client import APIResponse, Profile, UserDataAPIClient
+from invenio_remote_user_data_kcworks.services.service import RemoteUserDataService
 
 
 class UsersHelper:
@@ -41,50 +43,6 @@ class UsersHelper:
         ]
         assert len(admin_role_holders) > 0  # should be at least one admin
         return admin_role_holders
-
-    @staticmethod
-    def get_user_by_source_id(
-        source_id: str, record_source: str = "knowledgeCommons"
-    ) -> dict[str, str]:
-        """Get a user by their source id.
-
-        Note that this method depends on the invenio_remote_user_data module
-        being installed and configured. The record_source parameter should
-        correspond to the name of a remote api in the
-        REMOTE_USER_DATA_API_ENDPOINTS config variable.
-
-        :param source_id: The id of the user on the source service from which
-            the record is coming (e.g. '1234')
-        :param record_source: The name of the source service from which the
-            record is coming (e.g. 'knowledgeCommons')
-
-        :returns: A dictionary containing the user data
-        """
-        endpoint_config = app.config.get("REMOTE_USER_DATA_API_ENDPOINTS", {})[
-            record_source
-        ]["users"]
-
-        remote_api_token = os.environ[endpoint_config["token_env_variable_label"]]
-        api_url = f"{endpoint_config['remote_endpoint']}/{source_id}"
-        headers = {"Authorization": f"Bearer {remote_api_token}"}
-        response = requests.request(
-            endpoint_config["remote_method"],
-            url=api_url,
-            headers=headers,
-            verify=False,
-            timeout=10,
-        )
-        if response.status_code != 200:
-            app.logger.error(f"Error fetching user data from remote API: {api_url}")
-            app.logger.error("Response status code: " + str(response.status_code))
-        try:
-            app.logger.debug(response.json())
-            return response.json()
-        except requests.exceptions.JSONDecodeError:
-            app.logger.error(
-                "JSONDecodeError: User group data API response was not JSON:"
-            )
-            return {}
 
     def send_welcome_email(
         self,
@@ -148,11 +106,11 @@ class UsersHelper:
         ----------
         user_email : str
             The email address for the new user account
-        source_username : str
+        idp_username : str
             The username of the new user in the source service
         full_name : str
             The full name for the new user account
-        record_source : str
+        idp: str
             The name of the source service for the new user account
             if the user's login will be handled by a SAML identity provider
         community_owner : list
@@ -181,23 +139,33 @@ class UsersHelper:
         idps = app.config.get("OAUTHCLIENT_REMOTE_APPS")
         if not idps or idp not in idps.keys():
             app.logger.warning(
-                f"During user creation, record_source {idp} not found in SSO_SAML_IDPS"
+                f"During user creation, record_source {idp} not found in "
+                "OAUTHCLIENT_REMOTE_APPS"
             )
 
         remote_service = idp
         if idp in app.config.get("KC_REMOTE_IDPS"):
             remote_service = "knowledgeCommons"
 
-        if idp_username and idp and not user_email:
-            email = UsersHelper.get_user_by_source_id(idp_username, idp).get("email")
-            if not email:
-                raise RuntimeError(
-                    "No email address found in source data for user. Cannot "
-                    "create user."
-                )
-            user_email = email
+        existing_user = None
+        if idp_username or user_email or orcid:
+            existing_user = CILogonHelpers.get_user_from_account_info({
+                "user": {
+                    "email": user_email,
+                    "profile": {
+                        "identifier_orcid": orcid,
+                        "identifier_kc_username": idp_username,
+                    },
+                },
+                "external_method": idp,
+            })
 
-        existing_user = current_accounts.datastore.get_user_by_email(user_email)
+        if not user_email and not existing_user:
+            raise RuntimeError(
+                "No email address found in source data for user. Cannot "
+                "create user."
+            )
+
         if existing_user:
             app.logger.info(f"    found existing user {existing_user.id}...")
             new_user_flag = False
@@ -213,7 +181,7 @@ class UsersHelper:
                 "user_profile": profile,
             }
             if idp and idp_username:
-                info_args["username"] = f"{remote_service}-{idp_username}"
+                info_args["username"] = idp_username
             new_user = current_accounts.datastore.create_user(**info_args)
             current_accounts.datastore.commit()
             assert new_user.id
@@ -229,13 +197,14 @@ class UsersHelper:
                 new_user_flag = True
                 app.logger.info(f"    confirmed new user, id {user_id}...")
             else:
-                app.logger.error(f"    failed to create user {user_email}...")
-                print_exc()
+                app.logger.error("Failed to create user %s", user_email, exc_info=True)
             active_user = user_confirmed
 
         new_profile = active_user.user_profile
         if full_name:
             new_profile["full_name"] = full_name
+        if idp_username:
+            new_profile["identifier_kc_username"] = idp_username
         if orcid:
             new_profile["identifier_orcid"] = orcid
         if other_user_ids:
@@ -244,46 +213,16 @@ class UsersHelper:
         current_accounts.datastore.commit()
 
         if idp and idp_username:
-            existing_connection = UserIdentity.query.filter_by(
-                id_user=active_user.id,
-                method=idp,
-                id=idp_username,
-            ).one_or_none()
-
-            if not existing_connection:
-                try:
-                    UserIdentity.create(active_user, idp, idp_username)
-                    db.session.commit()  # type: ignore
-                    app.logger.info(
-                        f"    configured login for {user_email} as"
-                        f" {idp_username} on {idp}..."
-                    )
-                    assert UserIdentity.query.filter_by(
-                        id_user=active_user.id,
-                        method=idp,
-                        id=idp_username,
-                    ).one_or_none()
-
-                    app.logger.info(active_user.external_identifiers)
-                    assert any([
-                        a
-                        for a in active_user.external_identifiers
-                        if a.method == idp
-                        and a.id == idp_username
-                        and a.id_user == active_user.id
-                    ])
-                except AlreadyLinkedError as e:
-                    if idp_username in str(e):
-                        app.logger.warning(
-                            f"    login already configured for"
-                            f" {idp_username} on {idp}..."
-                        )
-                    else:
-                        raise e
-            else:
-                app.logger.info(
-                    f"   found existing login for {user_email},"
-                    f" {existing_connection.method}, {existing_connection.id}..."
+            remote_data: APIResponse | None = UserDataAPIClient.fetch_user_profile(
+                kc_username=idp_username, use_sub_endpoint=True
+            )
+            sub = None
+            if remote_data and remote_data.data and len(remote_data.data) > 0:
+                sub = remote_data.data[0].sub
+            if sub:
+                CILogonHelpers.link_user_to_oauth_identifier(active_user, idp, sub)
+                RemoteUserDataService.update_user_from_remote(
+                    system_identity, active_user.id, idp, sub, remote_data=remote_data
                 )
 
         communities_owned = []
