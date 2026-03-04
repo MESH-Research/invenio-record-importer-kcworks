@@ -19,15 +19,15 @@ sample_metadata_thesis_pdf = {
                 "set_entry=000001&format=999"
             )
         },
-        "thesis:university": "Universidad Nacional Autónoma de México (UNAM)",
+        "thesis:thesis": {
+            "university": "Universidad Nacional Autónoma de México (UNAM)"
+        },
     },
     "files": {
         "enabled": True,
         "entries": {
             "system-dynamics-growth-distribution-and-financialization.pdf": {  # noqa: E501
-                "key": (
-                    "system-dynamics-growth-distribution-and-financ" "ialization.pdf"
-                ),
+                "key": ("system-dynamics-growth-distribution-and-financialization.pdf"),
                 "mimetype": "application/pdf",
                 "size": "17181",
             }

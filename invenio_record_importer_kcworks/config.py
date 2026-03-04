@@ -182,7 +182,7 @@ class ConfigVariables:
                     "access": {
                         "visibility": "restricted",
                         "member_policy": "closed",
-                        "record_policy": "closed",
+                        "record_submission_policy": "closed",
                         # "owned_by": [{"user": ""}]
                     },
                     "slug": "up",

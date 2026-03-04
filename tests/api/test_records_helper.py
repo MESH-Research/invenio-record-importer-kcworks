@@ -145,6 +145,9 @@ from tests.helpers.sample_records import (
                             "affiliations": [
                                 {
                                     "id": "cern",
+                                    "identifiers": [
+                                        {"identifier": "01ggx4157", "scheme": "ror"}
+                                    ],
                                     "name": ("CERN"),
                                 }
                             ],
@@ -167,6 +170,7 @@ from tests.helpers.sample_records import (
                 "id": "4gqj3-d0z12",
                 "created": "2023-05-30T18:57:05.271354+00:00",
                 "expires_at": "2023-05-30 18:57:05.271380",
+                "internal_notes": [],
                 "files": {
                     "enabled": True,
                     "order": [],
@@ -335,11 +339,13 @@ def test_create_invenio_record(
             f"{TESTING_SERVER_DOMAIN}/api/iiif/draft:###/sequence/default"
         ),
         "versions": f"{TESTING_SERVER_DOMAIN}/api/records/###/versions",
+        "preview_html": f"{TESTING_SERVER_DOMAIN}/records/###?preview=1",
     }
     actual_doi = ""
     if "doi" in actual_record["links"].keys():
         actual_doi = actual_record["pids"]["doi"]["identifier"]
-        links["doi"] = "https://handle.stage.datacite.org/$$$"
+        links["doi"] = "https://handle.test.datacite.org/$$$"
+        links["self_doi"] = "https://handle.test.datacite.org/$$$"
     for label, link in actual_record["links"].items():
         assert link == links[label].replace("###", actual_id).replace("$$$", actual_doi)
 

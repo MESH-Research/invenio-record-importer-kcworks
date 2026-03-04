@@ -74,7 +74,7 @@ class CommunityRecordHelper:
         pass
 
     @staticmethod
-    def set_record_policy(community_id: str, record_policy: str):
+    def set_record_submission_policy(community_id: str, record_submission_policy: str):
         """Set the record policy for a community.
 
         If the record policy is set to 'closed', members of the community
@@ -83,7 +83,7 @@ class CommunityRecordHelper:
 
         Params:
             community_id: str: The id of the community to update
-            record_policy: str: The new record policy to set. Must be one of
+            record_submission_policy: str: The new record policy to set. Must be one of
                                 'open' or 'closed'
 
         Raises:
@@ -95,11 +95,11 @@ class CommunityRecordHelper:
         record_data = current_communities.service.read(
             system_identity, community_id
         ).to_dict()
-        record_data["access"]["record_policy"] = record_policy
+        record_data["access"]["record_submission_policy"] = record_submission_policy
         updated = current_communities.service.update(
             system_identity, community_id, data=record_data
         )
-        assert updated["access"]["record_policy"] == record_policy
+        assert updated["access"]["record_submission_policy"] == record_submission_policy
         return True
 
     @staticmethod
@@ -395,7 +395,7 @@ class CommunitiesHelper:
         my_community_data["access"] = {
             "visibility": "public",
             "member_policy": "closed",
-            "record_policy": "closed",
+            "record_submission_policy": "closed",
             "review_policy": "closed",
             # "owned_by": [{"user": ""}]
         }
