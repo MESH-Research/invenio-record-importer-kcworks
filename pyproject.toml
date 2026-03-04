@@ -241,6 +241,16 @@ output-dir = "translations/"
 input-file = "translations/messages.pot"
 output-dir = "translations/"
 
+[tool.pylsp.plugins.jedi]
+extra_paths = [
+  "../../..",  # kcworks (site/)
+  "../invenio-communities",
+  "../invenio-group-collections-kcworks",
+  "../invenio-rdm-records",
+  "../invenio-remote-user-data-kcworks",
+  "../invenio-stats-dashboard",
+]
+
 [tool.pylsp-mypy]
 enabled = true
 live_mode = true
