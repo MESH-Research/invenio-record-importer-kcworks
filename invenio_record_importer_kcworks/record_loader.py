@@ -426,7 +426,8 @@ class RecordLoader:
                 f"result.record_created in loader: {pformat(result.record_created)}"
             )
             validation_errors = (
-                result.record_created["record_data"]
+                result
+                .record_created["record_data"]
                 .get("metadata", {})
                 .get("errors", [])
             )
@@ -1080,7 +1081,8 @@ class RecordLoader:
             "record_data", {}
         ).get("id")
         result.log_object["doi"] = (
-            result.record_created.get("record_data", {})
+            result.record_created
+            .get("record_data", {})
             .get("pids", {})
             .get("doi", {})
             .get("identifier", "")
@@ -1239,14 +1241,26 @@ class RecordLoader:
             skip, overrides = self._get_overrides(record_metadata)
             rec_log_object = self._get_log_object(current_record_index, record_metadata)
             # Match files by checking both the entry dictionary keys and the 'key' field
-            # within each entry, since the dictionary key may not include the file extension
+            # within each entry, since the dictionary key may not include the file extension.
+            # Order current_files to match the metadata entries order so that the record's
+            # file order is determined by the metadata, not the order in which files were
+            # sent (e.g. multipart form data order can differ from metadata order).
             entries = record_metadata.get("files", {}).get("entries", {})
             entry_keys = set(entries.keys())
             entry_key_values = {entry.get("key", key) for key, entry in entries.items()}
             all_possible_keys = entry_keys | entry_key_values
-            current_files = [
-                f for f in files if f.filename.split("/")[-1] in all_possible_keys
-            ]
+            # Build a list of (basename, FileData) for quick lookup; basename from path
+            files_by_basename = {}
+            for f in files:
+                basename = f.filename.split("/")[-1]
+                if basename in all_possible_keys:
+                    files_by_basename[basename] = f
+            current_files = []
+            for key in entries:
+                file_key = entries[key].get("key", key)
+                basename = file_key.split("/")[-1] if "/" in file_key else file_key
+                if basename in files_by_basename:
+                    current_files.append(files_by_basename[basename])
 
             try:
                 result = LoaderResult(
@@ -1340,7 +1354,8 @@ class RecordLoader:
                 item_index=r.index,
                 record_id=r.record_created.get("record_data", {}).get("id", ""),
                 source_id=r.source_id,
-                record_url=r.record_created.get("record_data", {})
+                record_url=r.record_created
+                .get("record_data", {})
                 .get("links", {})
                 .get("self_html", ""),
                 metadata=r.record_created.get("record_data", {}),
@@ -1355,7 +1370,8 @@ class RecordLoader:
                 item_index=r.index,
                 record_id=r.record_created.get("record_data", {}).get("id", ""),
                 source_id=r.source_id,
-                record_url=r.record_created.get("record_data", {})
+                record_url=r.record_created
+                .get("record_data", {})
                 .get("links", {})
                 .get("self_html", ""),
                 metadata=r.record_created.get("record_data", {}),

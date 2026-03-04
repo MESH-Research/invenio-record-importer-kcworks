@@ -5,7 +5,7 @@ from tempfile import SpooledTemporaryFile
 
 import marshmallow as ma
 from flask import current_app as app
-from flask import g, jsonify
+from flask import g, jsonify, Response
 from flask_resources import Resource, ResourceConfig
 from flask_resources.config import from_conf
 from flask_resources.context import resource_requestctx
@@ -335,7 +335,9 @@ class RecordImporterResource(Resource):
         )
         app.logger.debug(f"in resource import_result: {import_result.get('status')}")
         if import_result.get("status") == "success":
-            return jsonify(import_result), 201
+            return Response(
+                json.dumps(import_result, sort_keys=False), mimetype="application/json"
+            ), 201
         elif import_result.get("status") == "multi_status" and not all_or_none:
             return jsonify(import_result), 207
         else:
