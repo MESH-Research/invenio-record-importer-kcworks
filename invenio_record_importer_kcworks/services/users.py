@@ -34,12 +34,11 @@ class UsersHelper:
 
     @staticmethod
     def get_admins():
-        """Get all users with the role of 'admin'."""
-        admin_role = current_accounts.datastore.find_role_by_id("admin")
-        admin_role_holders = [
-            u for u in current_accounts.datastore.find_role(admin_role.name).users
-        ]
-        assert len(admin_role_holders) > 0  # should be at least one admin
+        """Get all users with the role of 'administration'."""
+        admin_role = current_accounts.datastore.find_role("administration")
+        assert admin_role is not None  # administration role must exist
+        admin_role_holders = [u for u in admin_role.users]
+        assert len(admin_role_holders) > 0  # should be at least one administration role holder
         return admin_role_holders
 
     @staticmethod
