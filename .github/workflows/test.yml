@@ -10,24 +10,25 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     services:
       docker:
         image: docker:24.0.5
         options: --privileged
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       with:
         submodules: true
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69 # v5.6.0
       with:
         python-version: '3.12'
 
     - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/install.sh | sh
+      uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
 
     - name: Install TOML parsing dependencies
       run: |
@@ -43,7 +44,7 @@ jobs:
         uv sync --all-extras
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      uses: docker/setup-buildx-action@8d2750c # v3.12.0
 
     - name: Set up Docker Compose
       run: |
@@ -53,4 +54,4 @@ jobs:
     # Test runner includes taking down the docker compose stack
     - name: Run tests
       run: |
-        pipenv run ./run-tests.sh
+        bash ./run-tests.sh
