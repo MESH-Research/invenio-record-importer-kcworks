@@ -5,7 +5,7 @@
 #
 # Pre-install script: modifies pyproject.toml to use GitHub source for peer
 # dependencies if the peer directories don't exist. Allows the package to work
-# both in kcworks-next (sibling peers) and standalone in CI (git sources).
+# both in knowledge-commons-works (sibling peers) and standalone in CI (git sources).
 #
 # Usage: python scripts/use_nested_dependencies.py
 
@@ -29,17 +29,21 @@ PYPROJECT_TOML = PROJECT_ROOT / "pyproject.toml"
 # Sibling paths (for monorepo); when missing we switch to git
 # kcworks is at ../../../../../knowledge-commons-works from this package root
 PEERS = {
-    "kcworks": PROJECT_ROOT / ".." / ".." / ".." / ".." / ".." / "knowledge-commons-works",
+    "kcworks": PROJECT_ROOT / ".." / ".." / ".." / "..",
     "invenio-communities": PROJECT_ROOT / ".." / "invenio-communities",
-    "invenio-group-collections-kcworks": PROJECT_ROOT / ".." / "invenio-group-collections-kcworks",
-    "invenio-remote-user-data-kcworks": PROJECT_ROOT / ".." / "invenio-remote-user-data-kcworks",
+    "invenio-group-collections-kcworks": PROJECT_ROOT
+    / ".."
+    / "invenio-group-collections-kcworks",
+    "invenio-remote-user-data-kcworks": PROJECT_ROOT
+    / ".."
+    / "invenio-remote-user-data-kcworks",
     "invenio-stats-dashboard": PROJECT_ROOT / ".." / "invenio-stats-dashboard",
 }
 
 GIT_SOURCES = {
     "kcworks": {
         "git": "https://github.com/MESH-Research/knowledge-commons-works.git",
-        "branch": "main",
+        "branch": "dev/next",
     },
     "invenio-communities": {
         "git": "https://github.com/MESH-Research/invenio-communities.git",
@@ -47,11 +51,11 @@ GIT_SOURCES = {
     },
     "invenio-group-collections-kcworks": {
         "git": "https://github.com/MESH-Research/invenio-group-collections-kcworks.git",
-        "branch": "main",
+        "branch": "dev/next",
     },
     "invenio-remote-user-data-kcworks": {
         "git": "https://github.com/MESH-Research/invenio-remote-user-data-kcworks.git",
-        "branch": "main",
+        "branch": "dev/next",
     },
     "invenio-stats-dashboard": {
         "git": "https://github.com/MESH-Research/invenio-stats-dashboard.git",
@@ -88,7 +92,9 @@ def main() -> None:
     with open(PYPROJECT_TOML, "wb") as f:
         tomli_w.dump(data, f)
 
-    print("Successfully updated pyproject.toml to use GitHub sources for peer dependencies")
+    print(
+        "Successfully updated pyproject.toml to use GitHub sources for peer dependencies"
+    )
 
 
 if __name__ == "__main__":
