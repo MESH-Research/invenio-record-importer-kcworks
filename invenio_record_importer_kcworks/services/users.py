@@ -22,7 +22,7 @@ from invenio_rdm_records.proxies import current_rdm_records_service as records_s
 
 from invenio_record_importer_kcworks.services.communities import CommunityRecordHelper
 from invenio_record_importer_kcworks.tasks import send_security_email
-from invenio_remote_user_data_kcworks.utils import CILogonHelpers
+from invenio_remote_user_data_kcworks.utils.auth import CILogonHelpers
 from invenio_remote_user_data_kcworks.client import APIResponse, Profile, UserDataAPIClient
 from invenio_remote_user_data_kcworks.services.service import RemoteUserDataService
 
