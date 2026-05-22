@@ -16,14 +16,17 @@ from pathlib import Path
 from pprint import pformat
 from traceback import format_exc, print_exc
 from typing import TypedDict
+from uuid import UUID
 
 import arrow
 import jsonlines
 from flask import current_app as app
 from invenio_access.permissions import system_identity
+from invenio_db import db
 from invenio_drafts_resources.resources.records.errors import DraftNotCreatedError
 from invenio_pidstore.errors import PIDDoesNotExistError
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
+from invenio_rdm_records.records.models import RDMParentMetadata
 from invenio_records_resources.services.uow import (
     UnitOfWork,
     unit_of_work,
@@ -57,6 +60,29 @@ from invenio_record_importer_kcworks.types import (
 from invenio_record_importer_kcworks.utils.utils import (
     replace_value_in_nested_dict,
 )
+
+
+def _strip_exported_parent_id_if_absent(parent: dict) -> None:
+    """Drop ``parent['id']`` when it is not a row in ``rdm_parents_metadata``.
+
+    Export/API payloads reuse the internal parent UUID. If that UUID is absent
+    in this database, passing it into ``records_service.create`` makes
+    ``ParentField`` skip creating a parent while the draft still references the
+    id, causing an FK violation. When the row exists locally, keep ``id``.
+
+    Args:
+        parent: Parent payload (mutated in place).
+    """
+    raw_id = parent.get("id")
+    if raw_id is None:
+        return
+    try:
+        uid = UUID(str(raw_id))
+    except (TypeError, ValueError):
+        parent.pop("id", None)
+        return
+    if db.session.get(RDMParentMetadata, uid) is None:
+        parent.pop("id", None)
 
 
 class RecordListsDict(TypedDict):
@@ -368,12 +394,21 @@ class RecordLoader:
         result.submitted["files"] = copy.deepcopy(import_data["files"])
 
         created_timestamp_override = import_data.get("created", None)
+        # Exported/API payloads often include parent.id (internal UUID). If that
+        # parent row is not in this DB, passing it into records_service.create
+        # causes an FK violation on rdm_parents_metadata; strip only then.
+        parent_src = import_data.get("parent", {})
+        if parent_src:
+            parent_for_submit = copy.deepcopy(parent_src)
+            _strip_exported_parent_id_if_absent(parent_for_submit)
+        else:
+            parent_for_submit = {}
         submitted_data = {
             "access": import_data.get("access", {}),
             "custom_fields": import_data.get("custom_fields", {}),
             "metadata": import_data["metadata"],
             "pids": import_data.get("pids", {}),
-            "parent": import_data.get("parent", {}),
+            "parent": parent_for_submit,
         }
         result.submitted["data"] = submitted_data
 
