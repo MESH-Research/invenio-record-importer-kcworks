@@ -338,7 +338,6 @@ def test_create_invenio_community(
     app,
     db,
     admin,
-    community_type_v,
     search_clear,
 ):
     """Test CommunitiesHelper.create_invenio_community method."""

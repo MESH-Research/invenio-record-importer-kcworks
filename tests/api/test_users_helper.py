@@ -12,6 +12,7 @@ import re
 import pytest
 
 from invenio_record_importer_kcworks.services.users import UsersHelper
+from tests.fixtures.idms import minimal_api_response
 
 
 @pytest.mark.parametrize(
@@ -27,6 +28,7 @@ def test_create_invenio_user(
     db,
     search_clear,
     user_factory,
+    requests_mock,
     email_in,
     source_username,
     full_name,
@@ -36,6 +38,22 @@ def test_create_invenio_user(
     if not new_user_flag:
         preexisting_user = user_factory(email=email_in).user
         assert preexisting_user.id
+
+    # Stub the Profiles `subs/{kc_username}/` endpoint so the helper's
+    # remote-user lookup resolves to a known sub for this username.
+    base_url = app.config["IDMS_BASE_API_URL"]
+    profile_sub = f"http://cilogon.org/test/users/{source_username}"
+    response = minimal_api_response(
+        profile_sub,
+        username=source_username,
+        email=email_in,
+        name=full_name,
+    )
+    requests_mock.get(
+        f"{base_url}subs/{source_username}/",
+        json=response.model_dump(mode="json"),
+    )
+
     actual_user = UsersHelper().create_invenio_user(
         user_email=email_in,
         idp_username=source_username,

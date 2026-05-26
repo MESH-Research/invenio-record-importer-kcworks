@@ -22,9 +22,10 @@ from invenio_rdm_records.proxies import current_rdm_records_service as records_s
 
 from invenio_record_importer_kcworks.services.communities import CommunityRecordHelper
 from invenio_record_importer_kcworks.tasks import send_security_email
-from invenio_remote_user_data_kcworks.utils.auth import CILogonHelpers
 from invenio_remote_user_data_kcworks.client import APIResponse, Profile, UserDataAPIClient
 from invenio_remote_user_data_kcworks.services.service import RemoteUserDataService
+from invenio_remote_user_data_kcworks.types.auth import AccountInfo
+from invenio_remote_user_data_kcworks.utils.auth import CILogonHelpers
 
 
 class UsersHelper:
@@ -146,18 +147,37 @@ class UsersHelper:
         if idp in app.config.get("KC_REMOTE_IDPS"):
             remote_service = "knowledgeCommons"
 
+        # Resolve any existing user before creating a new one. Use separated
+        # lookup paths so we only call ``get_user_from_account_info`` (which
+        # requires a real external sub) when the remote Profiles fetch
+        # actually returns one. For purely local inputs (orcid, email) we
+        # call the per-attribute helpers directly.
         existing_user = None
-        if idp_username or user_email or orcid:
-            existing_user = CILogonHelpers.get_user_from_account_info({
-                "user": {
-                    "email": user_email,
-                    "profile": {
-                        "identifier_orcid": orcid,
-                        "identifier_kc_username": idp_username,
-                    },
-                },
-                "external_method": idp,
-            })
+        remote_data: APIResponse | None = None
+        if idp and idp_username:
+            remote_data = UserDataAPIClient.fetch_user_profile(
+                kc_username=idp_username, use_sub_endpoint=True
+            )
+            if (
+                isinstance(remote_data, APIResponse)
+                and remote_data.data
+                and remote_data.data[0].sub
+            ):
+                sub_data = remote_data.data[0]
+                account_info = AccountInfo(
+                    external_id=sub_data.sub,
+                    external_method=idp,
+                    email=user_email or sub_data.profile.email,
+                    orcid=orcid or sub_data.profile.orcid,
+                    kc_username=idp_username,
+                )
+                existing_user = CILogonHelpers.get_user_from_account_info(
+                    account_info
+                )
+        if existing_user is None and orcid:
+            existing_user = CILogonHelpers._try_get_user_by_orcid(orcid)
+        if existing_user is None and user_email:
+            existing_user = CILogonHelpers._try_get_user_by_email(user_email)
 
         if not user_email and not existing_user:
             raise RuntimeError(
@@ -211,13 +231,10 @@ class UsersHelper:
         active_user.user_profile = new_profile
         current_accounts.datastore.commit()
 
-        if idp and idp_username:
-            remote_data: APIResponse | None = UserDataAPIClient.fetch_user_profile(
-                kc_username=idp_username, use_sub_endpoint=True
-            )
-            sub = None
-            if remote_data and remote_data.data and len(remote_data.data) > 0:
-                sub = remote_data.data[0].sub
+        # Reuse the Profiles fetch already performed during user lookup; only
+        # link/update when we actually got a sub back.
+        if idp and idp_username and remote_data and remote_data.data:
+            sub = remote_data.data[0].sub
             if sub:
                 CILogonHelpers.link_user_to_oauth_identifier(active_user, idp, sub)
                 RemoteUserDataService.update_user_from_remote(
