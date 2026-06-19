@@ -58,6 +58,16 @@ if [[ ${NEEDS_UPDATE} -eq 0 ]]; then
     exit 0
 fi
 
+# Peers are absent (standalone/CI): point the submodules at their nested
+# <module>/dependencies/<dep> paths so they check out inside this repo.
+GITMODULES="${PROJECT_ROOT}/.gitmodules"
+MODULE_DIR="invenio_record_importer_kcworks/dependencies"
+for dep in invenio-rdm-records invenio-communities invenio-records-resources; do
+    name="${MODULE_DIR}/${dep}"
+    git config -f "${GITMODULES}" "submodule.${name}.path" "${MODULE_DIR}/${dep}"
+    echo "Set submodule '${name}' path -> ${MODULE_DIR}/${dep}"
+done
+
 echo "Updating pyproject.toml to use GitHub sources for missing peer dependencies"
 
 # Use Python to modify the TOML file properly
