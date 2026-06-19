@@ -203,7 +203,7 @@ from tests.helpers.sample_records import (
     ],
 )
 def test_create_invenio_record(
-    app,
+    running_app,
     db,
     nested_unit_of_work,
     monkeypatch,
@@ -226,6 +226,7 @@ def test_create_invenio_record(
     expected_json,
 ):
     """Test RecordsHelper.create_invenio_record method."""
+    app = running_app.app
     TESTING_SERVER_DOMAIN = app.config.get("SITE_UI_URL")
     monkeypatch.setattr(
         "invenio_records_resources.services.uow.UnitOfWork", nested_unit_of_work
