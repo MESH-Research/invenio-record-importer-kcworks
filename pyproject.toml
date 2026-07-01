@@ -92,6 +92,7 @@ entry-points."invenio_celery.tasks".invenio-record-importer-kcworks = "invenio_r
 # CI script will modify other entries as needed (e.g. GitHub source).
 kcworks = { path = "../../../..", editable = true }
 invenio-communities = { path = "../invenio-communities", editable = true }
+invenio-rdm-records = { path = "../invenio-rdm-records", editable = true }
 invenio-group-collections-kcworks = { path = "../invenio-group-collections-kcworks", editable = true }
 invenio-remote-user-data-kcworks = { path = "../invenio-remote-user-data-kcworks", editable = true }
 invenio-stats-dashboard = { path = "../invenio-stats-dashboard", editable = true }

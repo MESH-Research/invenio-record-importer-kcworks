@@ -31,6 +31,7 @@ PYPROJECT_TOML = PROJECT_ROOT / "pyproject.toml"
 PEERS = {
     "kcworks": PROJECT_ROOT / ".." / ".." / ".." / "..",
     "invenio-communities": PROJECT_ROOT / ".." / "invenio-communities",
+    "invenio-rdm-records": PROJECT_ROOT / ".." / "invenio-rdm-records",
     "invenio-group-collections-kcworks": PROJECT_ROOT
     / ".."
     / "invenio-group-collections-kcworks",
@@ -47,6 +48,10 @@ GIT_SOURCES = {
     },
     "invenio-communities": {
         "git": "https://github.com/MESH-Research/invenio-communities.git",
+        "branch": "local-working",
+    },
+    "invenio-rdm-records": {
+        "git": "https://github.com/MESH-Research/invenio-rdm-records.git",
         "branch": "local-working",
     },
     "invenio-group-collections-kcworks": {
