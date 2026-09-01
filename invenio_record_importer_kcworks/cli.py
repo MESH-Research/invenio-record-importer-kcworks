@@ -128,8 +128,8 @@ def _extract_community_id_from_first_record(
     is_flag=True,
     default=False,
     help=(
-        "If True, do not update existing records where a record with the same"
-        " DOI already exists."
+        "If set, do not update existing records that match by DOI or configured "
+        "source id when metadata differs. Default is to allow updates."
     ),
 )
 @click.option(

@@ -334,7 +334,13 @@ def compare_metadata(A: dict, B: dict) -> dict:
             app.logger.debug("comparing access")
             app.logger.debug(A.get("access", {}))
             app.logger.debug(B["access"])
-        same_access = deep_compare(A.get("access", {}), B["access"])
+        # Only compare fields supplied by the incoming record so system-
+        # enriched keys (e.g. embargo, status) do not count as diffs.
+        access_a = A.get("access", {})
+        access_b = B["access"]
+        same_access = all(
+            deep_compare(access_a.get(k), v) for k, v in access_b.items()
+        )
         app.logger.debug(same_access)
         if not same_access:
             output["A"]["access"] = A.get("access", {})
@@ -342,9 +348,13 @@ def compare_metadata(A: dict, B: dict) -> dict:
 
     if "pids" in B.keys():
         pids_diff: dict[str, dict] = {"A": {}, "B": {}}
-        if B["pids"]["doi"] != A["pids"]["doi"]:
-            pids_diff["A"] = {"doi": A["pids"]["doi"]}
-            pids_diff["B"] = {"doi": B["pids"]["doi"]}
+        doi_a = A.get("pids", {}).get("doi")
+        doi_b = B.get("pids", {}).get("doi")
+        if doi_a != doi_b:
+            if doi_a is not None:
+                pids_diff["A"]["doi"] = doi_a
+            if doi_b is not None:
+                pids_diff["B"]["doi"] = doi_b
         if pids_diff["A"] or pids_diff["B"]:
             output["A"]["pids"] = pids_diff["A"]
             output["B"]["pids"] = pids_diff["B"]

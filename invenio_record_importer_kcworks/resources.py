@@ -267,6 +267,10 @@ class RecordImporterResource(Resource):
         - all_or_none(bool): Whether to import all records or none.
         - notify_record_owners(bool): Whether to send email notifications to users
           identified as record owners.
+        - no_updates(bool): When True, refuse to update existing matched records
+          whose metadata differs. Default False (updates allowed).
+        - id_scheme(str): Primary source identifier scheme for dedupe.
+        - alternate_id_scheme(str): Optional secondary source identifier scheme.
         """
         community_id = resource_requestctx.view_args.get("community")
         file_data = resource_requestctx.data["files"]
@@ -282,7 +286,7 @@ class RecordImporterResource(Resource):
                 "Did you submit a single metadata object not enclosed in an array?"
             )
 
-        id_scheme = resource_requestctx.data["form"].get("id_scheme", "neh-recid")
+        id_scheme = resource_requestctx.data["form"].get("id_scheme", "import-recid")
         alternate_id_scheme = resource_requestctx.data["form"].get(
             "alternate_id_scheme", ""
         )
@@ -297,6 +301,9 @@ class RecordImporterResource(Resource):
         )
         notify_record_owners = bool_from_string(
             resource_requestctx.data["form"].get("notify_record_owners", False)
+        )
+        no_updates = bool_from_string(
+            resource_requestctx.data["form"].get("no_updates", False)
         )
 
         processed_files = []
@@ -331,6 +338,7 @@ class RecordImporterResource(Resource):
             review_required=review_required,
             strict_validation=strict_validation,
             all_or_none=all_or_none,
+            no_updates=no_updates,
             notify_record_owners=notify_record_owners,
         )
         app.logger.debug(f"in resource import_result: {import_result.get('status')}")

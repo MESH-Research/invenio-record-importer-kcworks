@@ -123,8 +123,7 @@ class BaseImportLoaderTest:
     ):
         """Check the assigned owners of the result."""
         owners = (
-            test_metadata.metadata_in
-            .get("parent", {})
+            test_metadata.metadata_in.get("parent", {})
             .get("access", {})
             .get("owned_by")
         )
@@ -291,21 +290,27 @@ class BaseImportLoaderTest:
         community_record = minimal_community_factory(owner=user_id, slug="neh")
         community = community_record.to_dict()
 
+        # Metadata-only import: strip sample file entries before the fixture
+        # sees them. With-files coverage lives in BaseImportLoaderWithFilesTest.
+        metadata_in = copy.deepcopy(self.metadata_source)
+        metadata_in["files"] = {"enabled": False}
+
         test_metadata = record_metadata(
-            metadata_in=self.metadata_source,
+            metadata_in=metadata_in,
             community_list=[community],
             owner_id=user_id,
         )
-        test_metadata.update_metadata({
-            "metadata|identifiers": [
-                {"identifier": "1234567890", "scheme": "import-recid"}
-            ]
-        })
+        test_metadata.update_metadata(
+            {
+                "metadata|identifiers": [
+                    {"identifier": "1234567890", "scheme": "import-recid"}
+                ]
+            }
+        )
         self.modify_metadata(test_metadata)
 
         for u in (
-            test_metadata.metadata_in
-            .get("parent", {})
+            test_metadata.metadata_in.get("parent", {})
             .get("access", {})
             .get("owned_by", [])
         ):
@@ -415,12 +420,14 @@ class TestImportLoaderJArticleErrorIDScheme(BaseImportLoaderErrorTest):
         return copy.deepcopy(sample_metadata_journal_article_pdf)
 
     def modify_metadata(self, test_metadata: TestRecordMetadata):  # noqa: D102
-        test_metadata.update_metadata({
-            "metadata|identifiers": [
-                {"identifier": "hc:33383", "scheme": "my-made-up-scheme"},
-                {"identifier": "1234567890", "scheme": "import-recid"},
-            ]
-        })
+        test_metadata.update_metadata(
+            {
+                "metadata|identifiers": [
+                    {"identifier": "hc:33383", "scheme": "my-made-up-scheme"},
+                    {"identifier": "1234567890", "scheme": "import-recid"},
+                ]
+            }
+        )
 
     def check_result_errors(self, result: LoaderResult):  # noqa: D102
         assert result.errors == [
@@ -542,14 +549,15 @@ class BaseImportLoaderWithFilesTest(BaseImportLoaderTest):
             owner_id=user_id,
             file_entries=file_entries,
         )
-        test_metadata.update_metadata({
-            "metadata|identifiers": [
-                {"identifier": "hc:33383", "scheme": "import-recid"}
-            ]
-        })
+        test_metadata.update_metadata(
+            {
+                "metadata|identifiers": [
+                    {"identifier": "hc:33383", "scheme": "import-recid"}
+                ]
+            }
+        )
         for u in (
-            test_metadata.metadata_in
-            .get("parent", {})
+            test_metadata.metadata_in.get("parent", {})
             .get("access", {})
             .get("owned_by", [])
         ):
@@ -1156,9 +1164,9 @@ class BaseImportServiceTest:
                 f"{self.app.config['SITE_API_URL']}/import/{community['slug']}",
                 content_type="multipart/form-data",
                 data={
-                    "metadata": json.dumps([
-                        copy.deepcopy(m.metadata_in) for m in metadata_source_objects
-                    ]),
+                    "metadata": json.dumps(
+                        [copy.deepcopy(m.metadata_in) for m in metadata_source_objects]
+                    ),
                     "id_scheme": "import-recid",
                     "review_required": "true",
                     "strict_validation": "true",
@@ -1230,14 +1238,16 @@ class BaseImportServiceTest:
                 file_entries=file_entries,
             )
 
-            test_metadata.update_metadata({
-                "metadata|identifiers": [
-                    {
-                        "identifier": f"1234567890{str(idx)}",
-                        "scheme": "import-recid",
-                    }
-                ]
-            })
+            test_metadata.update_metadata(
+                {
+                    "metadata|identifiers": [
+                        {
+                            "identifier": f"1234567890{str(idx)}",
+                            "scheme": "import-recid",
+                        }
+                    ]
+                }
+            )
             metadata_source_objects.append(test_metadata)
 
         if self.by_api and submitter_token:

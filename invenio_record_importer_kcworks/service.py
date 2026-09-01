@@ -27,7 +27,7 @@ class RecordImporterService(Service):
         review_required: bool = True,
         strict_validation: bool = True,
         all_or_none: bool = True,
-        no_updates: bool = True,
+        no_updates: bool = False,
         notify_record_owners: bool = True,
         views_field: str = "",
         downloads_field: str = "",
@@ -71,7 +71,9 @@ class RecordImporterService(Service):
             the records fail. If it is `True`, no records will be imported if
             any of the records fail.
         no_updates : bool
-            Whether to skip updating existing records. Defaults to `True`.
+            When ``True``, refuse to change an existing matched record if its
+            metadata differs from the import payload. When ``False`` (default),
+            differing metadata is applied to the existing draft/record.
         notify_record_owners : bool
             Whether to notify the owners of the records of the work's creation.
             Defaults to `True`.

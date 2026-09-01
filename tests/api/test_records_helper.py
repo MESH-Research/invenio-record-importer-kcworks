@@ -6,19 +6,20 @@
 
 """Tests for RecordsHelper.create_invenio_record."""
 
-import datetime
 from copy import deepcopy
 from pprint import pprint
 
 import pytest
-import pytz
-from dateutil.parser import isoparse
 from invenio_access.permissions import system_identity
 from invenio_pidstore.errors import PIDUnregistered
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
+from invenio_rdm_records.records.api import RDMDraft
+from invenio_search.proxies import current_search_client
 
+from invenio_record_importer_kcworks.errors import NoUpdates
 from invenio_record_importer_kcworks.services.records import RecordsHelper
-from invenio_record_importer_kcworks.utils import generate_random_string, valid_date
+from invenio_record_importer_kcworks.utils import generate_random_string
+from tests.fixtures.records import TestRecordMetadata
 from tests.helpers.sample_records import (
     rec583,
     rec11451,
@@ -37,177 +38,75 @@ from tests.helpers.sample_records import (
 
 
 @pytest.mark.parametrize(
-    "json_payload,expected_status_code,expected_json",
+    "json_payload",
     [
-        (
-            {
-                "access": {"record": "public", "files": "public"},
-                "custom_fields": {},
-                "pids": {},
-                "files": {"enabled": True},
-                "metadata": {
-                    "creators": [
-                        {
-                            "person_or_org": {
-                                "family_name": "Brown",
-                                "given_name": "Troy",
-                                "type": "personal",
-                            },
-                            "role": {
-                                "id": "author",
-                                "title": {"en": "Author"},
-                            },
+        {
+            "access": {"record": "public", "files": "public"},
+            "custom_fields": {},
+            "pids": {},
+            "files": {"enabled": True},
+            "metadata": {
+                "creators": [
+                    {
+                        "person_or_org": {
+                            "family_name": "Brown",
+                            "given_name": "Troy",
+                            "type": "personal",
                         },
-                        {
-                            "person_or_org": {
-                                "family_name": "Collins",
-                                "given_name": "Thomas",
-                                "identifiers": [
-                                    {
-                                        "scheme": "orcid",
-                                        "identifier": "0000-0002-1825-0097",
-                                    }
-                                ],
-                                "name": "Collins, Thomas",
-                                "type": "personal",
-                            },
-                            "affiliations": [{"id": "cern", "name": "Entity One"}],
-                            "role": {
-                                "id": "author",
-                                "title": {"en": "Author"},
-                            },
+                        "role": {
+                            "id": "author",
+                            "title": {"en": "Author"},
                         },
-                        {
-                            "person_or_org": {
-                                "name": "Troy Inc.",
-                                "type": "organizational",
-                            }
-                        },
-                    ],
-                    "publication_date": "2020-06-01",
-                    "publisher": "MESH Research",
-                    "resource_type": {"id": "image-photograph"},
-                    "title": "A Romans story",
-                },
-            },
-            201,
-            {
-                "updated": "2023-05-30T18:57:05.296257+00:00",
-                "parent": {
-                    "communities": {},
-                    "id": "###",
-                    "access": {"links": [], "owned_by": [{"user": "3"}]},
-                },
-                "revision_id": 4,
-                "is_draft": True,
-                "custom_fields": {},
-                "pids": {},
-                "is_published": False,
-                "media_files": {
-                    "enabled": False,
-                    "order": [],
-                    "count": 0,
-                    "entries": {},
-                    "total_bytes": 0,
-                },
-                "metadata": {
-                    "title": "A Romans story",
-                    "creators": [
-                        {
-                            "person_or_org": {
-                                "name": "Brown, Troy",
-                                "given_name": "Troy",
-                                "family_name": "Brown",
-                                "type": "personal",
-                            },
-                            "role": {
-                                "id": "author",
-                                "title": {"en": "Author"},
-                            },
-                        },
-                        {
-                            "person_or_org": {
-                                "family_name": "Collins",
-                                "given_name": "Thomas",
-                                "identifiers": [
-                                    {
-                                        "scheme": "orcid",
-                                        "identifier": "0000-0002-1825-0097",
-                                    }
-                                ],
-                                "name": "Collins, Thomas",
-                                "type": "personal",
-                            },
-                            "role": {
-                                "id": "author",
-                                "title": {"en": "Author"},
-                            },
-                            "affiliations": [
+                    },
+                    {
+                        "person_or_org": {
+                            "family_name": "Collins",
+                            "given_name": "Thomas",
+                            "identifiers": [
                                 {
-                                    "id": "cern",
-                                    "identifiers": [
-                                        {"identifier": "01ggx4157", "scheme": "ror"}
-                                    ],
-                                    "name": ("CERN"),
+                                    "scheme": "orcid",
+                                    "identifier": "0000-0002-1825-0097",
                                 }
                             ],
+                            "name": "Collins, Thomas",
+                            "type": "personal",
                         },
-                        {
-                            "person_or_org": {
-                                "name": "Troy Inc.",
-                                "type": "organizational",
-                            }
+                        "affiliations": [{"id": "cern", "name": "Entity One"}],
+                        "role": {
+                            "id": "author",
+                            "title": {"en": "Author"},
                         },
-                    ],
-                    "publication_date": "2020-06-01",
-                    "publisher": "MESH Research",
-                    "resource_type": {
-                        "id": "image-photograph",
-                        "title": {"en": "Photo"},
                     },
-                },
-                "status": "draft",
-                "id": "4gqj3-d0z12",
-                "created": "2023-05-30T18:57:05.271354+00:00",
-                "expires_at": "2023-05-30 18:57:05.271380",
-                "internal_notes": [],
-                "files": {
-                    "enabled": True,
-                    "order": [],
-                    "count": 0,
-                    "entries": {},
-                    "total_bytes": 0,
-                },
-                "versions": {
-                    "is_latest_draft": True,
-                    "index": 1,
-                    "is_latest": False,
-                },
-                "access": {
-                    "files": "public",
-                    "embargo": {"active": False, "reason": None},
-                    "record": "public",
-                    "status": "metadata-only",
-                },
+                    {
+                        "person_or_org": {
+                            "name": "Troy Inc.",
+                            "type": "organizational",
+                        }
+                    },
+                ],
+                "publication_date": "2020-06-01",
+                "publisher": "MESH Research",
+                "resource_type": {"id": "image-photograph"},
+                "title": "A Romans story",
             },
-        ),
-        (rec42615["input"], 201, rec42615["expected_loaded"]),
-        (rec22625["input"], 201, rec22625["expected_loaded"]),
-        (rec45177["input"], 201, rec45177["expected_loaded"]),
-        (rec44881["input"], 201, rec44881["expected_loaded"]),
-        (rec22647["input"], 201, rec22647["expected_loaded"]),
-        (rec11451["input"], 201, rec11451["expected_loaded"]),
-        (rec34031["input"], 201, rec34031["expected_loaded"]),
-        (rec16079["input"], 201, rec16079["expected_loaded"]),
-        (rec33383["input"], 201, rec33383["expected_loaded"]),
-        (rec38367["input"], 201, rec38367["expected_loaded"]),
-        (rec48799["input"], 201, rec48799["expected_loaded"]),
-        (rec583["input"], 201, rec583["expected_loaded"]),
-        (rec28491["input"], 201, rec28491["expected_loaded"]),
+        },
+        rec42615["input"],
+        rec22625["input"],
+        rec45177["input"],
+        rec44881["input"],
+        rec22647["input"],
+        rec11451["input"],
+        rec34031["input"],
+        rec16079["input"],
+        rec33383["input"],
+        rec38367["input"],
+        rec48799["input"],
+        rec583["input"],
+        rec28491["input"],
     ],
 )
 def test_create_invenio_record(
-    app,
+    running_app,
     db,
     nested_unit_of_work,
     monkeypatch,
@@ -216,37 +115,39 @@ def test_create_invenio_record(
     location,
     admin,
     json_payload,
-    expected_status_code,
-    expected_json,
+    search_clear,
+    reindex_resource_types,
 ):
-    """Test RecordsHelper.create_invenio_record method."""
-    TESTING_SERVER_DOMAIN = app.config.get("SITE_UI_URL")
+    """Test RecordsHelper.create_invenio_record method.
+
+    Shape checks use ``TestRecordMetadata.compare_draft`` built only from the
+    create input (no ``expected_loaded`` dumps). Vocabulary expansions on
+    metadata are tolerated by the fixture helpers.
+    """
+    app = running_app.app
     monkeypatch.setattr(
         "invenio_records_resources.services.uow.UnitOfWork", nested_unit_of_work
     )
 
-    # fix because can't create duplicate dois
-    if "doi" in json_payload["pids"].keys():
+    # Avoid duplicate DOI collisions across parametrized cases.
+    if "doi" in json_payload.get("pids", {}):
         random_doi = json_payload["pids"]["doi"]["identifier"].split("-")[0]
         random_doi = f"{random_doi}-{generate_random_string(5)}"
         json_payload["pids"]["doi"]["identifier"] = random_doi
-        expected_json["pids"]["doi"]["identifier"] = random_doi
 
-    # prepare json to use for record creation
+    # Input for create: strip parent owners from samples; force files enabled
+    # with no uploads (this test does not attach binaries).
     json_payload = {
-        "custom_fields": deepcopy(json_payload["custom_fields"]),
+        "custom_fields": deepcopy(json_payload.get("custom_fields", {})),
         "metadata": deepcopy(json_payload["metadata"]),
-        "pids": json_payload["pids"],
+        "pids": deepcopy(json_payload.get("pids", {})),
+        "access": {"record": "public", "files": "public"},
+        "files": {"enabled": True},
     }
-    json_payload["access"] = {"record": "public", "files": "public"}
-    json_payload["files"] = {"enabled": True}
 
-    # prepare expected json for output (some differences from input)
-    # REMEMBER: normalized here to simulate normalized output with
-    # odd input
-    expected_json = deepcopy(expected_json)
+    # create_invenio_record uses system_identity → owned_by is system.
+    test_metadata = TestRecordMetadata(metadata_in=json_payload, app=app, owner_id=None)
 
-    # Create record and sanitize the result to ease comparison
     records_helper = RecordsHelper()
     actual = records_helper.create_invenio_record(
         json_payload,
@@ -255,125 +156,155 @@ def test_create_invenio_record(
     actual_record = actual["record_data"]
     actual_id = actual_record["id"]
 
-    # Test response content
-    simple_fields = [
-        f
-        for f in actual_record.keys()
-        if f
-        not in [
-            "links",
-            "parent",
-            "id",
-            "created",
-            "updated",
-            "versions",
-            "expires_at",
-            "is_draft",
-            "access",
-            "files",
-            "status",
-            "revision_id",
-            "is_published",
-        ]
-    ]
-    for s in simple_fields:
-        print(actual_record[s])
-        if s == "errors":
-            print("errors*****")
-            pprint(actual_record[s])
-        else:
-            assert actual_record[s] == expected_json[s]
-    assert actual_record["versions"] == {
-        "is_latest_draft": True,
-        "index": 1,
-        "is_latest": False,
-    }
-    assert actual_record["is_draft"] is True
-    assert actual_record["access"] == {
-        "files": "public",
-        "embargo": {"active": False, "reason": None},
-        "record": "public",
-        "status": "metadata-only",
-    }
-    assert actual_record["status"] == "draft"
+    test_metadata.compare_draft(actual_record)
+
+    # revision_id is intentionally skipped by compare_draft
     assert isinstance(actual_record["revision_id"], int)
-    assert actual_record["is_published"] is False
 
-    links = {
-        "access": f"{TESTING_SERVER_DOMAIN}/api/records/###/access",
-        "access_grants": (f"{TESTING_SERVER_DOMAIN}/api/records/###/access/grants"),
-        "access_groups": (f"{TESTING_SERVER_DOMAIN}/api/records/###/access/groups"),
-        "access_links": (f"{TESTING_SERVER_DOMAIN}/api/records/###/access/links"),
-        "access_request": (f"{TESTING_SERVER_DOMAIN}/api/records/###/access/request"),
-        "access_users": (f"{TESTING_SERVER_DOMAIN}/api/records/###/access/users"),
-        "archive": (f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/files-archive"),
-        "archive_media": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/media-files-archive"
-        ),
-        "communities": (f"{TESTING_SERVER_DOMAIN}/api/records/###/communities"),
-        "communities-suggestions": (
-            f"{TESTING_SERVER_DOMAIN}/api/records/###/communities-suggestions"
-        ),
-        "files": (f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/files"),
-        "media_files": (f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/media-files"),
-        "publish": (f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/actions/publish"),
-        "record": f"{TESTING_SERVER_DOMAIN}/api/records/###",
-        "record_html": f"{TESTING_SERVER_DOMAIN}/records/###",
-        "requests": (f"{TESTING_SERVER_DOMAIN}/api/records/###/requests"),
-        "reserve_doi": (f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/pids/doi"),
-        "review": (f"{TESTING_SERVER_DOMAIN}/api/records/###/draft/review"),
-        "self": f"{TESTING_SERVER_DOMAIN}/api/records/###/draft",
-        "self_html": f"{TESTING_SERVER_DOMAIN}/uploads/###",
-        "self_iiif_manifest": (f"{TESTING_SERVER_DOMAIN}/api/iiif/draft:###/manifest"),
-        "self_iiif_sequence": (
-            f"{TESTING_SERVER_DOMAIN}/api/iiif/draft:###/sequence/default"
-        ),
-        "versions": f"{TESTING_SERVER_DOMAIN}/api/records/###/versions",
-        "preview_html": f"{TESTING_SERVER_DOMAIN}/records/###?preview=1",
-    }
-    actual_doi = ""
-    if "doi" in actual_record["links"].keys():
-        actual_doi = actual_record["pids"]["doi"]["identifier"]
-        links["doi"] = "https://handle.test.datacite.org/$$$"
-        links["self_doi"] = "https://handle.test.datacite.org/$$$"
-    for label, link in actual_record["links"].items():
-        assert link == links[label].replace("###", actual_id).replace("$$$", actual_doi)
-
-    assert actual_record["files"] == {
-        "enabled": True,
-        "entries": {},
-        "count": 0,
-        "order": [],
-        "total_bytes": 0,
-    }
-    assert valid_date(actual_record["created"])
-    assert isoparse(actual_record["created"]) - pytz.utc.localize(
-        datetime.datetime.utcnow()
-    ) <= datetime.timedelta(seconds=60)
-    assert valid_date(actual_record["updated"])
-    assert isoparse(actual_record["updated"]) - pytz.utc.localize(
-        datetime.datetime.utcnow()
-    ) <= datetime.timedelta(seconds=60)
-    print("ACTUAL &&&&")
-    pprint(actual_record)
-
-    # Confirm the record is retrievable
+    # Confirm the record is retrievable via search (not covered by compare_draft)
     with pytest.raises(PIDUnregistered):
         records_service.read(system_identity, actual_id)
+    RDMDraft.index.refresh()
+    current_search_client.indices.refresh(index="*rdm*")
     confirm_created = records_service.search_drafts(
         system_identity, q=f'id:"{actual_id}"'
     ).to_dict()
-    pprint(actual_id)
-    pprint(confirm_created)
-    print("Confirming record was created...")
+    assert confirm_created["hits"]["total"] >= 1
 
-    # Clean up created record from live db
     deleted = records_helper.delete_invenio_record(actual_id)
     assert deleted is True
 
-    # Confirm it no longer exists
+    RDMDraft.index.refresh()
+    current_search_client.indices.refresh(index="*rdm*")
     confirm_deleted = records_service.search_drafts(
         system_identity, q=f'id:"{actual_id}"'
     ).to_dict()
     pprint(confirm_deleted)
     assert confirm_deleted["hits"]["total"] == 0
+
+
+def _minimal_import_recid_payload(import_recid: str, title: str = "Import recid test"):
+    """Build a minimal draft payload with import-recid and no DOI.
+
+    Returns:
+        dict: Record metadata payload suitable for ``create_invenio_record``.
+    """
+    return {
+        "access": {"record": "public", "files": "public"},
+        "custom_fields": {},
+        "pids": {},
+        "files": {"enabled": False},
+        "metadata": {
+            "creators": [
+                {
+                    "person_or_org": {
+                        "family_name": "Doe",
+                        "given_name": "Jane",
+                        "type": "personal",
+                        "name": "Doe, Jane",
+                    },
+                    "role": {"id": "author"},
+                }
+            ],
+            "publication_date": "2024-01-01",
+            "publisher": "MESH Research",
+            "resource_type": {"id": "image-photograph"},
+            "title": title,
+            "identifiers": [
+                {"scheme": "import-recid", "identifier": import_recid},
+            ],
+        },
+    }
+
+
+def test_source_ids_from_metadata_and_record_has_identifier():
+    """Unit helpers extract and match configured source identifiers."""
+    metadata = {
+        "metadata": {
+            "identifiers": [
+                {"scheme": "doi", "identifier": "10.1/xyz"},
+                {"scheme": "import-recid", "identifier": "src-1"},
+            ]
+        }
+    }
+    assert RecordsHelper._source_ids_from_metadata(
+        metadata, ["import-recid", "neh-recid"]
+    ) == [("import-recid", "src-1")]
+    assert RecordsHelper._source_ids_from_metadata(metadata, ["neh-recid"]) == []
+    assert RecordsHelper._record_has_identifier(metadata, "import-recid", "src-1")
+    assert not RecordsHelper._record_has_identifier(metadata, "import-recid", "other")
+
+
+def test_create_invenio_record_reuses_existing_by_import_recid(
+    app,
+    db,
+    nested_unit_of_work,
+    monkeypatch,
+    create_records_custom_fields,
+    create_communities_custom_fields,
+    location,
+    admin,
+    search_clear,
+    resource_type_v,
+    creators_role_v,
+):
+    """Second create with the same import-recid reuses the draft (no duplicate)."""
+    monkeypatch.setattr(
+        "invenio_records_resources.services.uow.UnitOfWork", nested_unit_of_work
+    )
+    import_recid = f"test-import-{generate_random_string(8)}"
+    payload = _minimal_import_recid_payload(import_recid)
+    helper = RecordsHelper()
+
+    first = helper.create_invenio_record(payload, no_updates=True)
+    assert first["status"] == "new_record"
+    first_id = first["record_data"]["id"]
+
+    RDMDraft.index.refresh()
+    current_search_client.indices.refresh(index="*rdm*")
+
+    second = helper.create_invenio_record(deepcopy(payload), no_updates=True)
+    assert second["status"] == "unchanged_existing_draft"
+    assert second["record_data"]["id"] == first_id
+
+    helper.delete_invenio_record(first_id)
+
+
+def test_create_invenio_record_no_updates_raises_on_import_recid_change(
+    app,
+    db,
+    nested_unit_of_work,
+    monkeypatch,
+    create_records_custom_fields,
+    create_communities_custom_fields,
+    location,
+    admin,
+    search_clear,
+    resource_type_v,
+    creators_role_v,
+):
+    """Changed metadata with same import-recid raises NoUpdates when flagged."""
+    monkeypatch.setattr(
+        "invenio_records_resources.services.uow.UnitOfWork", nested_unit_of_work
+    )
+    import_recid = f"test-import-{generate_random_string(8)}"
+    payload = _minimal_import_recid_payload(import_recid, title="Original title")
+    helper = RecordsHelper()
+
+    first = helper.create_invenio_record(payload, no_updates=True)
+    first_id = first["record_data"]["id"]
+
+    RDMDraft.index.refresh()
+    current_search_client.indices.refresh(index="*rdm*")
+
+    changed = deepcopy(payload)
+    changed["metadata"]["title"] = "Updated title"
+    with pytest.raises(NoUpdates):
+        helper.create_invenio_record(changed, no_updates=True)
+
+    updated = helper.create_invenio_record(changed, no_updates=False)
+    assert updated["status"] in ("updated_draft", "unchanged_existing_draft")
+    assert updated["record_data"]["id"] == first_id
+    assert updated["record_data"]["metadata"]["title"] == "Updated title"
+
+    helper.delete_invenio_record(first_id)

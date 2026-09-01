@@ -455,7 +455,14 @@ class RecordLoader:
             app.logger.info("    finding or creating draft metadata record...")
             app.logger.debug(f"    submitted_data: {pformat(submitted_data)}")
             result.record_created = RecordsHelper().create_invenio_record(
-                submitted_data, no_updates, created_timestamp_override
+                submitted_data,
+                no_updates,
+                created_timestamp_override,
+                source_id_schemes=[
+                    s
+                    for s in (self.sourceid_scheme, self.sourceid_scheme2)
+                    if s
+                ],
             )
             app.logger.error(
                 f"result.record_created in loader: {pformat(result.record_created)}"
@@ -1189,7 +1196,8 @@ class RecordLoader:
                 source jsonl file (inclusive)
             nonconsecutive (list): a list of nonconsecutive indices to load
                 from the source jsonl file
-            no_updates (bool): whether to update existing records
+            no_updates (bool): when True, refuse to change an existing matched
+                record if metadata differs. Default False (updates allowed).
             use_sourceids (bool): whether to use ids from the record source's
                 id system for identification of records to load
             retry_failed (bool): whether to retry failed records from a prior
