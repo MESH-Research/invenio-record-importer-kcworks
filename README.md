@@ -482,21 +482,21 @@ Remember to run the test suite locally before pushing changes to ensure all test
 
 ### Versioning
 
-This project uses [bumpversion](https://github.com/peritus/bumpversion) to manage versioning. The version is stored in the `pyproject.toml` file and is updated automatically when a new release is made.
+This project uses [bump-my-version](https://github.com/callowayproject/bump-my-version)
+(pinned as `bump-my-version==1.5.1`) to update version strings. Configuration lives in
+`pyproject.toml` under `[tool.bumpversion]`.
 
-For example, to update the version numbers for a new 'patch' release, from 0.2.20 to 0.2.21, run the following command:
-
-```bash
-pipenv run bumpver update --patch
-```
-
-To update the tag number, from 'alpha6' to 'alpha7', run the following command:
+For example, to preview a patch bump:
 
 ```bash
-pipenv run bumpver update --tag
+uv run bump-my-version bump --dry-run --verbose patch
 ```
 
-This will update the version throughout this project's files, create a new commit, and tag the commit with the new version.
+To apply a patch bump (updates files only; commit/tag are off by default):
+
+```bash
+uv run bump-my-version bump patch
+```
 
 ## Copyright
 

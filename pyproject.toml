@@ -60,7 +60,7 @@ dependencies = [
   "validators",
 ]
 
-optional-dependencies.dev = ["bumpver", "check-manifest", "ipykernel"]
+optional-dependencies.dev = ["bump-my-version==1.5.1", "check-manifest", "ipykernel"]
 optional-dependencies.test = [
   "coverage",
   "mypy>=1.8",
@@ -263,20 +263,36 @@ overrides = [
   "--no-error-summary",
 ]
 
-[tool.bumpver]
+[tool.bumpversion]
 current_version = "0.4.0"
-version_pattern = "MAJOR.MINOR.PATCH[-TAGNUM]"
-commit_message = "bump version {old_version} -> {new_version}"
-tag_message = "{new_version}"
-tag_scope = "default"
-pre_commit_hook = ""
-post_commit_hook = ""
+parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)"
+serialize = ["{major}.{minor}.{patch}"]
+search = "{current_version}"
+replace = "{new_version}"
 commit = false
 tag = false
-push = false
+allow_shell_hooks = false
+message = "Bump version: {current_version} → {new_version}"
 
-[tool.bumpver.file_patterns]
-"pyproject.toml" = ['version = "{version}"', 'current_version = "{version}"']
-"README.md" = ["Version {version}"]
-"VERSION" = ['^"{version}"']
-"invenio_record_importer_kcworks/__init__.py" = ['^__version__ = "{version}"']
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+key_path = "project.version"
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+key_path = "tool.bumpversion.current_version"
+
+[[tool.bumpversion.files]]
+filename = "README.md"
+search = "Version {current_version}"
+replace = "Version {new_version}"
+
+[[tool.bumpversion.files]]
+filename = "VERSION"
+search = '"{current_version}"'
+replace = '"{new_version}"'
+
+[[tool.bumpversion.files]]
+filename = "invenio_record_importer_kcworks/__init__.py"
+search = '__version__ = "{current_version}"'
+replace = '__version__ = "{new_version}"'
