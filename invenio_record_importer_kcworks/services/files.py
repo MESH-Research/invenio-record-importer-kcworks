@@ -6,6 +6,8 @@
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
+"""File upload and attachment helpers for imports."""
+
 import os
 import re
 import unicodedata
@@ -68,7 +70,7 @@ class FilesHelper:
             list: A list of file paths with the filenames sanitized.
         """
         changed = []
-        for path, dirs, files in os.walk(directory):
+        for path, _dirs, files in os.walk(directory):
             for filename in files:
                 file_path = os.path.join(path, filename)
                 sanitized_name = FilesHelper.sanitize_filename(filename)
@@ -81,7 +83,11 @@ class FilesHelper:
     def sanitize_all_filenames(
         self, files_to_upload: dict[str, dict], files: list[FileData]
     ) -> dict[str, dict]:
-        """Sanitize filenames in metadata and file objects."""
+        """Sanitize filenames in metadata and file objects.
+
+        Returns:
+            Description of the return value.
+        """
         sanitized_files_to_upload = {}
         filename_mapping = {}  # old_key -> sanitized_key
 
@@ -175,6 +181,11 @@ class FilesHelper:
 
     @unit_of_work()
     def set_to_metadata_only(self, draft_id: str, uow: UnitOfWork | None = None):
+        """Set to metadata only.
+
+        Raises:
+            RuntimeError: Raised when the operation fails.
+        """
         if uow:
             try:
                 record = records_service.read(system_identity, draft_id)._record
@@ -374,9 +385,9 @@ class FilesHelper:
         self,
         metadata: dict,
         file_data: dict | list[dict],
-        files: list[FileData] = [],
-        existing_record: dict | None = {},
-        source_filepaths: dict | None = {},
+        files: list[FileData] | None = None,
+        existing_record: dict | None = None,
+        source_filepaths: dict | None = None,
         clean_filenames: bool = True,
         uow: UnitOfWork | None = None,
     ) -> dict[str, FileUploadResult]:
@@ -461,6 +472,12 @@ class FilesHelper:
             'status' (str) and 'messages' (list[str]) fields.
 
         """
+        if source_filepaths is None:
+            source_filepaths = {}
+        if existing_record is None:
+            existing_record = {}
+        if files is None:
+            files = []
         assert metadata["files"]["enabled"] is True
         if isinstance(file_data, list):
             files_to_upload = {f["key"]: f for f in file_data}
@@ -607,7 +624,7 @@ class FilesHelper:
             raise UploadFileNotFoundError(
                 f"File key from metadata {filename} not found in source "
                 f"file path {filename}"
-            )
+            ) from None
         return long_filename
 
     def _find_file_path(self, filename: str, key: str) -> Path:
@@ -635,7 +652,7 @@ class FilesHelper:
                 except AssertionError:
                     raise UploadFileNotFoundError(
                         f"    file not found for upload {file_path}..."
-                    )
+                    ) from None
         return file_path
 
     def _check_file_size(
@@ -650,7 +667,7 @@ class FilesHelper:
                 assert file_object.tell() == size  # check byte position
                 file_object.seek(0)  # seek to beginning of file
             except AssertionError:
-                raise FileUploadError(f"file size mismatch for key {key}...")
+                raise FileUploadError(f"file size mismatch for key {key}...") from None
         else:
             app.logger.warning(f"file size not provided for key {key}")
 
@@ -659,8 +676,8 @@ class FilesHelper:
         self,
         draft_id: str,
         files_dict: dict[str, dict],
-        source_filenames: dict[str, str] = {},
-        files: list[FileData] = [],
+        source_filenames: dict[str, str] | None = None,
+        files: list[FileData] | None = None,
         uow: UnitOfWork | None = None,
     ) -> dict[str, FileUploadResult]:
         """Upload files to a draft record.
@@ -678,7 +695,17 @@ class FilesHelper:
 
         :returns: A dictionary with file keys as keys. The values are FileUploadResult
             objects with 'status' (str) and 'messages' (list[str]) fields.
+
+        Returns:
+            Description of the return value.
+
+        Raises:
+            FileUploadError: Raised when the operation fails.
         """
+        if files is None:
+            files = []
+        if source_filenames is None:
+            source_filenames = {}
         output: dict[str, FileUploadResult] = {}
 
         # Ensure a draft exists for a published record
@@ -727,10 +754,10 @@ class FilesHelper:
                         binary_file_data = file_item.stream
                     except IndexError:
                         msg = f"File {k} not found in list of files."
-                        raise FileUploadError(msg)
+                        raise FileUploadError(msg) from None
                     except Exception as e:
                         msg = f"Failed to upload file {k} from list: {str(e)}."
-                        raise FileUploadError(msg)
+                        raise FileUploadError(msg) from e
 
                 # then check that the file size is correct
                 try:
@@ -742,7 +769,7 @@ class FilesHelper:
                     )
                 except AssertionError:
                     msg = f"File {k} has no binary file data."
-                    raise FileUploadError(msg)
+                    raise FileUploadError(msg) from None
 
                 # initialize the file upload
                 try:
@@ -750,9 +777,13 @@ class FilesHelper:
                         system_identity, draft_id, data=[{"key": k}]
                     ).to_dict()
                     assert (
-                        len([
-                            e["key"] for e in initialization["entries"] if e["key"] == k
-                        ])
+                        len(
+                            [
+                                e["key"]
+                                for e in initialization["entries"]
+                                if e["key"] == k
+                            ]
+                        )
                         == 1
                     )
                 except InvalidKeyError as e:
@@ -760,10 +791,10 @@ class FilesHelper:
                         f"Failed to initialize file upload. Key {k} is invalid: "
                         f"{str(e)}."
                     )
-                    raise FileUploadError(msg)
+                    raise FileUploadError(msg) from e
                 except Exception as e:
                     msg = f"Failed to initialize file upload for {k}: {str(e)}."
-                    raise FileUploadError(msg)
+                    raise FileUploadError(msg) from e
 
                 # If a draft's file upload is interrupted, occasionally the
                 # file bucket is not created.
@@ -780,7 +811,7 @@ class FilesHelper:
                     pass
                 except Exception as e:
                     msg = f"Failed to get the bucket for draft files: {str(e)}."
-                    raise FileUploadError(msg)
+                    raise FileUploadError(msg) from e
 
                 # upload the file content
                 try:
@@ -789,14 +820,14 @@ class FilesHelper:
                     )
                 except Exception as e:
                     msg = f"Failed to set file content for {k}: {str(e)}."
-                    raise FileUploadError(msg)
+                    raise FileUploadError(msg) from e
 
                 # commit the file upload
                 try:
                     self.files_service.commit_file(system_identity, draft_id, k)
                 except Exception as e:
                     msg = f"Failed to commit file upload for {k}: {str(e)}."
-                    raise FileUploadError(msg)
+                    raise FileUploadError(msg) from e
 
             except FileUploadError as e:  # catches anticipated errors for file
                 app.logger.error(e.message)
@@ -883,7 +914,8 @@ class FilesHelper:
                 for k in files_dict.keys():
                     output[k]["status"] = "failed"
                     output[k]["messages"].append(msg)
-            # except PIDDoesNotExistError:  # triggered by a lot of attempts to delete file
+            # except PIDDoesNotExistError:
+            # triggered by a lot of attempts to delete file
             #     for k in files_dict.keys():
             #         output[k][0] = "failed"
             #         output[k][1].append(
@@ -982,6 +1014,12 @@ class FilesHelper:
         Returns a tuple with two elements:
             bool: True if files are the same, False otherwise.
             list: A list of keys for files that are to be uploaded.
+
+        Returns:
+            Description of the return value.
+
+        Raises:
+            ValueError: Raised when the operation fails.
         """
         print("is_draft:", is_draft)
         same_files = True

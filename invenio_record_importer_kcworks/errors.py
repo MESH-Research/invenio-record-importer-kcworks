@@ -6,7 +6,7 @@ class CollectionDoesNotExistError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(CollectionDoesNotExistError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -15,7 +15,7 @@ class CommonsGroupServiceError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(CommonsGroupServiceError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -24,7 +24,7 @@ class DraftDeletionFailedError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(DraftDeletionFailedError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -33,7 +33,7 @@ class DraftValidationError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(DraftValidationError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -42,7 +42,7 @@ class ExistingRecordNotUpdatedError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(ExistingRecordNotUpdatedError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -51,7 +51,7 @@ class FailedCreatingUsageEventsError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(FailedCreatingUsageEventsError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -60,7 +60,7 @@ class FileUploadError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(FileUploadError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -69,7 +69,7 @@ class InvalidParametersError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(InvalidParametersError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -78,7 +78,7 @@ class MissingNewUserEmailError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(MissingNewUserEmailError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -87,7 +87,7 @@ class MissingParentMetadataError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(MissingParentMetadataError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -96,7 +96,7 @@ class MultipleActiveCollectionsError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(MultipleActiveCollectionsError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -105,7 +105,7 @@ class NoUpdates(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(NoUpdates, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -114,7 +114,7 @@ class NoAvailableRecordsError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(NoAvailableRecordsError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -123,7 +123,7 @@ class OwnershipChangeFailedError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(OwnershipChangeFailedError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -132,7 +132,7 @@ class PublicationValidationError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(PublicationValidationError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -141,7 +141,7 @@ class RestrictedRecordPublicationError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(RestrictedRecordPublicationError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -150,7 +150,7 @@ class SkipRecord(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(SkipRecord, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -159,7 +159,7 @@ class TooManyDownloadEventsError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(TooManyDownloadEventsError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -168,7 +168,7 @@ class TooManyViewEventsError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(TooManyViewEventsError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -177,7 +177,7 @@ class UpdateValidationError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(UpdateValidationError, self).__init__(message)
+        super().__init__(message)
         self.message = message
 
 
@@ -186,5 +186,5 @@ class UploadFileNotFoundError(Exception):
 
     def __init__(self, message):
         """Initialize the exception."""
-        super(UploadFileNotFoundError, self).__init__(message)
+        super().__init__(message)
         self.message = message

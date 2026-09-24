@@ -1,3 +1,5 @@
+"""Search helpers for imported usage events."""
+
 from invenio_search.proxies import current_search_client
 from invenio_search.utils import prefix_index
 from opensearchpy.helpers.search import Search
@@ -20,7 +22,11 @@ def view_events_search(recid, dt=None):
     #         }
     #     }
     # }
+    """View events search.
 
+    Returns:
+        Description of the return value.
+    """
     search = (
         Search(
             using=current_search_client,
@@ -34,7 +40,7 @@ def view_events_search(recid, dt=None):
         search = (
             Search(
                 using=current_search_client,
-                index=f"{prefix}events-stats-record-view",
+                index=prefix_index("events-stats-record-view"),
             )
             .filter({"term": {"country": "imported"}})
             .filter({"term": {"recid": recid}})
@@ -65,7 +71,11 @@ def download_events_search(file_id):
     #         }
     #     }
     # }
+    """Download events search.
 
+    Returns:
+        Description of the return value.
+    """
     search = (
         Search(
             using=current_search_client,
@@ -80,6 +90,11 @@ def download_events_search(file_id):
 
 
 def aggregations_search(record_id):
+    """Aggregations search.
+
+    Returns:
+        Description of the return value.
+    """
     views_search = Search(
         using=current_search_client,
         index=prefix_index("stats-record-view"),

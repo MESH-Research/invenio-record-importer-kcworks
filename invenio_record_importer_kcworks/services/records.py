@@ -79,7 +79,11 @@ class RecordsHelper:
         record_id: str,
         new_owners: list[User],
     ) -> Owner:
-        """Change the owner of the specified record to a new user."""
+        """Change the owner of the specified record to a new user.
+
+        Returns:
+            Description of the return value.
+        """
         app.logger.debug(f"Changing ownership of record {record_id}")
 
         record = records_service.read(id_=record_id, identity=system_identity)._record
@@ -111,6 +115,9 @@ class RecordsHelper:
         - The first list contains the users that already exist in KCWorks
         - The second list contains the supplied metadata dicts for the owners
             that do not exist in KCWorks
+
+        Returns:
+            Description of the return value.
         """
         existing_users = []
         missing_owners = []
@@ -144,9 +151,10 @@ class RecordsHelper:
                         == user_username
                     )
                     existing_user_result = db.session.execute(stmt).scalar_one_or_none()
-                    existing_user = current_accounts.datastore.get_user_by_id(
-                        existing_user_result.id
-                    )
+                    if existing_user_result is not None:
+                        existing_user = current_accounts.datastore.get_user_by_id(
+                            existing_user_result.id
+                        )
                 except NoResultFound:
                     pass
             if not existing_user:
@@ -224,6 +232,9 @@ class RecordsHelper:
             - owner_id: the ID of the user that was assigned ownership to the record
             - owner_type: the type of the user that was assigned ownership to the record
             - access_grants: a list of access grants for the record
+
+        Raises:
+            OwnershipChangeFailedError: Raised when the operation fails.
         """
         # Create/find the necessary user account
         app.logger.info("creating or finding the user (submitter)...")
@@ -357,14 +368,16 @@ class RecordsHelper:
                 grant_holder = [
                     g for g in new_grant_holders if str(g.id) == grant["subject"]["id"]
                 ][0]
-                new_grants.append({
-                    "subject": {
-                        "id": str(grant_holder.id),
-                        "type": "user",
-                        "email": grant_holder.email,
-                    },
-                    "permission": "manage",
-                })
+                new_grants.append(
+                    {
+                        "subject": {
+                            "id": str(grant_holder.id),
+                            "type": "user",
+                            "email": grant_holder.email,
+                        },
+                        "permission": "manage",
+                    }
+                )
 
                 # Add the member to the appropriate group collection
                 if collection_id:
@@ -395,6 +408,9 @@ class RecordsHelper:
 
         This is necessary for integer fields, since the metadata
         is stored as a JSON string and so all values are strings.
+
+        Returns:
+            Description of the return value.
         """
         # FIXME: Replace this with a proper loader
         if metadata["custom_fields"].get("hclegacy:total_downloads"):
@@ -415,6 +431,9 @@ class RecordsHelper:
         - 'YYYY-MM-DDTHH:mm:ssZ' (ISO 8601 with Z for UTC)
         - 'YYYY-MM-DDTHH:mm:ss.SSSSSS+00:00' (with microseconds and explicit timezone)
         - And many other common formats
+
+        Returns:
+            Description of the return value.
         """
         try:
             # Parse with arrow and convert to UTC
@@ -431,6 +450,9 @@ class RecordsHelper:
         The timestamp can be in formats:
         - 'YYYY-MM-DDTHH:mm:ssZ' (ISO 8601 with Z for UTC)
         - 'YYYY-MM-DDTHH:mm:ss.SSSSSS+00:00' (with microseconds and explicit timezone)
+
+        Returns:
+            Description of the return value.
         """
         return RecordsHelper._parse_timestamp(timestamp) is not None
 
@@ -451,7 +473,8 @@ class RecordsHelper:
             uow: Unit of work instance to register the change
 
         Returns:
-            bool: True if successful (updated or already correct), False if parsing failed
+            bool: True if successful (updated or already correct),
+                False if parsing failed
         """
         # Convert string to datetime if needed
         if isinstance(new_created_date, str):
@@ -473,7 +496,6 @@ class RecordsHelper:
         except Exception as e:
             app.logger.error(f"Failed to update record created date: {str(e)}")
             raise
-
 
     @staticmethod
     def _source_ids_from_metadata(
@@ -502,9 +524,7 @@ class RecordsHelper:
         return found
 
     @staticmethod
-    def _record_has_identifier(
-        record: dict, scheme: str, identifier: str
-    ) -> bool:
+    def _record_has_identifier(record: dict, scheme: str, identifier: str) -> bool:
         """Return True if ``record`` has the given scheme/identifier pair."""
         for item in record.get("metadata", {}).get("identifiers", []) or []:
             if (
@@ -515,9 +535,7 @@ class RecordsHelper:
                 return True
         return False
 
-    def _find_existing_by_source_id(
-        self, scheme: str, identifier: str
-    ) -> dict | None:
+    def _find_existing_by_source_id(self, scheme: str, identifier: str) -> dict | None:
         """Find a published or draft record matching a source identifier.
 
         Searches published records then drafts, verifies the scheme/identifier
@@ -525,7 +543,7 @@ class RecordsHelper:
         can be false positives), then reloads via ``read`` / ``read_draft`` so
         callers get the same full dump shape as DOI lookup (includes ``status``).
 
-        Args:
+        Parameters:
             scheme: Identifier scheme (e.g. ``import-recid``).
             identifier: Identifier value.
 
@@ -553,9 +571,7 @@ class RecordsHelper:
             published = records_service.search(system_identity, q=q)
             _extend_from_results(published._results)
         except Exception as e:
-            app.logger.error(
-                f"error checking for existing record with same {scheme}:"
-            )
+            app.logger.error(f"error checking for existing record with same {scheme}:")
             raise e
 
         try:
@@ -577,9 +593,7 @@ class RecordsHelper:
             )
 
         published_matches = [
-            c
-            for c in candidates
-            if c.get("is_published") and not c.get("is_draft")
+            c for c in candidates if c.get("is_published") and not c.get("is_draft")
         ]
         hit = (published_matches or candidates)[0]
         rec_id = hit["id"]
@@ -589,9 +603,7 @@ class RecordsHelper:
         try:
             loaded = records_service.read(system_identity, id_=rec_id).to_dict()
         except PIDUnregistered:
-            loaded = records_service.read_draft(
-                system_identity, id_=rec_id
-            ).to_dict()
+            loaded = records_service.read_draft(system_identity, id_=rec_id).to_dict()
 
         if not self._record_has_identifier(loaded, scheme, identifier):
             app.logger.warning(
@@ -611,7 +623,7 @@ class RecordsHelper:
     ) -> dict:
         """Reuse or update an existing record found by DOI or source id.
 
-        Args:
+        Parameters:
             existing_metadata: Existing published/draft record as a dict.
             metadata: Incoming import metadata.
             no_updates: When True, refuse to update if metadata differs.
@@ -625,6 +637,8 @@ class RecordsHelper:
             NoUpdates: When metadata differs and ``no_updates`` is True.
             ExistingRecordNotUpdatedError: When an update attempt still differs.
             UpdateValidationError: When draft update validation fails.
+
+            RuntimeError: Raised when the operation fails.
         """
         differences = compare_metadata(existing_metadata, metadata)
         if differences:
@@ -651,13 +665,9 @@ class RecordsHelper:
                         if val[k2] is None:
                             update_payload.setdefault(key, {}).pop(k2)
                         else:
-                            update_payload.setdefault(key, {})[k2] = (
-                                metadata[key][k2]
-                            )
+                            update_payload.setdefault(key, {})[k2] = metadata[key][k2]
             app.logger.info("updating existing record with new metadata...")
-            new_comparison = compare_metadata(
-                existing_metadata, update_payload
-            )
+            new_comparison = compare_metadata(existing_metadata, update_payload)
             if new_comparison:
                 raise ExistingRecordNotUpdatedError(
                     "    metadata still does not match migration "
@@ -695,19 +705,15 @@ class RecordsHelper:
                     update_payload["files"] = existing_metadata["files"]
                     # update_payload["files"] = metadata["files"]
                     print(
-                        f"update_payload['files']: "
-                        f"{pformat(update_payload['files'])}"
+                        f"update_payload['files']: {pformat(update_payload['files'])}"
                     )
                 # Invenio validator will reject other
                 # rights metadata values from existing records
                 if existing_metadata["metadata"].get("rights"):
                     existing_metadata["metadata"]["rights"] = [
-                        {"id": r["id"]}
-                        for r in existing_metadata["metadata"]["rights"]
+                        {"id": r["id"]} for r in existing_metadata["metadata"]["rights"]
                     ]
-                app.logger.info(
-                    "metadata updated to match migration source"
-                )
+                app.logger.info("metadata updated to match migration source")
                 try:
                     # If there is an existing draft for a
                     # published record, or an unpublished draft,
@@ -718,8 +724,7 @@ class RecordsHelper:
                         data=update_payload,
                     )
                     app.logger.info(
-                        "continuing with existing draft record"
-                        " (new metadata)..."
+                        "continuing with existing draft record (new metadata)..."
                     )
                     if not result._record.files.bucket:
                         result._record.files.create_bucket()
@@ -743,8 +748,7 @@ class RecordsHelper:
                         id_=existing_metadata["id"],
                     )
                     app.logger.info(
-                        "updating new draft of published "
-                        "record with new metadata..."
+                        "updating new draft of published record with new metadata..."
                     )
                     result = records_service.update_draft(
                         system_identity,
@@ -765,8 +769,7 @@ class RecordsHelper:
                             for e in result.to_dict()["errors"]
                             if e.get("field") != "metadata.rights.0.icon"
                             and e.get("messages") != ["Unknown field."]
-                            and "Missing uploaded files"
-                            not in e.get("messages")[0]
+                            and "Missing uploaded files" not in e.get("messages")[0]
                         ]
                         if errors:
                             raise UpdateValidationError(
@@ -775,8 +778,7 @@ class RecordsHelper:
                                 f"{pformat(errors)}"
                             ) from None
                     app.logger.info(
-                        f"updated new draft of published: "
-                        f"{pformat(result.to_dict())}"
+                        f"updated new draft of published: {pformat(result.to_dict())}"
                     )
                     return {
                         "status": "updated_published",
@@ -786,13 +788,10 @@ class RecordsHelper:
 
         if not differences:
             record_type = (
-                "draft"
-                if existing_metadata["status"] != "published"
-                else "published"
+                "draft" if existing_metadata["status"] != "published" else "published"
             )
             app.logger.info(
-                f"continuing with existing {record_type} "
-                "record (same metadata)..."
+                f"continuing with existing {record_type} record (same metadata)..."
             )
             existing_record_id = ""
             try:
@@ -816,6 +815,8 @@ class RecordsHelper:
                 "record_uuid": existing_record_id,
             }
             return result
+
+        raise RuntimeError("unreachable: reconcile did not return a status")
 
     @unit_of_work()
     def create_invenio_record(
@@ -866,6 +867,10 @@ class RecordsHelper:
             - record_data: the metadata record
             - record_uuid: the UUID of the metadata record
             - status: the status of the metadata record
+
+        Raises:
+            DraftDeletionFailedError: Raised when the operation fails.
+            PublicationValidationError: Raised when the operation fails.
         """
         metadata = RecordsHelper._coerce_types(metadata)
         app.logger.debug("metadata for new record:")
@@ -1089,7 +1094,6 @@ class RecordsHelper:
 
         Returns:
             bool: True if the record was deleted, False otherwise
-
         """
         result = None
         app.logger.info(
@@ -1144,6 +1148,12 @@ class RecordsHelper:
         """Delete the selected records from the invenioRDM instance.
 
         FIXME: Amalgamate with delete_invenio_record
+
+        Returns:
+            Description of the return value.
+
+        Raises:
+            Exception: Raised when the operation fails.
         """
         deleted_records = {}
         for record_id in record_ids:
@@ -1285,6 +1295,7 @@ class RecordsHelper:
         if new_created_date:
             # Store original date to check if it changed
             original_created = record.model.created
+            assert uow is not None
             if not RecordsHelper._update_record_created_date(
                 record, new_created_date, uow
             ):

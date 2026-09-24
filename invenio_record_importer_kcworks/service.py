@@ -1,4 +1,7 @@
+"""High-level service entry points for record import."""
+
 from pprint import pformat
+from typing import Any, cast
 
 from flask import current_app as app
 from flask_principal import Identity
@@ -19,8 +22,8 @@ class RecordImporterService(Service):
     def import_records(
         self,
         identity: Identity,
-        file_data: list[FileData] = [],
-        metadata: list[dict] = [],
+        file_data: list[FileData] | None = None,
+        metadata: list[dict] | None = None,
         community_id: str = "",
         id_scheme: str = "import-recid",
         alternate_id_scheme: str = "",
@@ -90,6 +93,10 @@ class RecordImporterService(Service):
         """
         # load_community_needs(identity)
 
+        if metadata is None:
+            metadata = []
+        if file_data is None:
+            file_data = []
         community_item = CommunitiesHelper().look_up_community(community_id)
         community = community_item._record
         self.require_permission(
@@ -102,9 +109,11 @@ class RecordImporterService(Service):
         app.logger.debug(f"Importing records with metadata: {pformat(metadata)}")
         app.logger.debug(f"Importing records with metadata: {type(metadata)}")
         app.logger.debug(f"Importing records with form: {pformat(type(file_data))}")
-        app.logger.debug(f"Importing records with file data: " f"{pformat(file_data)}")
-        app.logger.debug(f"Importing records with community id: {community_id} "
-                         f"(resolved to: {resolved_community_id})")
+        app.logger.debug(f"Importing records with file data: {pformat(file_data)}")
+        app.logger.debug(
+            f"Importing records with community id: {community_id} "
+            f"(resolved to: {resolved_community_id})"
+        )
         app.logger.debug(f"Importing records with review required: {review_required}")
         app.logger.debug(
             f"Importing records with strict validation: {strict_validation}"
@@ -112,7 +121,7 @@ class RecordImporterService(Service):
         app.logger.debug(f"Importing records with all or none: {all_or_none}")
         # user added to identity by flask_security
         import_result: APIResponsePayload = RecordLoader(
-            user_id=identity.user.id,  # type: ignore[attr-defined]
+            user_id=cast(Any, identity).user.id,
             community_id=resolved_community_id,
             views_field=views_field,
             downloads_field=downloads_field,

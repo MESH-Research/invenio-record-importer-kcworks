@@ -883,9 +883,14 @@ class BaseImportServiceTest:
         user: User,
         uploader_id: int,
     ):
-        target_roles = (
-            ["reader"] if user.id != uploader_id else ["curator", "manager", "owner"]
-        )
+        # The API submitter must keep an elevated community role. Other
+        # metadata owners are normally added as reader, but import must not
+        # demote someone who already holds a higher role (e.g. the community's
+        # founding owner when a different hidden owner submits).
+        if user.id == uploader_id:
+            target_roles = ["curator", "manager", "owner"]
+        else:
+            target_roles = ["reader", "curator", "manager", "owner"]
         matching_ids = [m for m in community_members if m.user_id == user.id]
         assert matching_ids
         assert matching_ids[0].role in target_roles
@@ -1217,6 +1222,16 @@ class BaseImportServiceTest:
         if not submitter_identity:
             submitter_identity, submitter_token = identity, u.allowed_token
 
+        # make_submitter may return a user id (API permission cases) or an
+        # Identity (service path). Prefer the actual importer for ownership
+        # assertions when a distinct submitter was configured.
+        if isinstance(submitter_identity, int):
+            importer_user_id = submitter_identity
+        elif submitter_identity is not identity:
+            importer_user_id = submitter_identity.id
+        else:
+            importer_user_id = user_id
+
         if not self.by_api:
             login_user(submitter_identity.user)  # type: ignore
 
@@ -1234,7 +1249,7 @@ class BaseImportServiceTest:
             test_metadata = TestRecordMetadataWithFiles(
                 metadata_in=metadata_source,
                 community_list=[community],
-                owner_id=u.user.id,
+                owner_id=importer_user_id,
                 file_entries=file_entries,
             )
 
@@ -1285,7 +1300,7 @@ class BaseImportServiceTest:
                 files,
                 metadata_source_objects,
                 community,
-                user_id,
+                importer_user_id,
                 mailbox,
                 mocker,
             )
@@ -1397,6 +1412,63 @@ class TestImportAPIJArticleSuccess(BaseImportServiceTest):
             copy.deepcopy(sample_metadata_journal_article_pdf),
             copy.deepcopy(sample_metadata_journal_article2_pdf),
         ]
+
+
+class TestImportAPIJArticleSuccessHiddenOwner(TestImportAPIJArticleSuccess):
+    """Import succeeds when the submitting owner's membership is hidden.
+
+    Member Visibility (``visible=False``) must not affect import permissions;
+    only the community role matters. The submitter remains a community
+    ``owner`` after import.
+    """
+
+    @property
+    def community_access_override(self):  # noqa: D102
+        # Closed review policy requires an owner to import.
+        return {"review_policy": "closed", "record_policy": "closed"}
+
+    def make_submitter(self, user_factory, community_id):
+        """Use a separate owner whose membership is not publicly listed.
+
+        Returns:
+            tuple: User id (truthy so the API path keeps this token) and
+                bearer token.
+        """
+        new_user = user_factory(
+            email="hidden-owner@example.com", token=True, oauth_id=None
+        )
+        make_community_member(
+            new_user.user.id, "owner", community_id, visible=False
+        )
+        return new_user.user.id, new_user.allowed_token
+
+    def _check_owners(
+        self,
+        actual_metadata: dict,
+        expected: TestRecordMetadataWithFiles,
+        uploader_id: str,
+        community_id: str,
+        community_slug: str,
+        mailbox,
+        mocker,
+    ):
+        """Assert metadata owners, then that the hidden submitter is still owner."""
+        super()._check_owners(
+            actual_metadata,
+            expected,
+            uploader_id,
+            community_id,
+            community_slug,
+            mailbox,
+            mocker,
+        )
+        submitter_members = [
+            m
+            for m in Member.get_members(community_id)
+            if m.user_id == int(uploader_id)
+        ]
+        assert submitter_members
+        assert submitter_members[0].role == "owner"
 
 
 class BaseInsufficientPermissionsTest(TestImportAPIJArticleSuccess):

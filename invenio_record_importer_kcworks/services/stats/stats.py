@@ -6,6 +6,8 @@
 # and/or modify it under the terms of the MIT License; see
 # LICENSE file for more details.
 
+"""Usage statistics aggregation for imported records."""
+
 import datetime
 import json
 import uuid
@@ -37,7 +39,6 @@ from invenio_record_importer_kcworks.tasks import aggregate_events
 # from invenio_rdm_records.services.tasks import reindex_stats
 
 
-
 class StatsFabricator:
     """Service for creating usage events to fit pre-existing stats for records.
 
@@ -53,8 +54,13 @@ class StatsFabricator:
         """Initialize the service."""
 
     def generate_datetimes(self, start, n, end=None):
-        """Generate evenly distributed datetimes between the record creation
-        date and the end date (or current date if not provided).
+        """Generate evenly distributed datetimes.
+
+        Distributes times between the record creation date and the end date
+        (or current date if not provided).
+
+        Returns:
+            A list of Arrow datetimes.
         """
         # Use a relatively recent start time to avoid issues with
         # creating too many monthly indices and running out of
@@ -99,9 +105,6 @@ class StatsFabricator:
             date_field (str): the dot notation field name for the record
                 creation date
             verbose (bool): whether to print debug information
-
-        Returns:
-            None
         """
         filename = Path(
             app.config["RECORD_IMPORTER_USAGE_STATS_PATH"],
@@ -122,13 +125,9 @@ class StatsFabricator:
                 )
             except TooManyViewEventsError as e:
                 app.logger.error(
-                    f"Error creating view events for record {record['id']}:"
-                    f"{e}"
+                    f"Error creating view events for record {record['id']}:{e}"
                 )
-                print(
-                    f"Error creating view events for record {record['id']}:"
-                    f"{e}"
-                )
+                print(f"Error creating view events for record {record['id']}:{e}")
 
     def fabricate_events_from_db(
         self,
@@ -139,28 +138,19 @@ class StatsFabricator:
         date_field: str = "metadata.publication_date",
         verbose: bool = False,
     ):
-        """Create statistics events for the migrated records already in the db.
-        """
+        """Create statistics events for the migrated records already in the db."""
         if record_ids:
-            record_ids = records_service.read_many(
-                system_identity, ids=record_ids
-            )
+            record_ids = records_service.read_many(system_identity, ids=record_ids)
         else:
             # NOTE: if we iterate over the generator directly, OpenSearch
             # tries to use a context pointer that expires before the request
             # can complete. It produces a "no search context found for id XXX"
             # error.
             print("Collecting all records to scan for usage stats...")
-            print(
-                "(This may take a long time since we have to scan the "
-                "whole db...)"
-            )
+            print("(This may take a long time since we have to scan the whole db...)")
+            app.logger.info("Collecting all records to scan for usage stats...")
             app.logger.info(
-                "Collecting all records to scan for usage stats..."
-            )
-            app.logger.info(
-                "(This may take a long time since we have to scan the "
-                "whole db...)"
+                "(This may take a long time since we have to scan the whole db...)"
             )
             record_ids = [
                 r["id"] for r in records_service.scan(identity=system_identity)
@@ -178,13 +168,9 @@ class StatsFabricator:
                 )
             except TooManyViewEventsError as e:
                 app.logger.error(
-                    f"Error creating view events for record {record_id}:"
-                    f"{e}"
+                    f"Error creating view events for record {record_id}:{e}"
                 )
-                print(
-                    f"Error creating view events for record {record_id}:"
-                    f"{e}"
-                )
+                print(f"Error creating view events for record {record_id}:{e}")
 
     def create_stats_events(
         self,
@@ -235,6 +221,9 @@ class StatsFabricator:
             of views and downloads, the function will print an error message
             and return False.
 
+
+        Raises:
+            FailedCreatingUsageEventsError: Raised when the operation fails.
         """
         if verbose:
             app.logger.info(f"Creating stats events for record {record_id}...")
@@ -271,9 +260,7 @@ class StatsFabricator:
             downloads = int(downloads_count)
         else:
             try:
-                downloads = int(
-                    get_field_value(metadata_record, downloads_field)
-                )
+                downloads = int(get_field_value(metadata_record, downloads_field))
                 if downloads in [None, ""]:
                     downloads = 0
             except (KeyError, ValueError, TypeError):
@@ -290,9 +277,7 @@ class StatsFabricator:
                     pub_date_string = pub_date_string.split("/")[1]
                 record_creation = arrow.get(pub_date_string)
             except KeyError as e:
-                app.logger.info(
-                    f"Required fields not found for {record_id}: {e}"
-                )
+                app.logger.info(f"Required fields not found for {record_id}: {e}")
                 print(f"Required fields not found for {record_id}: {e}")
                 return False
 
@@ -322,12 +307,10 @@ class StatsFabricator:
 
         if verbose:
             app.logger.info(
-                "existing imported view events: "
-                f"{pformat(len(existing_view_events))}"
+                f"existing imported view events: {pformat(len(existing_view_events))}"
             )
             print(
-                "existing imported view events: "
-                f"{pformat(len(existing_view_events))}"
+                f"existing imported view events: {pformat(len(existing_view_events))}"
             )
 
         existing_view_count = len(existing_view_events)
@@ -364,9 +347,7 @@ class StatsFabricator:
                     views -= existing_view_count
                 view_events = []
                 unique_session_ids: list[str] = []
-                for dt in (
-                    self.generate_datetimes(record_creation, views, end=end_date)
-                ):
+                for dt in self.generate_datetimes(record_creation, views, end=end_date):
                     uid = str(uuid.uuid4())
                     doc = {
                         "timestamp": dt.naive.isoformat(),
@@ -440,8 +421,10 @@ class StatsFabricator:
                     if existing_download_count > 0:
                         downloads -= existing_download_count
                     download_events = []
-                    for idx, dt in enumerate(
-                        self.generate_datetimes(record_creation, downloads, end=end_date)
+                    for _idx, dt in enumerate(
+                        self.generate_datetimes(
+                            record_creation, downloads, end=end_date
+                        )
                     ):
                         uid = str(uuid.uuid4())
                         doc = {
@@ -483,18 +466,14 @@ class StatsFabricator:
                 )
                 events = process_events(["record-view", "file-download"])
                 print(f"Events processed successfully. {pformat(events)}")
-                app.logger.info(
-                    f"Events processed successfully. {pformat(events)}"
-                )
+                app.logger.info(f"Events processed successfully. {pformat(events)}")
                 # FIXME: this doesn't report accurate numbers because
                 # on a live server there will be other events pending
                 # for other records. Find a way to report the actual
                 # number of events processed for just this record.
                 return events
             else:
-                process_task = process_events.si(
-                    ["record-view", "file-download"]
-                )
+                process_task = process_events.si(["record-view", "file-download"])
                 process_task.delay()
                 app.logger.info("Event processing task sent...")
                 return True
@@ -503,7 +482,7 @@ class StatsFabricator:
             app.logger.error(str(e))
             raise FailedCreatingUsageEventsError(
                 "Error creating usage events: {str(e)}"
-            )
+            ) from e
 
 
 class AggregationFabricator:
@@ -529,9 +508,9 @@ class AggregationFabricator:
 
     def create_stats_aggregations(
         self,
-        start_date: arrow.Arrow | datetime.datetime = None,
-        end_date: arrow.Arrow | datetime.datetime = None,
-        bookmark_override: arrow.Arrow | datetime.datetime = None,
+        start_date: arrow.Arrow | datetime.datetime | None = None,
+        end_date: arrow.Arrow | datetime.datetime | None = None,
+        bookmark_override: arrow.Arrow | datetime.datetime | None = None,
         eager: bool = False,
         verbose: bool = False,
     ) -> bool | list:
@@ -591,22 +570,16 @@ class AggregationFabricator:
                         f"events exist yet): {e}"
                     )
                 else:
-                    app.logger.warning(
-                        f"Error deleting aggregations for {a}: {e}"
-                    )
+                    app.logger.warning(f"Error deleting aggregations for {a}: {e}")
 
         # now create new aggregations
         agg_task = aggregate_events.si(
             aggregation_types,
-            start_date=(
-                arrow.get(start_date).isoformat() if start_date else None
-            ),
+            start_date=(arrow.get(start_date).isoformat() if start_date else None),
             end_date=(arrow.get(end_date).isoformat() if end_date else None),
             update_bookmark=True,  # is this right?
             bookmark_override=(
-                arrow.get(bookmark_override).isoformat()
-                if bookmark_override
-                else None
+                arrow.get(bookmark_override).isoformat() if bookmark_override else None
             ),
         )
         if eager:

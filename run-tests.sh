@@ -185,15 +185,20 @@ fi
 
 # Start the services and get their environment variables
 echo "Starting the services"
-eval "$(uv run ${env_file_arg} docker-services-cli --filepath .venv/lib/python3.12/site-packages/docker_services_cli/docker-services.yml up --db ${DB:-postgresql} --cache ${CACHE:-redis} --search opensearch --mq ${MQ:-rabbitmq} --env)"
+if ! services_yml="$(docker_services_cli_yml_path)"; then
+  echo "Error: could not locate docker-services-cli compose file in the active environment." >&2
+  exit 1
+fi
+echo "Using docker-services-cli compose file: ${services_yml}"
+eval "$(uv run ${env_file_arg} docker-services-cli --filepath "${services_yml}" up --db ${DB:-postgresql} --cache ${CACHE:-redis} --search opensearch --mq ${MQ:-rabbitmq} --env)"
 
 # Unset the environment variables that docker-services-cli set so that the values from tests/.env are used instead of those defaults from docker-services.yml
 unset SQLALCHEMY_DATABASE_URI
 unset INVENIO_SQLALCHEMY_DATABASE_URI
 
-# Run mypy
-echo "Running mypy on invenio_record_importer_kcworks"
-uv run mypy --config-file pyproject.toml invenio_record_importer_kcworks
+# Run ty (same checker as the main KCWorks test runner)
+echo "Running ty on invenio_record_importer_kcworks"
+uv run ty check invenio_record_importer_kcworks
 
 # Note: expansion of pytest_args looks like below to not cause an unbound
 # variable error when 1) "nounset" and 2) the array is empty.

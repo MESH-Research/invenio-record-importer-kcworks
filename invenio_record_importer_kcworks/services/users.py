@@ -6,25 +6,19 @@
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
+"""User creation and lookup helpers for imports."""
+
 import json
-import os
 
 import arrow
-import requests
 from flask import current_app as app
 from invenio_access.permissions import system_identity
-from invenio_accounts.errors import AlreadyLinkedError
-from invenio_accounts.models import User, UserIdentity
+from invenio_accounts.models import User
 from invenio_accounts.proxies import current_accounts
 from invenio_communities.proxies import current_communities
-from invenio_db import db
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
-
-from invenio_record_importer_kcworks.services.communities import CommunityRecordHelper
-from invenio_record_importer_kcworks.tasks import send_security_email
 from invenio_remote_user_data_kcworks.client import (
     APIResponse,
-    Profile,
     UserDataAPIClient,
 )
 from invenio_remote_user_data_kcworks.proxies import (
@@ -32,6 +26,9 @@ from invenio_remote_user_data_kcworks.proxies import (
 )
 from invenio_remote_user_data_kcworks.types.auth import AccountInfo
 from invenio_remote_user_data_kcworks.utils.auth import CILogonHelpers
+
+from invenio_record_importer_kcworks.services.communities import CommunityRecordHelper
+from invenio_record_importer_kcworks.tasks import send_security_email
 
 
 class UsersHelper:
@@ -43,7 +40,11 @@ class UsersHelper:
 
     @staticmethod
     def get_admins():
-        """Get all users with the role of 'administration'."""
+        """Get all users with the role of 'administration'.
+
+        Returns:
+            Description of the return value.
+        """
         admin_role = current_accounts.datastore.find_role("administration")
         assert admin_role is not None  # administration role must exist
         admin_role_holders = [u for u in admin_role.users]
@@ -59,6 +60,11 @@ class UsersHelper:
         community_id: str,
         record_id: str,
     ):
+        """Send welcome email.
+
+        Raises:
+            RuntimeError: Raised when the operation fails.
+        """
         app.logger.debug(f"Sending welcome email to {user_email}...")
         app.logger.debug(f"community_id: {community_id}")
         record_data = records_service.read(system_identity, id_=record_id).to_dict()
@@ -97,9 +103,9 @@ class UsersHelper:
         idp_username: str = "",
         full_name: str = "",
         idp: str = "",
-        community_owner: list = [],
+        community_owner: list | None = None,
         orcid: str = "",
-        other_user_ids: list = [],
+        other_user_ids: list | None = None,
     ) -> dict:
         """Create a new user account in the Invenio instance.
 
@@ -141,7 +147,14 @@ class UsersHelper:
                 existing ("new_user")
             "communities_owned": a list of the communities to which the user
                 was assigned as owner
+
+        Raises:
+            RuntimeError: Raised when the operation fails.
         """
+        if other_user_ids is None:
+            other_user_ids = []
+        if community_owner is None:
+            community_owner = []
         new_user_flag = True
         active_user = None
         idps = app.config.get("OAUTHCLIENT_REMOTE_APPS")
@@ -151,9 +164,8 @@ class UsersHelper:
                 "OAUTHCLIENT_REMOTE_APPS"
             )
 
-        remote_service = idp
-        if idp in app.config.get("KC_REMOTE_IDPS"):
-            remote_service = "knowledgeCommons"
+        if idp in (app.config.get("KC_REMOTE_IDPS") or ()):
+            pass
 
         # Resolve any existing user before creating a new one. Use separated
         # lookup paths so we only call ``get_user_from_account_info`` (which

@@ -63,17 +63,16 @@ dependencies = [
 optional-dependencies.dev = ["bump-my-version==1.5.1", "check-manifest", "ipykernel"]
 optional-dependencies.test = [
   "coverage",
-  "mypy>=1.8",
   "pytest",
   "pytest-cov>=6.2.1",
   "pytest-invenio>=3.3,<4",
   "pytest-isort>=4",
   "pytest-mock",
-  "pytest-mypy>=0.10",
   "pytest-ruff>=0.1",
   "requests-mock",
   "ruff>=0.3",
   "selenium",
+  "ty",
   "wheel",
 ]
 
@@ -103,6 +102,7 @@ line-length = 88
 exclude = [
   "**/*.ipynb",                                    # Exclude Jupyter notebook files
   "invenio_record_importer_kcworks/deprecated/**", # Exclude deprecated files
+  "invenio_record_importer_kcworks/libs/fedoraapi.py",
 ]
 
 lint.select = ["B", "D", "DOC", "E", "F", "I", "UP"]
@@ -113,6 +113,15 @@ lint.ignore = [
   "W3",   # Blank line warnings
 ]
 lint.per-file-ignores."__init__.py" = ["D104", "E402", "F401"]
+# Multilingual lookup tables intentionally repeat spellings across locales.
+lint.per-file-ignores."invenio_record_importer_kcworks/utils/monthwords.py" = [
+  "E501",
+  "F601",
+]
+lint.per-file-ignores."invenio_record_importer_kcworks/utils/seasonwords.py" = [
+  "E501",
+  "F601",
+]
 lint.isort.known-first-party = [
   "invenio_stats_dashboard",
   "invenio_group_collections_kcworks",
@@ -206,22 +215,23 @@ testpaths = ["tests", "invenio_record_importer_kcworks"]
 [tool.coverage.run]
 omit = []
 
-[tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-check_untyped_defs = true
-disallow_untyped_decorators = false
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = false
-warn_no_return = false
-ignore_missing_imports = true
-follow_imports = "skip"
-allow_untyped_globals = true
-exclude = ["invenio_record_importer_kcworks/deprecated/.*"]
+[tool.ty]
+analysis = {}
+# Type checking with ty (replaces mypy). Mirrors the parent KCWorks
+# project's [tool.ty] settings; paths adapted to this submodule's layout.
+environment.python-version = "3.12"
+rules.redundant-cast = "warn"
+rules.unused-ignore-comment = "ignore"
+rules.unused-type-ignore-comment = "ignore"
+rules.unresolved-import = "ignore"
+rules.unresolved-global = "ignore"
+# Don't type-check tests or deprecated legacy code (same as former mypy exclude).
+src.exclude = [
+  "tests",
+  "invenio_record_importer_kcworks/deprecated",
+  # Legacy Fedora client; depends on removed swamplr write_to_log.
+  "invenio_record_importer_kcworks/libs/fedoraapi.py",
+]
 
 [tool.babel.compile_catalog]
 directory = "translations/"
@@ -250,17 +260,6 @@ extra_paths = [
   "../invenio-rdm-records",
   "../invenio-remote-user-data-kcworks",
   "../invenio-stats-dashboard",
-]
-
-[tool.pylsp-mypy]
-enabled = true
-live_mode = true
-strict = false
-overrides = [
-  "--ignore-missing-imports",
-  "--follow-imports=silent",
-  "--show-error-codes",
-  "--no-error-summary",
 ]
 
 [tool.bumpversion]

@@ -26,6 +26,7 @@ knowledge_commons_works directory.
 
 from pathlib import Path
 from pprint import pformat, pprint
+from typing import Any, cast
 
 import arrow
 import click
@@ -63,11 +64,11 @@ def _extract_community_id_from_first_record(
     nonconsec: list,
 ) -> str:
     """Extract primary community ID from the first record in the JSONL file.
-    
+
     Args:
         start_idx: The starting index for record loading (1-indexed)
         nonconsec: List of nonconsecutive indices to load (1-indexed)
-    
+
     Returns:
         str: The community ID if found, empty string otherwise
     """
@@ -79,7 +80,7 @@ def _extract_community_id_from_first_record(
     serialized_path = Path(pathstring)
     if not serialized_path.exists():
         return community_id
-    
+
     try:
         with jsonlines.open(serialized_path, mode="r") as reader:
             # Determine which record to read based on parameters
@@ -100,9 +101,7 @@ def _extract_community_id_from_first_record(
             for i, record in enumerate(reader):
                 if i >= first_record_index:
                     # Extract primary community from record metadata
-                    parent_communities = (
-                        record.get("parent", {}).get("communities", {})
-                    )
+                    parent_communities = record.get("parent", {}).get("communities", {})
                     if parent_communities:
                         # Get the default community or the first entry
                         default_id = parent_communities.get("default")
@@ -113,10 +112,8 @@ def _extract_community_id_from_first_record(
                             community_id = entries[0].get("id", "")
                     break
     except Exception as e:
-        app.logger.warning(
-            f"Could not extract community from first record: {e}"
-        )
-    
+        app.logger.warning(f"Could not extract community from first record: {e}")
+
     return community_id
 
 
@@ -219,12 +216,18 @@ def _extract_community_id_from_first_record(
     "--all-or-none",
     is_flag=True,
     default=False,
-    help="If set, roll back all records if any record fails. If not set (default), continue importing other records even if some fail.",
+    help=(
+        "If set, roll back all records if any record fails. "
+        "If not set (default), continue importing other records even if some fail."
+    ),
 )
 @click.option(
     "--community-id",
     default=None,
-    help="The UUID or slug of the community to import records into. If not provided, will be extracted from the first record's metadata.",
+    help=(
+        "The UUID or slug of the community to import records into. "
+        "If not provided, will be extracted from the first record's metadata."
+    ),
 )
 @with_appcontext
 def load_records(
@@ -248,78 +251,7 @@ def load_records(
     RECORDS should be a list of positional arguments specifying which records
     to load.
 
-    Examples:
-        To load records 1, 2, 3, and 5, run:
-
-            invenio importer load 1 2 3 5
-
-        A range can be specified in the RECORDS by linking two integers with a
-        hyphen. For example, to load only the first 100 records, run:
-
-            invenio importer load 1-100
-
-        If the range ends in a hyphen with no second integer, the program will
-        load all records from the start index to the end of the input file. For
-        example, to load all records from 100 to the end of the file, run:
-
-            invenio importer load 100-
-
-        Records may be loaded by id in the source system instead of by index.
-        For example, to load records with ids hc:4723, hc:8271, and hc:2246,
-        run:
-
-            invenio importer load --use-sourceids hc:4723 hc:8271 hc:2246
-
-        To aggregate usage statistics after loading, add the --aggregate flag.
-        For example, to load all records and aggregate usage statistics, run:
-
-            invenio importer load --aggregate
-
-    Notes:
-        This program must be run from the base knowledge_commons_works
-        directory. It will look for the exported records in the directory
-        specified by the RECORD_IMPORTER_DATA_DIR environment variable.
-
-        The program must also be run inside the pipenv virtual environment for
-        the knowledge_commons_works instance. All of the commands must be
-        preceded by `pipenv run` or the pipenv environment must first be
-        activated with `pipenv shell`.
-
-        The operations involved require authenitcation as an admin user in the
-        knowledge_commons_works instance. This program will look for the
-        admin user's api token in the RECORD_IMPORTER_API_TOKEN environment
-        variable.
-
-        Where necessary this program will create top-level domain communities,
-        assign the records to the correct domain communities, create
-        new Invenio users corresponding to the users who uploaded the
-        original deposits, and transfer ownership of the Invenio record to
-        the correct users.
-
-        If a record with the same DOI already exists in Invenio, the program
-        will try to update the existing record with any new metadata and/or
-        files, creating a new draft of published records if necessary.
-        Unpublished existing drafts will be submitted to the appropriate
-        community and published. Alternately, if the --no-updates flag is set,
-        the program will skip any records that match DOIs for records that
-        already exist in Invenio.
-
-        Since the operations involved are time-consuming, the program should
-        be run as a background process (adding & to the end of the command).
-        A running log of the program's progress will be written to the file
-        invenio_record_importer_kcworks.log in the base
-        invenio_record_importer_kcworks/logs
-        directory. A record of all records that have been created (a load
-        attempt has been made) is recorded in the file
-        record_importer_created_records.jsonl in a configurable directory.
-        A record of all records that
-        have failed to load is recorded in the file
-        record_importer_failed_records.json in the
-        same directory. If failed records are later
-        successfully repaired, they will be removed from the failed records
-        file.
-
-    Args:
+    Parameters:
         records (list, optional): A list of the provided positional arguments
             specifying which records to load. Defaults to [].
 
@@ -378,8 +310,76 @@ def load_records(
         stop_on_error (bool, optional): Stop loading records if an error is
             encountered. Defaults to False.
 
-    Returns:
-        None
+    Notes:
+        This program must be run from the base knowledge_commons_works
+        directory. It will look for the exported records in the directory
+        specified by the RECORD_IMPORTER_DATA_DIR environment variable.
+
+        The program must also be run inside the pipenv virtual environment for
+        the knowledge_commons_works instance. All of the commands must be
+        preceded by `pipenv run` or the pipenv environment must first be
+        activated with `pipenv shell`.
+
+        The operations involved require authenitcation as an admin user in the
+        knowledge_commons_works instance. This program will look for the
+        admin user's api token in the RECORD_IMPORTER_API_TOKEN environment
+        variable.
+
+        Where necessary this program will create top-level domain communities,
+        assign the records to the correct domain communities, create
+        new Invenio users corresponding to the users who uploaded the
+        original deposits, and transfer ownership of the Invenio record to
+        the correct users.
+
+        If a record with the same DOI already exists in Invenio, the program
+        will try to update the existing record with any new metadata and/or
+        files, creating a new draft of published records if necessary.
+        Unpublished existing drafts will be submitted to the appropriate
+        community and published. Alternately, if the --no-updates flag is set,
+        the program will skip any records that match DOIs for records that
+        already exist in Invenio.
+
+        Since the operations involved are time-consuming, the program should
+        be run as a background process (adding & to the end of the command).
+        A running log of the program's progress will be written to the file
+        invenio_record_importer_kcworks.log in the base
+        invenio_record_importer_kcworks/logs
+        directory. A record of all records that have been created (a load
+        attempt has been made) is recorded in the file
+        record_importer_created_records.jsonl in a configurable directory.
+        A record of all records that
+        have failed to load is recorded in the file
+        record_importer_failed_records.json in the
+        same directory. If failed records are later
+        successfully repaired, they will be removed from the failed records
+        file.
+
+    Examples:
+        To load records 1, 2, 3, and 5, run:
+
+            invenio importer load 1 2 3 5
+
+        A range can be specified in the RECORDS by linking two integers with a
+        hyphen. For example, to load only the first 100 records, run:
+
+            invenio importer load 1-100
+
+        If the range ends in a hyphen with no second integer, the program will
+        load all records from the start index to the end of the input file. For
+        example, to load all records from 100 to the end of the file, run:
+
+            invenio importer load 100-
+
+        Records may be loaded by id in the source system instead of by index.
+        For example, to load records with ids hc:4723, hc:8271, and hc:2246,
+        run:
+
+            invenio importer load --use-sourceids hc:4723 hc:8271 hc:2246
+
+        To aggregate usage statistics after loading, add the --aggregate flag.
+        For example, to load all records and aggregate usage statistics, run:
+
+            invenio importer load --aggregate
     """
     named_params = {
         "no_updates": no_updates,
@@ -415,16 +415,14 @@ def load_records(
             named_params["nonconsecutive"] = records
 
     # Use system user ID for CLI commands (user_id=1 is typically the system user)
-    start_idx: int = named_params.get("start_index", 0)  # type: ignore[assignment]
-    stop_idx: int = named_params.get("stop_index", -1)  # type: ignore[assignment]
-    nonconsec: list = named_params.get("nonconsecutive", [])  # type: ignore[assignment]
-    
+    start_idx = cast(int, named_params.get("start_index", 0))
+    stop_idx = cast(int, named_params.get("stop_index", -1))
+    nonconsec = cast(list, named_params.get("nonconsecutive", []))
+
     # Extract primary community from first record in JSONL file if not provided
     if not community_id:
-        community_id = _extract_community_id_from_first_record(
-            start_idx, nonconsec
-        )
-    
+        community_id = _extract_community_id_from_first_record(start_idx, nonconsec)
+
     RecordLoader(user_id=1, community_id=community_id or "").load_all(
         start_index=start_idx,
         stop_index=stop_idx,
@@ -511,7 +509,7 @@ def read_records(records, scheme, raw_input, use_sourceids, field_path) -> None:
             record(s) to read.
     """
     service = SerializationService()
-    args = {"field_path": field_path}
+    args: dict[str, Any] = {"field_path": field_path}
     if use_sourceids:
         args["id_scheme"] = scheme
         args["identifiers"] = records
@@ -678,7 +676,7 @@ def count_objects():
     """
     serialized_path = app.config.get("RECORD_IMPORTER_SERIALIZED_PATH")
     try:
-        with open(serialized_path) as file:
+        with open(cast(str, serialized_path)) as file:
             lines_count = sum(1 for line in file)
             print(f"Total objects in {serialized_path}: {lines_count}")
     except FileNotFoundError:
@@ -845,9 +843,6 @@ def create_stats(
             If True, information will be printed to the console as the stats
             events are created. Otherwise, no information will be printed
             until all the stats events are created.
-
-    Returns:
-        None
     """
     print("Creating synthetic stats events from db records...")
     if record_ids:
@@ -964,18 +959,17 @@ def create_aggregations(start_date, end_date, verbose):
             aggregations are created. Otherwise, no information will be printed
             until all the stats aggregations are created.
 
-    Returns:
-        None
+    Raises:
+        ValueError: Raised when the operation fails.
     """
     print("Creating usage stats aggregations...")
     if not end_date:
         end_date = arrow.utcnow().naive.isoformat()
     if not start_date:
-        start_date = arrow.get(
-            app.config.get("RECORD_IMPORTER_START_DATE")
-        ).naive.isoformat()
-        if not start_date:
+        cfg_start = app.config.get("RECORD_IMPORTER_START_DATE")
+        if not cfg_start:
             raise ValueError("No start date specified")
+        start_date = arrow.get(cfg_start).naive.isoformat()
     # If start_date is after end_date, swap them
     # If start_date is more than 1 year before end_date, divide the range
     # into 1 year chunks
@@ -1152,7 +1146,10 @@ def update_created_dates(
         tasks = []
 
         if not communities_only:
-            click.echo("Record update feature is deprecated (no longer using hclegacy:record_creation_date)")
+            click.echo(
+                "Record update feature is deprecated "
+                "(no longer using hclegacy:record_creation_date)"
+            )
             click.echo("Skipping record update task.")
 
         if not records_only:
@@ -1177,7 +1174,10 @@ def update_created_dates(
         click.echo("=" * 70)
         click.echo("Updating record created dates...")
         click.echo("=" * 70)
-        click.echo("Record update feature is deprecated (no longer using hclegacy:record_creation_date)")
+        click.echo(
+            "Record update feature is deprecated "
+            "(no longer using hclegacy:record_creation_date)"
+        )
         click.echo("No records to update.")
 
     if not records_only:

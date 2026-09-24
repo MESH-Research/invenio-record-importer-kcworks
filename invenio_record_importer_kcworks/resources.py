@@ -1,11 +1,13 @@
+"""REST resources for the record importer API."""
+
 import json
 import mimetypes
 import zipfile
 from tempfile import SpooledTemporaryFile
 
 import marshmallow as ma
+from flask import Response, g, jsonify
 from flask import current_app as app
-from flask import g, jsonify, Response
 from flask_resources import Resource, ResourceConfig
 from flask_resources.config import from_conf
 from flask_resources.context import resource_requestctx
@@ -33,6 +35,12 @@ def bool_from_string(value: str) -> bool:
 
     If the value is already a boolean, just return it. If the value is not a
     standard string representation of a boolean, raise a BadRequest exception.
+
+    Returns:
+        Description of the return value.
+
+    Raises:
+        BadRequest: Raised when the operation fails.
     """
     if value in ["true", "True", "TRUE", "1", True]:
         return True
@@ -97,7 +105,8 @@ def extract_zip_files(zip_file) -> list[FileData]:
                     if len(parts) > 2:
                         raise BadRequest(
                             f"Zip archive contains subfolders. "
-                            f"Files must be in a single compressed folder with no subfolders. "
+                            "Files must be in a single compressed folder "
+                            "with no subfolders. "
                             f"Found: {file_name}"
                         )
 
@@ -143,11 +152,11 @@ def extract_zip_files(zip_file) -> list[FileData]:
         zip_file.stream.seek(0)
 
     except zipfile.BadZipFile:
-        raise BadRequest(f"Invalid zip archive: {zip_file.filename}")
+        raise BadRequest(f"Invalid zip archive: {zip_file.filename}") from None
     except Exception as e:
         if isinstance(e, BadRequest):
             raise
-        raise BadRequest(f"Error extracting zip archive: {str(e)}")
+        raise BadRequest(f"Error extracting zip archive: {str(e)}") from e
 
     return extracted_files
 
@@ -168,6 +177,8 @@ request_parsed_view_args = request_parser(
 
 
 class RecordImporterResourceConfig(ResourceConfig):
+    """RecordImporterResourceConfig."""
+
     blueprint_name = "record_importer_kcworks"
 
     url_prefix = "/import"
@@ -229,7 +240,10 @@ class RecordImporterResourceConfig(ResourceConfig):
 
 
 class RecordImporterResource(Resource):
+    """RecordImporterResource."""
+
     def __init__(self, config, service):
+        """Initialize the instance."""
         super().__init__(config)
         self.service = service
 
@@ -238,6 +252,10 @@ class RecordImporterResource(Resource):
 
         Registered by flask_resources on the blueprint using the
         ``Blueprint.add_url_rule()`` method.
+
+
+        Returns:
+            Description of the return value.
         """
         return [
             route("POST", "/<community>", self.import_records),
@@ -271,6 +289,12 @@ class RecordImporterResource(Resource):
           whose metadata differs. Default False (updates allowed).
         - id_scheme(str): Primary source identifier scheme for dedupe.
         - alternate_id_scheme(str): Optional secondary source identifier scheme.
+
+        Returns:
+            Description of the return value.
+
+        Raises:
+            BadRequest: Raised when the operation fails.
         """
         community_id = resource_requestctx.view_args.get("community")
         file_data = resource_requestctx.data["files"]
@@ -353,7 +377,11 @@ class RecordImporterResource(Resource):
 
 
 def create_api_blueprint(app):
-    """Register blueprint on api app."""
+    """Register blueprint on api app.
+
+    Returns:
+        Description of the return value.
+    """
     ext = app.extensions["invenio-record-importer-kcworks"]
     blueprint = ext.resource.as_blueprint()
 

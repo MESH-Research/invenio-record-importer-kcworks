@@ -1,9 +1,11 @@
+"""Parsers for dirty human-readable date strings."""
+
 import re
 
 import arrow
 import dateparser
 import regex
-import timefhuman
+from timefhuman import timefhuman
 
 from invenio_record_importer_kcworks.utils import (
     monthwords,
@@ -46,6 +48,7 @@ class DateParser:
     """
 
     def __init__(self):
+        """Initialize the instance."""
         pass
 
     @staticmethod
@@ -67,9 +70,7 @@ class DateParser:
         if len(date_parts) == 1:
             date_parts = DateParser.split_mashed_datestring(date)
         date_parts = [
-            p
-            for p in date_parts
-            if p.strip() not in ["del", "de", "of", "di", " ", ""]
+            p for p in date_parts if p.strip() not in ["del", "de", "of", "di", " ", ""]
         ]
         if (
             len(date_parts) <= 3
@@ -166,9 +167,7 @@ class DateParser:
                 day = date_parts[1]
             # reorder parts to YYYY-MM-DD or YYYY-MM or YYYY
             if year and month and day:
-                return DateParser.reorder_date_parts(
-                    "-".join([year, month, day])
-                )
+                return DateParser.reorder_date_parts("-".join([year, month, day]))
             elif year and month:
                 return "-".join([year, month])
             else:
@@ -230,6 +229,9 @@ class DateParser:
 
         Returns:
             str: The date string with parts in the order YYYY-MM-DD
+
+        Raises:
+            ValueError: Raised when the operation fails.
         """
         date = DateParser.fill_missing_zeros(date)
         date_parts = list(filter(None, re.split(r"[\.\-:\/ ]+", date)))
@@ -246,9 +248,7 @@ class DateParser:
             try:
                 year = [d for d in date_parts if len(d) == 4][0]
                 year_index = date_parts.index(year)
-                others = [
-                    d for idx, d in enumerate(date_parts) if year_index != idx
-                ]
+                others = [d for idx, d in enumerate(date_parts) if year_index != idx]
             except IndexError:
                 if len(date_parts[-1]) == 2:
                     if int(date_parts[-1]) <= arrow.now().year % 100:
@@ -257,7 +257,7 @@ class DateParser:
                         year = "19" + date_parts[-1]
                     others = date_parts[:-1]
                 else:
-                    raise ValueError
+                    raise ValueError from None
             if len(others) == 2:
                 month_candidates = [d for d in date_parts if int(d) <= 12]
                 if len(month_candidates) == 1:
@@ -266,12 +266,7 @@ class DateParser:
                 else:
                     month, day = others
                 return "-".join([year, month, day])
-            elif (
-                not month
-                and not day
-                and len(others) == 1
-                and re.match(r"\d{4}", others[0])
-            ):
+            elif len(others) == 1 and re.match(r"\d{4}", others[0]):
                 return "-".join([year, others[0][:2], others[0][2:]])
             else:
                 return "-".join([year, others[0]])
@@ -328,9 +323,16 @@ class DateParser:
 
     @staticmethod
     def restore_2digit_year(date: str) -> str:
+        """Restore 2digit year.
+
+        Returns:
+            Description of the return value.
+        """
         pattern = r"^\d{2}[/,-\.]\d{2}[/,-\.]\d{2}$"
         if re.match(pattern, date):
-            date = arrow.get(dateparser.parse(date)).date().isoformat()
+            parsed = dateparser.parse(date)
+            if parsed is not None:
+                date = arrow.get(parsed).date().isoformat()
         # Also handle 8-digit dates without delimiters (YYYYMMDD format)
         elif re.match(r"^\d{8}$", date):
             # Delegate to reorder_date_parts to handle the splitting
@@ -339,6 +341,12 @@ class DateParser:
 
     @staticmethod
     def remove_stray_parentheses(date: str) -> str:
+        """Remove stray parentheses.
+
+        Returns:
+            Description of the return value.
+
+        """
         return re.sub(r"\(|\)", "", date)
 
     @staticmethod
@@ -353,15 +361,21 @@ class DateParser:
 
         :param date: A datestring
         :return: A list of date parts
+
+
+        Returns:
+            Description of the return value.
         """
         parts = [date]
         if re.match(r"\d{8}$", date):
-            # Check if it starts with a 4-digit year (19xx or 20xx) followed by month and day
+            # Check if it starts with a 4-digit year (19xx or 20xx)
+            # followed by month and day
             if re.match(r"(19|20)\d{2}\d{2}\d{2}$", date) and not re.match(
                 r"\d{2}\d{2}(19|20)\d{2}$", date
             ):
                 parts = [date[:4], date[4:6], date[6:]]
-            # Check if it ends with a 4-digit year (19xx or 20xx) preceded by month and day
+            # Check if it ends with a 4-digit year (19xx or 20xx)
+            # preceded by month and day
             elif re.match(r"\d{2}\d{2}(19|20)\d{2}$", date):
                 parts = [date[:2], date[2:4], date[4:]]
         elif regex.match(r"\d{4}\p{L}+\d\d?", date) and (
@@ -554,8 +568,8 @@ class DateParser:
         >>> DateParser.repair_date("2019-30-30")
         (True, '2019-30-30')
 
-        >>> DateParser.repair_date('אלול תשע\"ה')
-        (True, 'אלול תשע\"ה')
+        >>> DateParser.repair_date('אלול תשע"ה')
+        (True, 'אלול תשע"ה')
 
         >>> DateParser.repair_date("September 2018 (Forthcoming)")
         (True, 'September 2018 Forthcoming')
@@ -674,6 +688,11 @@ class DateParser:
         >>> DateParser.repair_date("2016 2019")
         (True, '2016 2019')
 
+
+
+        Returns:
+            Description of the return value.
+
         """
         print_id = None
         if id == print_id:
@@ -693,9 +712,7 @@ class DateParser:
             if id == print_id:
                 print(date_func)
                 print(newdate)
-            if valid_date(newdate) and not re.match(
-                r".*\d{4}[\.\s]+\d{4}.*", newdate
-            ):
+            if valid_date(newdate) and not re.match(r".*\d{4}[\.\s]+\d{4}.*", newdate):
                 invalid = False
                 break
 
@@ -703,6 +720,11 @@ class DateParser:
 
     @staticmethod
     def extract_year(s):
+        """Extract year.
+
+        Returns:
+            The matched year string, or None if not found.
+        """
         match = re.search(r"\b(19|20)\d{2}\b", s)
         if match:
             return match.group(0)
@@ -786,6 +808,10 @@ class DateParser:
         >>> DateParser.repair_range("2016, 2nd. corr. ed.")
         (True, '2016, 2nd. corr. ed.')
 
+
+
+        Returns:
+            A tuple of (invalid, repaired_date).
         """
         print_id = None
         invalid = True
@@ -829,9 +855,7 @@ class DateParser:
                 if p and re.match(r"\D*\s*\d{2}\s*\D*", p)
             ]
             digit_parts_4 = [
-                p
-                for p in range_parts
-                if p and re.match(r"\D*\s*\d{4}\s*\D*", p)
+                p for p in range_parts if p and re.match(r"\D*\s*\d{4}\s*\D*", p)
             ]
             if len(digit_parts_2) == 1 and not digit_parts_4:
                 yr = re.findall(r"\d{2}", digit_parts_2[0][1])[0]
@@ -846,7 +870,8 @@ class DateParser:
                 for part in range_parts
                 if DateParser.extract_year(part)
             ]
-            # find global seasons in range in case some parts have to have season month added
+            # find global seasons in range in case some parts need
+            # a season month added
             global_seasons = [
                 part
                 for part in range_parts
@@ -857,10 +882,7 @@ class DateParser:
                     print(f"part: {part}")
                 if not valid_date(part):
                     # handle dates like "winter/spring 2019"
-                    if (
-                        not DateParser.extract_year(part)
-                        and len(global_years) > 0
-                    ):
+                    if not DateParser.extract_year(part) and len(global_years) > 0:
                         invalid, repaired = DateParser.repair_date(
                             part + " " + global_years[0], id
                         )
@@ -880,9 +902,7 @@ class DateParser:
                 # re-add month for end of season dates
                 if len(global_seasons) == 1 and len(range_parts[1]) == 4:
                     seasonstart = [
-                        v
-                        for k, v in seasonwords.items()
-                        if k in global_seasons[0]
+                        v for k, v in seasonwords.items() if k in global_seasons[0]
                     ][0]
                     season_ends = {
                         "03": "05",
@@ -890,9 +910,7 @@ class DateParser:
                         "09": "11",
                         "12": "02",
                     }
-                    range_parts[1] = (
-                        f"{range_parts[1]}-{season_ends[seasonstart]}"
-                    )
+                    range_parts[1] = f"{range_parts[1]}-{season_ends[seasonstart]}"
                 # catch cases where ending is earlier than beginning
                 if range_parts[0] > range_parts[1]:
                     # app.logger.debug(
@@ -900,11 +918,7 @@ class DateParser:
                     # )
                     # handle winter dates where year is ambiguous
                     if any(
-                        [
-                            p
-                            for p in ["Winter", "winter"]
-                            if p in raw_range_parts[0]
-                        ]
+                        [p for p in ["Winter", "winter"] if p in raw_range_parts[0]]
                     ):
                         range_parts[0] = (
                             f"{str(int(range_parts[0][:4]) - 1)}{range_parts[0][4:]}"

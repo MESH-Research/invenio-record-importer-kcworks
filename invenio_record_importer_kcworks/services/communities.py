@@ -19,13 +19,6 @@ from invenio_communities.members.records.api import Member
 from invenio_communities.proxies import current_communities
 from invenio_drafts_resources.resources.records.errors import DraftNotCreatedError
 from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
-from invenio_group_collections_kcworks.errors import (
-    CollectionNotFoundError,
-    CommonsGroupNotFoundError,
-)
-from invenio_group_collections_kcworks.proxies import (
-    current_group_collections_service as collections_service,
-)
 from invenio_notifications.services.uow import NotificationOp
 from invenio_pidstore.errors import PIDDoesNotExistError, PIDUnregistered
 from invenio_rdm_records.proxies import (
@@ -55,6 +48,13 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm.exc import StaleDataError
 from werkzeug.exceptions import UnprocessableEntity
 
+from invenio_group_collections_kcworks.errors import (
+    CollectionNotFoundError,
+    CommonsGroupNotFoundError,
+)
+from invenio_group_collections_kcworks.proxies import (
+    current_group_collections_service as collections_service,
+)
 from invenio_record_importer_kcworks.errors import (
     CollectionDoesNotExistError,
     CommonsGroupServiceError,
@@ -81,13 +81,10 @@ class CommunityRecordHelper:
         cannot submit records without review. If the record policy is set to
         'open', members of the community can submit records without review.
 
-        Params:
+        Parameters:
             community_id: str: The id of the community to update
             record_submission_policy: str: The new record policy to set. Must be one of
                                 'open' or 'closed'
-
-        Raises:
-            AssertionError: If the record policy was not updated successfully
 
         Returns:
             bool: True if the record policy was updated successfully
@@ -110,13 +107,10 @@ class CommunityRecordHelper:
         to become members of the community. If the member policy is
         set to 'open', people can request to become members of the community.
 
-        Params:
+        Parameters:
             community_id: str: The id of the community to update
             member_policy: str: The new member policy to set. Must be one of
                                 'open' or 'closed'
-
-        Raises:
-            AssertionError: If the member policy was not updated successfully
 
         Returns:
             bool: True if the member policy was updated successfully
@@ -141,13 +135,10 @@ class CommunityRecordHelper:
         searches except to logged-in members and its landing page is not
         visible to everyone.
 
-        Params:
+        Parameters:
             community_id: str: The id of the community to update
             visibility: str: The new visibility to set. Must be one of
                             'public' or 'restricted'
-
-        Raises:
-            AssertionError: If the visibility was not updated successfully
 
         Returns:
             bool: True if the visibility was updated successfully
@@ -171,14 +162,10 @@ class CommunityRecordHelper:
         determines whether the "members" tab of the community landing page
         is visible to the public or restricted to members of the community.
 
-        Params:
+        Parameters:
             community_id: str: The id of the community to update
             visibility: str: The new member visibility to set. Must be one of
                             'public' or 'restricted'
-
-        Raises:
-            AssertionError: If the member visibility was not updated
-            successfully
 
         Returns:
             bool: True if the member visibility was updated successfully
@@ -197,12 +184,9 @@ class CommunityRecordHelper:
     def set_review_policy(community_id: str, review_policy: bool):
         """Set the review policy for a community.
 
-        Params:
+        Parameters:
             community_id: str: The id of the community to update
             review_policy: bool: The new review policy to set
-
-        Raises:
-            AssertionError: If the review policy was not updated successfully
 
         Returns:
             bool: True if the review policy was updated successfully
@@ -221,19 +205,18 @@ class CommunityRecordHelper:
     def add_member(community_id: str, member_id: int, role: str) -> dict:
         """Add a member to a community.
 
-        Params:
+        Parameters:
             community_id: str: The id of the community to update. This
                 must be a UUID, not the community's slug.
             member_id: int: The id of the user to add as a member
             role: str: The role of the user to add to the community
 
-        Raises:
-            CollectionDoesNotExistError: If the community does not exist
-            AssertionError: If the member was not added successfully
-            ValueError: If the role is invalid
-
         Returns:
             dict: The member that was added
+
+        Raises:
+            CollectionDoesNotExistError: If the community does not exist
+            ValueError: If the role is invalid
         """
         try:
             record_data = current_communities.service.read(
@@ -290,10 +273,6 @@ class CommunityRecordHelper:
             community_id: str: The id of the community to update
             owner_id: int: The id of the user to add as an owner
 
-        Raises:
-            CollectionDoesNotExistError: If the community does not exist
-            AssertionError: If the owner was not added successfully
-
         Returns:
             dict: The owner that was added
         """
@@ -313,6 +292,12 @@ class CommunitiesHelper:
         """Look up a community by its string or UUID.
 
         The community string may be a slug or a label.
+
+        Returns:
+            Description of the return value.
+
+        Raises:
+            ValueError: Raised when the operation fails.
         """
         if not community_string:
             raise ValueError("Community string is required")
@@ -357,6 +342,9 @@ class CommunitiesHelper:
 
         Return the community data as a dict. (The result
         of the CommunityItem.to_dict() method.)
+
+        Returns:
+            Description of the return value.
         """
         # FIXME: idiosyncratic implementation detail from CORE migration
         community_labels = community_string.split(".")
@@ -387,8 +375,14 @@ class CommunitiesHelper:
 
         Return the community data as a dict. (The result
         of the CommunityItem.to_dict() method.)
+
+        Returns:
+            Description of the return value.
+
+        Raises:
+            RuntimeError: Raised when the operation fails.
         """
-        my_community_data = app.config.get("RECORD_IMPORTER_COMMUNITIES_DATA")[
+        my_community_data = app.config.get("RECORD_IMPORTER_COMMUNITIES_DATA", {})[
             record_source
         ][community_label]
         my_community_data["metadata"]["type"] = {"id": "commons"}
@@ -480,7 +474,7 @@ class CommunitiesHelper:
         community, since it will conflict. If the review is closed, it's deleted.
         If it's open, it's cancelled.
 
-        Args:
+        Parameters:
             draft_id: The ID of the draft record
             uow: The unit of work to use
 
@@ -533,7 +527,7 @@ class CommunitiesHelper:
         (record will be published at acceptance). Handles status checks and
         retries as needed.
 
-        Args:
+        Parameters:
             draft_id: The ID of the draft record
             community_id: The ID of the community
             uow: The unit of work to use
@@ -544,6 +538,8 @@ class CommunitiesHelper:
         Raises:
             MissingParentMetadataError: If there's a StaleDataError related to
                 missing parent metadata
+
+            StaleDataError: Raised when the operation fails.
         """
         review_body = {
             "receiver": {"community": f"{community_id}"},
@@ -585,11 +581,11 @@ class CommunitiesHelper:
                     "accept",
                 )
             except StaleDataError as e:
-                if "UPDATE statement on table 'rdm_parents_metadata'" in e.message:
+                if "UPDATE statement on table 'rdm_parents_metadata'" in str(e):
                     raise MissingParentMetadataError(
                         "Missing parent metadata for record during "
                         "community submission acceptance. Original "
-                        f"error message: {e.message}"
+                        f"error message: {str(e)}"
                     ) from None
                 raise
         else:
@@ -620,6 +616,9 @@ class CommunitiesHelper:
 
         Returns:
             dict: the result of the review acceptance action
+
+        Raises:
+            PublicationValidationError: Raised when the operation fails.
         """
         record = self._get_record_or_draft(draft_id)
 
@@ -670,9 +669,12 @@ class CommunitiesHelper:
         If suppress_notifications is True, email notifications connected to the request
         will be suppressed before the unit of work is committed.
 
-        **Important:** The returned UnitOfWork's commit status depends on how it was created:
-        - If you provide a UnitOfWork, it will be returned **uncommitted** for you to commit.
-        - If no UnitOfWork is provided, the decorator creates one, commits it automatically,
+        **Important:** The returned UnitOfWork's commit status depends
+        on how it was created:
+        - If you provide a UnitOfWork, it will be returned
+          **uncommitted** for you to commit.
+        - If no UnitOfWork is provided, the decorator creates one,
+          commits it automatically,
           and returns it **already committed**. Attempting to commit it again will raise
           a RuntimeError.
 
@@ -680,9 +682,11 @@ class CommunitiesHelper:
             draft_id (str): the id of the draft record
             community_id (str): the id of the community to add the record to
             suppress_notifications (bool): if True, suppress email notifications
-            require_review (bool): if True, create a request that requires review (stays open).
+            require_review (bool): if True, create a request that
+                requires review (stays open).
                 If False (default), the request is auto-accepted if permissions allow.
-            uow (UnitOfWork, optional): the unit of work to use. If not provided, one will be created.
+            uow (UnitOfWork, optional): the unit of work to use. If not
+                provided, one will be created.
 
         Returns:
             tuple[dict, UnitOfWork | None]: the result and the unit of work.
@@ -699,7 +703,8 @@ class CommunitiesHelper:
             raise InvalidParametersError(f"Record with id {draft_id} not found")
         if record.get("status") in ["draft", "draft_with_review"]:
             raise InvalidParametersError(
-                f"Record with id {draft_id} is not published (status: {record.get('status')}). "
+                f"Record with id {draft_id} is not published "
+                f"(status: {record.get('status')}). "
                 "Use publish_record_to_community() for unpublished records."
             )
 
@@ -734,7 +739,8 @@ class CommunitiesHelper:
                     submitted_request.to_dict() if submitted_request else None
                 ),
             }
-            # Always return the UOW if it exists (may be already committed if decorator created it)
+            # Always return the UOW if it exists (may be already
+            # committed if decorator created it)
             return result, uow
         # If that failed look for any existing open
         # 'community-inclusion' request and continue with it
@@ -791,7 +797,8 @@ class CommunitiesHelper:
                 op for op in uow._operations if not isinstance(op, NotificationOp)
             ]
 
-        # Always return the UOW if it exists (may be already committed if decorator added)
+        # Always return the UOW if it exists (may be already committed
+        # if decorator added)
         return review_accepted.to_dict(), uow  # type:ignore
 
     def add_record_to_group_collections(
@@ -808,7 +815,7 @@ class CommunitiesHelper:
         to the group on the remote service. Members of the remote group will
         receive role-based membership in the group collection.
 
-        Params:
+        Parameters:
             metadata_record (dict): the metadata record to add to group
                 collections (this is assumed to be a published record)
             record_source (str): the string representation of the record's
@@ -817,6 +824,12 @@ class CommunitiesHelper:
 
         Returns:
             list: the list of group collections the record was added to
+
+        Raises:
+            CommonsGroupNotFoundError: Raised when the operation fails.
+            MultipleActiveCollectionsError: Raised when the operation fails.
+            CollectionNotFoundError: Raised when the operation fails.
+            CommonsGroupServiceError: Raised when the operation fails.
         """
         bad_groups = [
             "1003749",
@@ -953,7 +966,7 @@ class CommunitiesHelper:
         ]
         if extraneous_collections:
             for c in extraneous_collections:
-                removed = current_community_records_service.delete(
+                current_community_records_service.delete(
                     system_identity,
                     c["id"],
                     {"records": [{"id": metadata_record["id"]}]},
@@ -1044,12 +1057,14 @@ class CommunitiesHelper:
                 current_created = hit.created if hasattr(hit, "created") else None
 
                 if group_id and current_created:
-                    communities.append({
-                        "id": community_id,
-                        "slug": slug,
-                        "group_id": group_id,
-                        "current_created": current_created,
-                    })
+                    communities.append(
+                        {
+                            "id": community_id,
+                            "slug": slug,
+                            "group_id": group_id,
+                            "current_created": current_created,
+                        }
+                    )
             except Exception as e:
                 app.logger.warning(
                     f"Error processing community {hit.meta.id}: {str(e)}"
@@ -1114,7 +1129,8 @@ class CommunitiesHelper:
 
             if not records:
                 app.logger.info(
-                    f"No records with hclegacy:record_creation_date found for group {group_id}"
+                    f"No records with hclegacy:record_creation_date "
+                    f"found for group {group_id}"
                 )
                 return None
 
@@ -1163,6 +1179,7 @@ class CommunitiesHelper:
         # Check if update is needed - only update if new date is earlier
         current_created = arrow.get(community.model.created)
         if new_created_date < current_created:
+            assert uow is not None
             community.model.created = new_dt
             uow.register(RecordCommitOp(community))
             return True
@@ -1284,12 +1301,14 @@ class CommunitiesHelper:
                     app.logger.error(
                         f"Error updating community {community['slug']}: {str(e)}"
                     )
-                    stats["errors"].append({  # type:ignore
-                        "community_id": community["id"],
-                        "slug": community["slug"],
-                        "group_id": community.get("group_id", "unknown"),
-                        "error": str(e),
-                    })
+                    stats["errors"].append(
+                        {  # type:ignore
+                            "community_id": community["id"],
+                            "slug": community["slug"],
+                            "group_id": community.get("group_id", "unknown"),
+                            "error": str(e),
+                        }
+                    )
 
             # Health check after each batch (except the last one)
             if i + batch_size < len(communities):

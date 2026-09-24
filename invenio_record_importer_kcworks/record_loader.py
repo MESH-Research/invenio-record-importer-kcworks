@@ -102,10 +102,17 @@ class RecordLoader:
         self,
         user_id: int,
         community_id: str = "",
-        sourceid_schemes: list[str] = ["import-recid", "neh-recid"],
+        sourceid_schemes: list[str] | None = None,
         views_field: str = "",
         downloads_field: str = "",
     ):
+        """Initialize the instance.
+
+        Raises:
+            ValueError: Raised when the operation fails.
+        """
+        if sourceid_schemes is None:
+            sourceid_schemes = ["import-recid", "neh-recid"]
         self.user_id = user_id
         self.community_id = community_id
         self.import_identifier = community_id or user_id
@@ -226,13 +233,13 @@ class RecordLoader:
 
                         for hit in search_result["hits"]["hits"]:
                             event_id = hit["_id"]
-                            event_source = hit["_source"]
+                            hit["_source"]
                             update_body = {
                                 "doc": {
                                     "record_created_date": created_timestamp_override
                                 }
                             }
-                            updated_event = current_search_client.update(
+                            current_search_client.update(
                                 index=prefix_index("stats-community-events"),
                                 id=event_id,
                                 body=update_body,
@@ -251,18 +258,19 @@ class RecordLoader:
                     app.logger.warning(f"No communities found for record {record.id}")
             except Exception as e:
                 app.logger.warning(
-                    f"Failed to update stats-community-events index for record {record.id}: {e}"
+                    f"Failed to update stats-community-events index "
+                    f"for record {record.id}: {e}"
                 )
 
     def load(
         self,
         index: int = 0,
-        log_object: dict = {},
-        import_data: dict = {},
-        files: list[FileData] = [],
+        log_object: dict | None = None,
+        import_data: dict | None = None,
+        files: list[FileData] | None = None,
         no_updates: bool = False,
         user_system: str = "knowledgeCommons",
-        overrides: dict = {},
+        overrides: dict | None = None,
         strict_validation: bool = True,
         notify_record_owners: bool = False,
         clean_filenames: bool = True,
@@ -355,7 +363,20 @@ class RecordLoader:
                     - data: the submitted data
                     - files: the submitted files
                     - owners: the submitted owners
+
+        Raises:
+            DraftValidationError: Raised when the operation fails.
+            FileUploadError: Raised when the operation fails.
+            ValueError: Raised when the operation fails.
         """
+        if overrides is None:
+            overrides = {}
+        if files is None:
+            files = []
+        if import_data is None:
+            import_data = {}
+        if log_object is None:
+            log_object = {}
         result = LoaderResult(
             index=index,
             source_id="",
@@ -459,26 +480,23 @@ class RecordLoader:
                 no_updates,
                 created_timestamp_override,
                 source_id_schemes=[
-                    s
-                    for s in (self.sourceid_scheme, self.sourceid_scheme2)
-                    if s
+                    s for s in (self.sourceid_scheme, self.sourceid_scheme2) if s
                 ],
             )
             app.logger.error(
                 f"result.record_created in loader: {pformat(result.record_created)}"
             )
             validation_errors = (
-                result
-                .record_created["record_data"]
+                result.record_created["record_data"]
                 .get("metadata", {})
                 .get("errors", [])
             )
             if strict_validation and len(validation_errors) > 0:
                 raise DraftValidationError(validation_errors)
             else:
-                result.errors.extend([
-                    {"validation_error": e} for e in validation_errors
-                ])
+                result.errors.extend(
+                    [{"validation_error": e} for e in validation_errors]
+                )
             result.status = result.record_created["status"]
             if result.record_created["status"] in [
                 "updated_published",
@@ -521,11 +539,13 @@ class RecordLoader:
             ]
             if any(failed_files):
                 app.logger.error(f"failed files: {pformat(result.uploaded_files)}")
-                raise FileUploadError({
-                    "file upload failures": {
-                        k: result.uploaded_files[k] for k in failed_files
+                raise FileUploadError(
+                    {
+                        "file upload failures": {
+                            k: result.uploaded_files[k] for k in failed_files
+                        }
                     }
-                })
+                )
 
             app.logger.error(
                 f"record before publication by community: "
@@ -671,6 +691,9 @@ class RecordLoader:
         :param successful_records: The list of successful records (LoaderResult objects)
 
         :returns: the updated list of successful records (LoaderResult objects)
+
+        Returns:
+            Description of the return value.
         """
         success_list = lists["successful_records"]
         rec_log_object = load_result.log_object
@@ -713,14 +736,20 @@ class RecordLoader:
         lists: RecordListsDict,
         reason: str = "",
     ) -> RecordListsDict:
-        """Log a failed record to the failed records log file."""
+        """Log a failed record to the failed records log file.
+
+        Returns:
+            Description of the return value.
+        """
         failed_list = lists["failed_records"]
         index = result.log_object.get("index", -1)
         failed_obj = result.log_object.copy()
-        failed_obj.update({
-            "reason": reason,
-            "datestamp": arrow.now().format(),
-        })
+        failed_obj.update(
+            {
+                "reason": reason,
+                "datestamp": arrow.now().format(),
+            }
+        )
 
         if index > -1:
             failed_list.append(result)
@@ -756,7 +785,11 @@ class RecordLoader:
         result: LoaderResult,
         lists: RecordListsDict,
     ) -> RecordListsDict:
-        """Log a repaired record."""
+        """Log a repaired record.
+
+        Returns:
+            Description of the return value.
+        """
         app.logger.info("repaired previously failed record...")
         app.logger.info(
             f"    {result.log_object.get('doi')} {result.log_object.get('source_id')}"
@@ -782,6 +815,10 @@ class RecordLoader:
             - the existing failed indices
             - the existing failed source ids (using the import identifier scheme)
             - the existing failed invenio ids (using the InvenioRDM record ID scheme)
+
+
+        Returns:
+            Description of the return value.
         """
         existing_failed_records: list[dict] = []
         try:
@@ -809,12 +846,29 @@ class RecordLoader:
 
     def _get_record_set(
         self,
-        metadata: list[dict] = [],
-        flags: dict[str, bool] = {},
-        range_args: list[int] = [],
-        nonconsecutive: list[int] = [],
+        metadata: list[dict] | None = None,
+        flags: dict[str, bool] | None = None,
+        range_args: list[int] | None = None,
+        nonconsecutive: list[int] | None = None,
     ) -> list[dict]:
-        """Get the record set from the metadata."""
+        """Get the record set from the metadata.
+
+        Returns:
+            Description of the return value.
+
+        Raises:
+            InvalidParametersError: Raised when the operation fails.
+            NoAvailableRecordsError: Raised when the operation fails.
+            ValueError: Raised when the operation fails.
+        """
+        if nonconsecutive is None:
+            nonconsecutive = []
+        if range_args is None:
+            range_args = []
+        if flags is None:
+            flags = {}
+        if metadata is None:
+            metadata = []
         retry_failed = flags.get("retry_failed")
         no_updates = flags.get("no_updates")
         use_sourceids = flags.get("use_sourceids")
@@ -905,8 +959,12 @@ class RecordLoader:
         self,
         current_record_index: int,
         record: dict,
-    ) -> dict[str, str]:
-        """Get the record ids from the record."""
+    ) -> dict[str, str | int]:
+        """Get the record ids from the record.
+
+        Returns:
+            Description of the return value.
+        """
         rec_doi = record.get("pids", {}).get("doi", {}).get("identifier", "")
         scheme_ids = []
         for scheme in [self.sourceid_scheme, self.sourceid_scheme2]:
@@ -922,7 +980,7 @@ class RecordLoader:
         rec_invenioid = record.get("id", "")
         app.logger.info(f"....starting to load record {current_record_index}")
 
-        rec_log_object = {
+        rec_log_object: dict[str, str | int] = {
             "index": current_record_index,
             "invenio_recid": rec_invenioid,
             "invenio_id": rec_doi,
@@ -949,6 +1007,9 @@ class RecordLoader:
         :param no_updates_records: the list of no-updates records
 
         :returns: the updated lists of failed, and no-updates records
+
+        Returns:
+            Description of the return value.
         """
         print_exc()
         app.logger.error(f"ERROR: {e}")
@@ -994,9 +1055,11 @@ class RecordLoader:
             raise e
 
         if e.__class__.__name__ not in ["SkipRecord", "NoUpdates"]:
-            result.errors.append({
-                "message": error_reasons[e.__class__.__name__],
-            })
+            result.errors.append(
+                {
+                    "message": error_reasons[e.__class__.__name__],
+                }
+            )
             lists = self._log_failed_record(result=result, lists=lists)
         elif e.__class__.__name__ == "NoUpdates":
             lists["no_updates_records"].append(result.log_object)
@@ -1018,6 +1081,9 @@ class RecordLoader:
         :param record: the record to get overrides for
         :returns: a tuple containing a boolean indicating whether the record
             should be skipped and a dictionary containing any overrides
+
+        Returns:
+            Description of the return value.
         """
         overrides = {}
         skip = False  # allow skipping records in the source record list
@@ -1040,7 +1106,11 @@ class RecordLoader:
         return skip, overrides
 
     def _update_counts(self, counts: dict, result: LoaderResult) -> dict:
-        """Update the counts based on the result of the load operation."""
+        """Update the counts based on the result of the load operation.
+
+        Returns:
+            Description of the return value.
+        """
         if not result.existing_record:
             counts["new_records"] += 1
         if "unchanged_existing" in result.status:
@@ -1054,12 +1124,16 @@ class RecordLoader:
 
     def _report_counts(
         self,
-        counts: dict = {},
+        counts: dict | None = None,
         lists: RecordListsDict | None = None,
-        nonconsecutive: list[int] = [],
+        nonconsecutive: list[int] | None = None,
         start_index: int = 0,
     ) -> None:
         """Log and report the final counts of the load operation."""
+        if nonconsecutive is None:
+            nonconsecutive = []
+        if counts is None:
+            counts = {}
         if lists is None:
             lists = {
                 "successful_records": [],
@@ -1118,13 +1192,16 @@ class RecordLoader:
             app.logger.info(f"Failed records written to {self.failed_log_path}")
 
     def _update_record_log_object(self, result: LoaderResult) -> dict:
-        """Update the record log object with the result of the load operation."""
+        """Update the record log object with the result of the load operation.
+
+        Returns:
+            The updated log object dict.
+        """
         result.log_object["invenio_recid"] = result.record_created.get(
             "record_data", {}
         ).get("id")
         result.log_object["doi"] = (
-            result.record_created
-            .get("record_data", {})
+            result.record_created.get("record_data", {})
             .get("pids", {})
             .get("doi", {})
             .get("identifier", "")
@@ -1146,7 +1223,11 @@ class RecordLoader:
         start_date: str = "",
         end_date: str = "",
     ) -> list | bool:
-        """Aggregate the stats for the load operation."""
+        """Aggregate the stats for the load operation.
+
+        Returns:
+            Description of the return value.
+        """
         start_date = (
             start_date
             if start_date
@@ -1170,7 +1251,7 @@ class RecordLoader:
         self,
         start_index: int = 0,
         stop_index: int = -1,
-        nonconsecutive: list = [],
+        nonconsecutive: list | None = None,
         no_updates: bool = False,
         use_sourceids: bool = False,
         retry_failed: bool = False,
@@ -1180,8 +1261,8 @@ class RecordLoader:
         clean_filenames: bool = True,
         verbose: bool = False,
         stop_on_error: bool = False,
-        files: list[FileData] = [],
-        metadata: list[dict] = [],
+        files: list[FileData] | None = None,
+        metadata: list[dict] | None = None,
         review_required: bool = True,
         strict_validation: bool = True,
         all_or_none: bool = True,
@@ -1231,7 +1312,19 @@ class RecordLoader:
                 to load
         returns:
             None
+
+        Returns:
+            Description of the return value.
+
+        Raises:
+            SkipRecord: Raised when the operation fails.
         """
+        if metadata is None:
+            metadata = []
+        if files is None:
+            files = []
+        if nonconsecutive is None:
+            nonconsecutive = []
         counts: dict[str, int] = {
             "record_counter": 0,
             "updated_drafts": 0,
@@ -1284,9 +1377,11 @@ class RecordLoader:
             skip, overrides = self._get_overrides(record_metadata)
             rec_log_object = self._get_log_object(current_record_index, record_metadata)
             # Match files by checking both the entry dictionary keys and the 'key' field
-            # within each entry, since the dictionary key may not include the file extension.
-            # Order current_files to match the metadata entries order so that the record's
-            # file order is determined by the metadata, not the order in which files were
+            # within each entry, since the dictionary key may not
+            # include the file extension.
+            # Order current_files to match the metadata entries order so
+            # that the record's file order is determined by the metadata,
+            # not the order in which files were
             # sent (e.g. multipart form data order can differ from metadata order).
             entries = record_metadata.get("files", {}).get("entries", {})
             entry_keys = set(entries.keys())
@@ -1397,8 +1492,7 @@ class RecordLoader:
                 item_index=r.index,
                 record_id=r.record_created.get("record_data", {}).get("id", ""),
                 source_id=r.source_id,
-                record_url=r.record_created
-                .get("record_data", {})
+                record_url=r.record_created.get("record_data", {})
                 .get("links", {})
                 .get("self_html", ""),
                 metadata=r.record_created.get("record_data", {}),
@@ -1413,8 +1507,7 @@ class RecordLoader:
                 item_index=r.index,
                 record_id=r.record_created.get("record_data", {}).get("id", ""),
                 source_id=r.source_id,
-                record_url=r.record_created
-                .get("record_data", {})
+                record_url=r.record_created.get("record_data", {})
                 .get("links", {})
                 .get("self_html", ""),
                 metadata=r.record_created.get("record_data", {}),

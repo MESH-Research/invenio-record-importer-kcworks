@@ -32,16 +32,24 @@ def api_request(
     server: str = "",
     args: str = "",
     token: str = "",
-    params: dict[str, str] = {},
-    json_dict: dict[str, str] | list[dict] = {},
+    params: dict[str, str] | None = None,
+    json_dict: dict[str, str] | list[dict] | None = None,
     file_data: bytes | None = None,
     protocol: str = "",
 ) -> dict:
-    """Make an api request and return the response."""
+    """Make an api request and return the response.
+
+    Returns:
+        Description of the return value.
+    """
+    if json_dict is None:
+        json_dict = {}
+    if params is None:
+        params = {}
     if not server:
-        server = app.config.get("APP_UI_URL")
+        server = app.config.get("APP_UI_URL") or ""
     if not token:
-        token = app.config.get("RECORD_IMPORTER_API_TOKEN")
+        token = app.config.get("RECORD_IMPORTER_API_TOKEN") or ""
     if not protocol:
         protocol = app.config.get("RECORD_IMPORTER_PROTOCOL", "http")
 
@@ -107,11 +115,19 @@ class IndexHelper:
         self.client = client
 
     def list_indices(self):
-        """List indices in search domain."""
+        """List indices in search domain.
+
+        Returns:
+            Description of the return value.
+        """
         return self.client.indices.get_alias().keys()
 
     def delete_index(self, index):
-        """Delete a search index."""
+        """Delete a search index.
+
+        Returns:
+            Description of the return value.
+        """
         return self.client.indices.delete(index)
 
     def drop_event_indices(self, index_strings: list | None = None):
@@ -130,6 +146,7 @@ class IndexHelper:
         """Old utility method.
 
         # FIXME: deprecate
+
         """
         views_query = {
             "query": {
@@ -165,18 +182,34 @@ class IndexHelper:
 
 
 def generate_random_string(length):
-    """Generate a random string of lowercase letters and integer numbers."""
+    """Generate a random string of lowercase letters and integer numbers.
+
+    Returns:
+        Description of the return value.
+
+    """
     res = "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
     return res
 
 
 def generate_password(length):
-    """Generate a hashed password."""
+    """Generate a hashed password.
+
+    Returns:
+        The hashed password string.
+    """
     return hash_password(generate_random_string(48))
 
 
 def flatten_list(list_of_lists, flat_list=None):
-    """Flatten a list of lists."""
+    """Flatten a list of lists.
+
+    Returns:
+        Description of the return value.
+
+    """
+    if flat_list is None:
+        flat_list = []
     if not list_of_lists:
         return flat_list
     else:
@@ -190,7 +223,11 @@ def flatten_list(list_of_lists, flat_list=None):
 
 
 def valid_isbn(isbn: str) -> bool | str:
-    """Check isbn for validity."""
+    """Check isbn for validity.
+
+    Returns:
+        The ISBN string if valid, otherwise False.
+    """
     if is_isbn10(isbn) or (is_isbn13(isbn)):
         return isbn
     elif is_isbn10(clean(isbn)) or is_isbn13(clean(isbn)):
@@ -208,6 +245,9 @@ def valid_date(datestring: str) -> bool:
 
     This function allows for truncated dates (just year, year-month,
     year-month-day)
+
+    Returns:
+        Description of the return value.
     """
     try:
         datetime.fromisoformat(datestring.replace("Z", "+00:00"))
@@ -231,6 +271,9 @@ def compare_metadata(A: dict, B: dict) -> dict:
     param B: The second record to compare (typically the record being migrated)
     return: A dictionary of differences between the two records
     rtype: dict
+
+    Returns:
+        Description of the return value.
     """
     VERBOSE = False
     output: dict[str, dict] = {"A": {}, "B": {}}
@@ -254,7 +297,11 @@ def compare_metadata(A: dict, B: dict) -> dict:
             return all(deep_compare(a[k], b[k]) for k in a.keys())
 
     def obj_list_compare(list_name, key, a, b, comparators):
-        """Compare two lists of objects."""
+        """Compare two lists of objects.
+
+        Returns:
+            A dict of differences under keys ``A`` and ``B``, if any.
+        """
         out = {}
         if list_name not in a.keys():
             a[list_name] = []
@@ -338,9 +385,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
         # enriched keys (e.g. embargo, status) do not count as diffs.
         access_a = A.get("access", {})
         access_b = B["access"]
-        same_access = all(
-            deep_compare(access_a.get(k), v) for k, v in access_b.items()
-        )
+        same_access = all(deep_compare(access_a.get(k), v) for k, v in access_b.items())
         app.logger.debug(same_access)
         if not same_access:
             output["A"]["access"] = A.get("access", {})
@@ -637,6 +682,9 @@ def normalize_string(mystring: str) -> str:
 
     Suitable for cleaning strings for case-insensitive
     comparison but not for display.
+
+    Returns:
+        Description of the return value.
     """
     mystring = _clean_backslashes_and_spaces(mystring)
     result = _normalize_punctuation(mystring)
@@ -655,11 +703,17 @@ def normalize_string_lowercase(mystring: str) -> str:
 
     Suitable for cleaning strings for case-insensitive
     comparison but not for display.
+
+    Returns:
+        Description of the return value.
+
     """
     mystring = mystring.casefold()
     mystring = _clean_backslashes_and_spaces(mystring)
     result = _normalize_punctuation(mystring)
-    assert isinstance(result, str), "normalize_string_lowercase expects string input/output"
+    assert isinstance(result, str), (
+        "normalize_string_lowercase expects string input/output"
+    )
     mystring = result
     mystring = _strip_surrounding_quotes(mystring)
     return mystring
@@ -670,6 +724,9 @@ def _strip_surrounding_quotes(mystring: str) -> str:
 
     This function removes any leading or trailing single or
     double quotes from a string.
+
+    Returns:
+        The string without surrounding quotes.
     """
     try:
         if ((mystring[0], mystring[-1]) == ('"', '"')) or (
@@ -681,7 +738,7 @@ def _strip_surrounding_quotes(mystring: str) -> str:
     return mystring
 
 
-def _normalize_punctuation(mystring: str | list | dict) -> str | list[str] | dict[str, Any]:
+def _normalize_punctuation(mystring: str | list | dict) -> str | list | dict[str, Any]:
     """Normalize the punctuation in a string.
 
     Converts fancy quotes to simple ones, html escaped
@@ -693,6 +750,10 @@ def _normalize_punctuation(mystring: str | list | dict) -> str | list[str] | dic
 
     Suitable for cleaning strings for comparison or for
     display.
+
+    Returns:
+        Description of the return value.
+
     """
     if isinstance(mystring, str):
         mystring = mystring.replace("’", "'")
@@ -721,6 +782,10 @@ def _clean_backslashes_and_spaces(mystring: str) -> str:
     Removes backslashes escaping quotation marks, and
     converts multiple spaces to single spaces. Also converts
     multiple backslashes to single backslashes.
+
+
+    Returns:
+        Description of the return value.
     """
     if re.search(r"[\'\"]", mystring):
         mystring = re.sub(r"\\+'", r"'", mystring)
@@ -732,7 +797,11 @@ def _clean_backslashes_and_spaces(mystring: str) -> str:
 
 
 def update_nested_dict(original, update):
-    """Update a nested dictionary's values."""
+    """Update a nested dictionary's values.
+
+    Returns:
+        Description of the return value.
+    """
     for key, value in update.items():
         if isinstance(value, dict):
             original[key] = update_nested_dict(original.get(key, {}), value)
@@ -765,7 +834,8 @@ def replace_value_in_nested_dict(d: dict, path: str, new_value: Any) -> dict | b
     :param path: The bar-separated path string to the value.
     :param new_value: The new value to set.
 
-    returns: dict: The updated dictionary.
+    Returns:
+        dict: The updated dictionary.
     """
     keys = path.split("|")
     current = d

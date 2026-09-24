@@ -33,6 +33,7 @@ class ConfigVariables:
     """Configuration variables for the record importer service."""
 
     def __init__(self, app):
+        """Initialize the instance."""
         self.RECORD_IMPORTER_ADMIN_EMAIL = app.config.get("ADMIN_EMAIL", "")
 
         self.RECORD_IMPORTER_DATA_DIR = app.config.get(

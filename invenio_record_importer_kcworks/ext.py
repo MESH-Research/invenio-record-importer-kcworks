@@ -6,6 +6,8 @@
 # and/or modify it under the terms of the MIT License; see
 # LICENSE file for more details.
 
+"""Flask extension for the record importer."""
+
 from .config import ConfigVariables, RecordImporterServiceConfig
 from .resources import RecordImporterResource, RecordImporterResourceConfig
 from .service import RecordImporterService
@@ -29,6 +31,7 @@ class InvenioRecordImporter:
         Args:
             app (Flask): the Flask application object on which to initialize
                 the extension
+            **kwargs: Additional keyword arguments (unused).
         """
         self.init_config(app)
         self.init_service(app)

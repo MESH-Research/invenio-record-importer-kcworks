@@ -6,6 +6,8 @@
 # and/or modify it under the terms of the MIT License; see
 # LICENSE file for more details.
 
+"""Serialization of source records for import."""
+
 import json
 from pathlib import Path
 
@@ -31,9 +33,7 @@ class SerializationService:
 
     serialized_id_fetchers = {
         "doi": "pids.doi.identifier",
-        "hclegacy-pid": lambda x: x["metadata"]["identifiers"][0][
-            "identifier"
-        ],
+        "hclegacy-pid": lambda x: x["metadata"]["identifiers"][0]["identifier"],
     }
 
     raw_id_fetchers = {
@@ -43,7 +43,11 @@ class SerializationService:
 
     @staticmethod
     def _get_by_dot_string(obj, dot_string):
-        """Get value from object by dot string."""
+        """Get value from object by dot string.
+
+        Returns:
+            Description of the return value.
+        """
         for key in dot_string.split("."):
             obj = obj.get(key)
         return obj
@@ -51,8 +55,8 @@ class SerializationService:
     @classmethod
     def read_serialized(
         cls,
-        identifiers: list[str] = [],
-        indices: list[int] = [],
+        identifiers: list[str] | None = None,
+        indices: list[int] | None = None,
         id_scheme: str = "doi",
         field_path: str = "",
     ) -> list[dict]:
@@ -63,7 +67,14 @@ class SerializationService:
 
         Returns:
             list[dict]: List of serialized json records as python dictionaries.
+
+        Raises:
+            IndexError: Raised when the operation fails.
         """
+        if indices is None:
+            indices = []
+        if identifiers is None:
+            identifiers = []
         file_path = Path(app.config["RECORD_IMPORTER_SERIALIZED_PATH"])
 
         serialized_recs = []
@@ -78,19 +89,16 @@ class SerializationService:
                             record_val = [
                                 r
                                 for r in iterlist
-                                if cls._get_by_dot_string(r, id_fetch_path)
-                                == i
+                                if cls._get_by_dot_string(r, id_fetch_path) == i
                             ][0]
                         else:
                             # id_fetch_path is a callable when not a string
                             assert callable(id_fetch_path)
-                            record_val = [
-                                r for r in iterlist if id_fetch_path(r) == i
-                            ][0]
+                            record_val = [r for r in iterlist if id_fetch_path(r) == i][
+                                0
+                            ]
                         if field_path:
-                            record_val = cls._get_by_dot_string(
-                                record_val, field_path
-                            )
+                            record_val = cls._get_by_dot_string(record_val, field_path)
                         serialized_recs.append(
                             {
                                 "id": i,
@@ -101,9 +109,7 @@ class SerializationService:
                     for n in indices:
                         record_val = iterlist[int(n)]
                         if field_path:
-                            record_val = cls._get_by_dot_string(
-                                record_val, field_path
-                            )
+                            record_val = cls._get_by_dot_string(record_val, field_path)
                         serialized_recs.append({"id": n, "record": record_val})
         except IndexError as e:
             raise e
@@ -113,12 +119,20 @@ class SerializationService:
     @classmethod
     def dump_serialized(
         cls,
-        identifiers: list[str] = [],
-        indices: list[int] = [],
+        identifiers: list[str] | None = None,
+        indices: list[int] | None = None,
         id_scheme: str = "doi",
         field_path: str = "",
     ) -> str:
-        """Dump serialized data."""
+        """Dump serialized data.
+
+        Returns:
+            Description of the return value.
+        """
+        if indices is None:
+            indices = []
+        if identifiers is None:
+            identifiers = []
         return json.dumps(
             cls.read_serialized(
                 identifiers=identifiers,
@@ -131,12 +145,20 @@ class SerializationService:
     @classmethod
     def read_raw(
         cls,
-        identifiers: list[str] = [],
-        indices: list[int] = [],
+        identifiers: list[str] | None = None,
+        indices: list[int] | None = None,
         id_scheme: str = "doi",
         field_path: str = "",
     ) -> list[dict]:
-        """Read raw data."""
+        """Read raw data.
+
+        Returns:
+            Description of the return value.
+        """
+        if indices is None:
+            indices = []
+        if identifiers is None:
+            identifiers = []
         file_path = Path(
             app.config["RECORD_IMPORTER_DATA_DIR"],
             "records-for-import.json",
@@ -161,13 +183,9 @@ class SerializationService:
                     else:
                         # id_fetch_path is a callable when not a string
                         assert callable(id_fetch_path)
-                        record_val = [
-                            d for d in data if id_fetch_path(d) == i
-                        ][0]
+                        record_val = [d for d in data if id_fetch_path(d) == i][0]
                     if field_path:
-                        record_val = cls._get_by_dot_string(
-                            record_val, field_path
-                        )
+                        record_val = cls._get_by_dot_string(record_val, field_path)
                     raw_records.append(
                         {
                             "id": i,
@@ -178,9 +196,7 @@ class SerializationService:
                 for n in indices:
                     record_val = data[int(n)]
                     if field_path:
-                        record_val = cls._get_by_dot_string(
-                            record_val, field_path
-                        )
+                        record_val = cls._get_by_dot_string(record_val, field_path)
                     raw_records.append({"id": n, "record": record_val})
 
         return raw_records
@@ -188,12 +204,20 @@ class SerializationService:
     @classmethod
     def dump_raw(
         cls,
-        identifiers: list[str] = [],
-        indices: list[int] = [],
+        identifiers: list[str] | None = None,
+        indices: list[int] | None = None,
         id_scheme: str = "doi",
         field_path: str = "",
     ):
-        """Dump raw data."""
+        """Dump raw data.
+
+        Returns:
+            Description of the return value.
+        """
+        if indices is None:
+            indices = []
+        if identifiers is None:
+            identifiers = []
         return json.dumps(
             cls.read_raw(
                 identifiers=identifiers,

@@ -1,3 +1,5 @@
+"""Parsing helpers for import payloads."""
+
 from functools import wraps
 
 from flask import current_app as app
@@ -10,7 +12,7 @@ from flask_resources.parsers.body import RequestBodyParser
 
 
 def request_body_parser(
-    parsers={"application/json": RequestBodyParser(deserializer=JSONDeserializer())},
+    parsers=None,
     default_content_type="application/json",
 ):
     """Create decorator for parsing the request body.
@@ -24,7 +26,14 @@ def request_body_parser(
     :param parsers: A mapping of content types to parsers.
     :param default_content_type_name: The default content type used to select
         a parser if no content type was provided.
+
+    Returns:
+        Description of the return value.
     """
+    if parsers is None:
+        parsers = {
+            "application/json": RequestBodyParser(deserializer=JSONDeserializer())
+        }
 
     def decorator(f):
         @wraps(f)
@@ -58,7 +67,11 @@ class RequestMultipartParser:
     """Parse the request multipart data."""
 
     def parse(self):
-        """Parse the request multipart data."""
+        """Parse the request multipart data.
+
+        Returns:
+            Description of the return value.
+        """
         app.logger.debug(f"form type: {type(request.form)}")
         app.logger.debug(f"Request form: {request.form}")
         app.logger.debug(f"files type: {type(request.files)}")

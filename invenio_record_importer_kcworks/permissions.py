@@ -1,3 +1,5 @@
+"""Permission policies for the record importer."""
+
 from invenio_communities.generators import (
     CommunityCurators,
     CommunityMembers,

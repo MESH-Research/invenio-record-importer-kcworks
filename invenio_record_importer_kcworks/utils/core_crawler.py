@@ -1,3 +1,5 @@
+"""Helpers for crawling CORE metadata."""
+
 import requests
 import xmltodict
 from selenium import webdriver
@@ -5,6 +7,11 @@ from selenium.webdriver.common.by import By
 
 
 def get_desc_metadata(url):
+    """Get desc metadata.
+
+    Returns:
+        Description of the return value.
+    """
     response = requests.get(url)
     from pprint import pprint
 
@@ -74,6 +81,11 @@ def get_desc_metadata(url):
 
 
 def get_metadata(record_id):
+    """Get metadata.
+
+    Returns:
+        Description of the return value.
+    """
     op = webdriver.ChromeOptions()
     op.add_argument("headless")
     driver = webdriver.Chrome(options=op)
@@ -95,16 +107,12 @@ def get_metadata(record_id):
     for dt, dd in zip(dts, dds, strict=False):
         print(dd.text)
         if dt.text == "Metadata:":
-            meta_desc_url = dd.find_elements(By.TAG_NAME, "a")[
-                0
-            ].get_attribute("href")
+            meta_desc_url = dd.find_elements(By.TAG_NAME, "a")[0].get_attribute("href")
             meta_desc = get_desc_metadata(meta_desc_url)
         elif dt.text == "Published as:":
             metadata["published_as"] = dd.text
         else:
-            metadata[dt.text.lower().replace(":", "").replace("(s)", "")] = (
-                dd.text
-            )
+            metadata[dt.text.lower().replace(":", "").replace("(s)", "")] = dd.text
 
     filename = driver.find_element(
         By.CSS_SELECTOR, ".view_downloads > tbody > tr > td.value"

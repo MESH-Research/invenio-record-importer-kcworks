@@ -1,3 +1,5 @@
+"""Celery tasks for the record importer."""
+
 from celery import shared_task
 from flask import current_app as app
 from flask import render_template
@@ -24,6 +26,9 @@ def aggregate_events(
     This relies on a subclass of the StatAggregator class to be defined
     that can use the `previous_bookmark` parameter to override the
     `previous_bookmark` value derived from the search index.
+
+    Returns:
+        Description of the return value.
     """
     results = []
     for aggr_name in aggregations:
@@ -58,7 +63,7 @@ def send_security_email(
         subject: The subject of the email.
         recipients: A list of email addresses to send the email to.
         user: The user to send the email to.
-        community_record: The community record.
+        community_url: URL of the community page for template context.
         record_data: The record data.
         collection_config: The collection configuration.
     """
@@ -103,6 +108,7 @@ def update_community_created_dates_task(
     batches and performs health checks between batches.
 
     Args:
+        self: Bound Celery task instance.
         batch_size: Number of communities to process in each batch
         dry_run: If True, show what would be updated without making changes
         verbose: If True, log detailed progress information

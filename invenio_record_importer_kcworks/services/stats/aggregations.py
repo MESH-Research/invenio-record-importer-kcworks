@@ -26,7 +26,11 @@ class StatAggregatorOverridable(StatAggregator):
         update_bookmark: bool = True,
         previous_bookmark: str | None | datetime = None,
     ):
-        """Calculate statistics aggregations."""
+        """Calculate statistics aggregations.
+
+        Returns:
+            Description of the return value.
+        """
         # If no events have been indexed there is nothing to aggregate
         if not dsl.Index(self.event_index, using=self.client).exists():
             return

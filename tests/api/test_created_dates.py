@@ -311,7 +311,9 @@ def test_cli_invalid_end_date(running_app):
     assert "Invalid end-date format" in result.output
 
 
-def test_cli_dry_run_communities_only(running_app, sample_community_with_group_id):
+def test_cli_dry_run_communities_only(
+    running_app, sample_community_with_group_id, capsys
+):
     """Test CLI dry run for communities only."""
     runner = CliRunner()
     result = runner.invoke(
@@ -327,7 +329,12 @@ def test_cli_dry_run_communities_only(running_app, sample_community_with_group_i
 
     assert result.exit_code == 0
     assert "Updating community created dates" in result.output
-    assert "Community Update Results" in result.output
-    assert "Total found:" in result.output
+    # After CommunitiesHelper.update_community_created_dates() returns,
+    # later click.echo calls can bypass CliRunner isolation and land on
+    # real stdout (still visible via capsys). Combine both.
+    captured = capsys.readouterr()
+    combined = f"{result.output}{captured.out}{captured.err}"
+    assert "Community Update Results" in combined
+    assert "Total found:" in combined
 
 

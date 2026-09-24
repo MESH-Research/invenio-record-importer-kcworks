@@ -1,3 +1,5 @@
+"""Shared types for the record importer."""
+
 from io import BufferedReader
 from pprint import pformat
 from tempfile import SpooledTemporaryFile
@@ -8,13 +10,13 @@ from pydantic import BaseModel, field_validator
 
 class FileUploadResult(TypedDict):
     """Type definition for file upload result structure."""
+
     status: str
     messages: list[str]
 
 
 class FileData(BaseModel):
-    """A class to represent the file data for a record to be imported.
-    """
+    """A class to represent the file data for a record to be imported."""
 
     filename: str
     content_type: str
@@ -23,13 +25,21 @@ class FileData(BaseModel):
     stream: SpooledTemporaryFile | BufferedReader
 
     class Config:
+        """Config."""
+
         arbitrary_types_allowed = True
 
     @field_validator("stream")
     @classmethod
-    def validate_temp_file(
-        cls, v: Any
-    ) -> SpooledTemporaryFile | BufferedReader | None:
+    def validate_temp_file(cls, v: Any) -> SpooledTemporaryFile | BufferedReader | None:
+        """Validate temp file.
+
+        Returns:
+            Description of the return value.
+
+        Raises:
+            ValueError: Raised when the operation fails.
+        """
         if v is not None and not isinstance(v, (SpooledTemporaryFile, BufferedReader)):
             raise ValueError("Must be a SpooledTemporaryFile or BufferedReader")
         return v
@@ -58,8 +68,7 @@ class ImportedRecord(BaseModel):
 
 
 class APIResponsePayload(BaseModel):
-    """A class to represent an API endpoint response payload.
-    """
+    """A class to represent an API endpoint response payload."""
 
     status: str
     data: list[dict] = []
@@ -68,8 +77,7 @@ class APIResponsePayload(BaseModel):
 
 
 class LoaderResult(BaseModel):
-    """A class to represent the loader result for one record.
-    """
+    """A class to represent the loader result for one record."""
 
     index: int
     source_id: str = ""
