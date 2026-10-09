@@ -320,10 +320,8 @@ def load_records(
         preceded by `pipenv run` or the pipenv environment must first be
         activated with `pipenv shell`.
 
-        The operations involved require authenitcation as an admin user in the
-        knowledge_commons_works instance. This program will look for the
-        admin user's api token in the RECORD_IMPORTER_API_TOKEN environment
-        variable.
+        The operations involved are performed in-process against the local
+        instance's services, so no API token is required.
 
         Where necessary this program will create top-level domain communities,
         assign the records to the correct domain communities, create

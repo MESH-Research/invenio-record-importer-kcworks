@@ -5,7 +5,6 @@ requires = ["babel>2.8", "setuptools>=61", "wheel"]
 [project]
 name = "invenio-record-importer-kcworks"
 version = "0.4.0"
-
 description = "Bulk import records into a InvenioRDM instance configured for Knowledge Commons Works"
 readme = "README.md"
 keywords = [
@@ -15,11 +14,9 @@ keywords = [
   "knowledge-commons-works",
   "record-importer",
 ]
-
 license = "MIT"
 authors = [{ name = "Mesh Research", email = "scottia4@msu.edu" }]
 requires-python = ">=3.12"
-
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Web Environment",
@@ -59,8 +56,11 @@ dependencies = [
   "unidecode",
   "validators",
 ]
-
-optional-dependencies.dev = ["bump-my-version==1.5.1", "check-manifest", "ipykernel"]
+optional-dependencies.dev = [
+  "bump-my-version==1.5.1",
+  "check-manifest",
+  "ipykernel",
+]
 optional-dependencies.test = [
   "coverage",
   "pytest",
@@ -75,39 +75,37 @@ optional-dependencies.test = [
   "ty",
   "wheel",
 ]
-
-urls."Homepage" = "https://github.com/Knowledge-Commons-Works/invenio-record-importer-kcworks"
-
+urls.Homepage = "https://github.com/Knowledge-Commons-Works/invenio-record-importer-kcworks"
 scripts.importer = "invenio_record_importer_kcworks.cli:cli"
 entry-points."flask.commands".importer = "invenio_record_importer_kcworks.cli:cli"
 entry-points."invenio_base.api_apps".invenio_record_importer_kcworks = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
 entry-points."invenio_base.api_blueprints".invenio_record_importer_kcworks = "invenio_record_importer_kcworks.resources:create_api_blueprint"
 entry-points."invenio_base.apps".invenio_record_importer_kcworks = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
 entry-points."invenio_celery.tasks".invenio-record-importer-kcworks = "invenio_record_importer_kcworks.tasks"
+entry-points."invenio_oauth2server.scopes".records_import = "invenio_record_importer_kcworks.scopes:records_import_scope"
 
-[tool.uv.sources]
+[tool.uv]
+sources.invenio-communities = { path = "../invenio-communities", editable = true }
+sources.invenio-group-collections-kcworks = { path = "../invenio-group-collections-kcworks", editable = true }
+sources.invenio-rdm-records = { path = "../invenio-rdm-records", editable = true }
+sources.invenio-remote-user-data-kcworks = { path = "../invenio-remote-user-data-kcworks", editable = true }
+sources.invenio-stats-dashboard = { path = "../invenio-stats-dashboard", editable = true }
 # kcworks is not overridden here: the root workspace (knowledge-commons-works or kcworks-next)
 # provides it via its [tool.uv.sources], so both clones resolve to the current repo.
 # CI script will modify other entries as needed (e.g. GitHub source).
-kcworks = { path = "../../../..", editable = true }
-invenio-communities = { path = "../invenio-communities", editable = true }
-invenio-rdm-records = { path = "../invenio-rdm-records", editable = true }
-invenio-group-collections-kcworks = { path = "../invenio-group-collections-kcworks", editable = true }
-invenio-remote-user-data-kcworks = { path = "../invenio-remote-user-data-kcworks", editable = true }
-invenio-stats-dashboard = { path = "../invenio-stats-dashboard", editable = true }
+sources.kcworks = { path = "../../../..", editable = true }
 
 [tool.ruff]
 target-version = "py312"
 line-length = 88
 exclude = [
-  "**/*.ipynb",                                    # Exclude Jupyter notebook files
-  "invenio_record_importer_kcworks/deprecated/**", # Exclude deprecated files
+  "**/*.ipynb",                                        # Exclude Jupyter notebook files
+  "invenio_record_importer_kcworks/deprecated/**",     # Exclude deprecated files
   "invenio_record_importer_kcworks/libs/fedoraapi.py",
 ]
-
 lint.select = ["B", "D", "DOC", "E", "F", "I", "UP"]
 lint.ignore = [
-  "D412", # Missing blank line before closing docstring 
+  "D412", # Missing blank line before closing docstring
   "W1",   # Indentation warnings
   "W2",   # Whitespace warnings
   "W3",   # Blank line warnings
@@ -175,46 +173,6 @@ ignore = [
   ".vscode/*",
 ]
 
-[tool.pytest.ini_options]
-addopts = """
---ruff --doctest-modules
---log-cli-level=DEBUG
---ignore=app_data
---ignore=docs
---ignore=node_modules
---ignore=scripts
---ignore=tests/helpers
---ignore=invenio_record_importer_kcworks/deprecated
---cov=invenio_record_importer_kcworks 
---cov-report=term-missing
-"""
-isort_show_files = true
-log_cli_level = "DEBUG"
-norecursedirs = []
-plugins = [
-  "tests.fixtures.communities",
-  "tests.fixtures.metadata_fields",
-  "tests.fixtures.custom_fields",
-  "tests.fixtures.identifiers",
-  "tests.fixtures.records",
-  "tests.fixtures.saml",
-  "tests.fixtures.stats",
-  "tests.fixtures.users",
-  "tests.fixtures.vocabularies.affiliations",
-  "tests.fixtures.vocabularies.community_types",
-  "tests.fixtures.vocabularies.date_types",
-  "tests.fixtures.vocabularies.descriptions",
-  "tests.fixtures.vocabularies.languages",
-  "tests.fixtures.vocabularies.licenses",
-  "tests.fixtures.vocabularies.resource_types",
-  "tests.fixtures.vocabularies.roles",
-  "tests.fixtures.vocabularies.subjects",
-]
-testpaths = ["tests", "invenio_record_importer_kcworks"]
-
-[tool.coverage.run]
-omit = []
-
 [tool.ty]
 analysis = {}
 # Type checking with ty (replaces mypy). Mirrors the parent KCWorks
@@ -233,34 +191,45 @@ src.exclude = [
   "invenio_record_importer_kcworks/libs/fedoraapi.py",
 ]
 
-[tool.babel.compile_catalog]
-directory = "translations/"
-use-fuzzy = true
-
-[tool.babel.extract_messages]
-copyright_holder = "Mesh Research"
-msgid_bugs_address = "scottia4@msu.edu"
-mapping-file = "translations/babel.ini"
-output-file = "translations/messages.pot"
-add-comments = "NOTE"
-
-[tool.babel.init_catalog]
-input-file = "translations/messages.pot"
-output-dir = "translations/"
-
-[tool.babel.update_catalog]
-input-file = "translations/messages.pot"
-output-dir = "translations/"
-
-[tool.pylsp.plugins.jedi]
-extra_paths = [
-  "../../..",  # kcworks (site/)
-  "../invenio-communities",
-  "../invenio-group-collections-kcworks",
-  "../invenio-rdm-records",
-  "../invenio-remote-user-data-kcworks",
-  "../invenio-stats-dashboard",
+[tool.pytest]
+ini_options.addopts = """
+--ruff --doctest-modules
+--log-cli-level=DEBUG
+--ignore=app_data
+--ignore=docs
+--ignore=node_modules
+--ignore=scripts
+--ignore=tests/helpers
+--ignore=invenio_record_importer_kcworks/deprecated
+--cov=invenio_record_importer_kcworks
+--cov-report=term-missing
+"""
+ini_options.isort_show_files = true
+ini_options.log_cli_level = "DEBUG"
+ini_options.norecursedirs = []
+ini_options.plugins = [
+  "tests.fixtures.communities",
+  "tests.fixtures.metadata_fields",
+  "tests.fixtures.custom_fields",
+  "tests.fixtures.identifiers",
+  "tests.fixtures.records",
+  "tests.fixtures.saml",
+  "tests.fixtures.stats",
+  "tests.fixtures.users",
+  "tests.fixtures.vocabularies.affiliations",
+  "tests.fixtures.vocabularies.community_types",
+  "tests.fixtures.vocabularies.date_types",
+  "tests.fixtures.vocabularies.descriptions",
+  "tests.fixtures.vocabularies.languages",
+  "tests.fixtures.vocabularies.licenses",
+  "tests.fixtures.vocabularies.resource_types",
+  "tests.fixtures.vocabularies.roles",
+  "tests.fixtures.vocabularies.subjects",
 ]
+ini_options.testpaths = ["tests", "invenio_record_importer_kcworks"]
+
+[tool.coverage]
+run.omit = []
 
 [tool.bumpversion]
 current_version = "0.4.0"
@@ -273,13 +242,9 @@ tag = false
 allow_shell_hooks = false
 message = "Bump version: {current_version} → {new_version}"
 
-[[tool.bumpversion.files]]
-filename = "pyproject.toml"
-key_path = "project.version"
-
-[[tool.bumpversion.files]]
-filename = "pyproject.toml"
-key_path = "tool.bumpversion.current_version"
+# pyproject.toml project.version and tool.bumpversion.current_version are
+# updated automatically by bump-my-version's update_config_file; listing them
+# here double-applies a whole-file search and fails on the second entry.
 
 [[tool.bumpversion.files]]
 filename = "README.md"
@@ -295,3 +260,26 @@ replace = '"{new_version}"'
 filename = "invenio_record_importer_kcworks/__init__.py"
 search = '__version__ = "{current_version}"'
 replace = '__version__ = "{new_version}"'
+
+[tool.babel]
+compile_catalog.directory = "translations/"
+compile_catalog.use-fuzzy = true
+extract_messages.copyright_holder = "Mesh Research"
+extract_messages.msgid_bugs_address = "scottia4@msu.edu"
+extract_messages.mapping-file = "translations/babel.ini"
+extract_messages.output-file = "translations/messages.pot"
+extract_messages.add-comments = "NOTE"
+init_catalog.input-file = "translations/messages.pot"
+init_catalog.output-dir = "translations/"
+update_catalog.input-file = "translations/messages.pot"
+update_catalog.output-dir = "translations/"
+
+[tool.pylsp]
+plugins.jedi.extra_paths = [
+  "../../..",                             # kcworks (site/)
+  "../invenio-communities",
+  "../invenio-group-collections-kcworks",
+  "../invenio-rdm-records",
+  "../invenio-remote-user-data-kcworks",
+  "../invenio-stats-dashboard",
+]

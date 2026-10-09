@@ -4,7 +4,6 @@ from .monthwords import monthwords
 from .seasonwords import seasonwords
 from .utils import (
     IndexHelper,
-    api_request,
     compare_metadata,
     flatten_list,
     generate_password,
@@ -21,7 +20,6 @@ __all__ = [
     "monthwords",
     "seasonwords",
     "IndexHelper",
-    "api_request",
     "compare_metadata",
     "flatten_list",
     "generate_password",

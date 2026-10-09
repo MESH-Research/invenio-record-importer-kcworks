@@ -8,103 +8,17 @@
 
 """Utility functions for invenio-record-importer-kcworks."""
 
-import json
 import random
 import re
 import string
 import unicodedata
-from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-import requests
 from flask import current_app as app
 from flask_security.utils import hash_password
 from invenio_search.proxies import current_search_client
 from isbnlib import clean, is_isbn10, is_isbn13
-from requests.exceptions import JSONDecodeError as RequestsJSONDecodeError
-
-
-# TODO: Deprecated; remove
-def api_request(
-    method: str = "GET",
-    endpoint: str = "records",
-    server: str = "",
-    args: str = "",
-    token: str = "",
-    params: dict[str, str] | None = None,
-    json_dict: dict[str, str] | list[dict] | None = None,
-    file_data: bytes | None = None,
-    protocol: str = "",
-) -> dict:
-    """Make an api request and return the response.
-
-    Returns:
-        Description of the return value.
-    """
-    if json_dict is None:
-        json_dict = {}
-    if params is None:
-        params = {}
-    if not server:
-        server = app.config.get("APP_UI_URL") or ""
-    if not token:
-        token = app.config.get("RECORD_IMPORTER_API_TOKEN") or ""
-    if not protocol:
-        protocol = app.config.get("RECORD_IMPORTER_PROTOCOL", "http")
-
-    payload_args: dict[str, str | bytes] = {}
-
-    api_url = f"{protocol}://{server}/api/{endpoint}"
-    if args:
-        api_url = f"{api_url}/{args}"
-
-    callfuncs: dict[str, Callable[..., requests.Response]] = {
-        "GET": requests.get,
-        "POST": requests.post,
-        "DELETE": requests.delete,
-        "PUT": requests.put,
-        "PATCH": requests.patch,
-    }
-    callfunc = callfuncs[method]
-
-    headers = {"Authorization": f"Bearer {token}"}
-    if json_dict and method in ["POST", "PUT", "PATCH"]:
-        headers["Content-Type"] = "application/json"
-        payload_args["data"] = json.dumps(json_dict)
-    elif file_data and method in ["POST", "PUT"]:
-        headers["content-type"] = "application/octet-stream"
-        # headers['content-length'] = str(len(file_data.read()))
-        payload_args["data"] = file_data
-
-    response = callfunc(
-        api_url, headers=headers, params=params, **payload_args, verify=False
-    )
-
-    try:
-        json_response = response.json() if method != "DELETE" else None
-    except (
-        RequestsJSONDecodeError,
-        json.decoder.JSONDecodeError,
-    ) as e:
-        # Create HTTPError with response parameter
-        http_error = requests.HTTPError(
-            f"Failed to decode JSON response from API request to {api_url}",
-            response=response,
-        )
-        raise http_error from e
-
-    result_dict = {
-        "status_code": response.status_code,
-        "headers": response.headers,
-        "json": json_response,
-        "text": response.text,
-    }
-
-    if json_response and "errors" in json_response.keys():
-        result_dict["errors"] = json_response["errors"]
-
-    return result_dict
 
 
 class IndexHelper:
@@ -300,7 +214,7 @@ def compare_metadata(A: dict, B: dict) -> dict:
         """Compare two lists of objects.
 
         Returns:
-            A dict of differences under keys ``A`` and ``B``, if any.
+            A dict of differences under keys `A` and `B`, if any.
         """
         out = {}
         if list_name not in a.keys():

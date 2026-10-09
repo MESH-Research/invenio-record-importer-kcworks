@@ -9,13 +9,11 @@
 
 from unittest.mock import MagicMock, patch
 
-from click.testing import CliRunner
-
 from invenio_record_importer_kcworks.cli import cli
 from invenio_record_importer_kcworks.types import APIResponsePayload
 
 
-def test_record_loader(running_app, admin, minimal_community_factory):
+def test_record_loader(running_app, admin, minimal_community_factory, cli_runner):
     """Test the CLI load command."""
     # Create a community for the records to be imported into
     community_record = minimal_community_factory(slug="test-community")
@@ -45,10 +43,9 @@ def test_record_loader(running_app, admin, minimal_community_factory):
         mock_loader_instance.load_all.return_value = mock_response
         mock_loader_class.return_value = mock_loader_instance
 
-        runner = CliRunner()
         # Use 1-indexed record numbers (1 = first record in JSONL file)
         # Pass the community_id via --community-id argument
-        result = runner.invoke(cli, ["load", "1", "--community-id", community_id])
+        result = cli_runner(cli, "load", "1", "--community-id", community_id)
         assert result.exit_code == 0
         # Verify that load_all was called
         mock_loader_instance.load_all.assert_called_once()

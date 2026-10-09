@@ -15,6 +15,7 @@ from flask_resources.parsers.decorators import request_parser
 from flask_resources.resources import route
 from flask_resources.responses import ResponseHandler
 from flask_resources.serializers.json import JSONSerializer
+from invenio_oauth2server.decorators import require_api_auth, require_oauth_scopes
 from invenio_records_resources.services.errors import PermissionDeniedError
 from werkzeug.datastructures import ImmutableMultiDict
 from werkzeug.exceptions import (
@@ -263,6 +264,8 @@ class RecordImporterResource(Resource):
 
     @request_parsed_view_args
     @request_form_data
+    @require_api_auth()
+    @require_oauth_scopes("records:import")
     def import_records(self):
         """Import records.
 

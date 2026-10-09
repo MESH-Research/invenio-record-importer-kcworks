@@ -10,7 +10,6 @@
 
 import arrow
 import pytest
-from click.testing import CliRunner
 from invenio_access.permissions import system_identity
 from invenio_communities.proxies import current_communities
 from invenio_rdm_records.proxies import (
@@ -269,10 +268,9 @@ def test_update_community_created_dates_no_records(
 # Tests for CLI command
 
 
-def test_cli_help(running_app):
+def test_cli_help(running_app, cli_runner):
     """Test CLI help text."""
-    runner = CliRunner()
-    result = runner.invoke(update_created_dates, ["--help"])
+    result = cli_runner(update_created_dates, "--help")
 
     assert result.exit_code == 0
     assert "Update created dates" in result.output
@@ -282,59 +280,48 @@ def test_cli_help(running_app):
     assert "--background" in result.output
 
 
-def test_cli_mutually_exclusive_flags(running_app):
+def test_cli_mutually_exclusive_flags(running_app, cli_runner):
     """Test that records-only and communities-only are mutually exclusive."""
-    runner = CliRunner()
-    result = runner.invoke(
-        update_created_dates, ["--records-only", "--communities-only"]
+    result = cli_runner(
+        update_created_dates, "--records-only", "--communities-only"
     )
 
     assert result.exit_code == 0
     assert "Cannot use both" in result.output
 
 
-def test_cli_invalid_start_date(running_app):
+def test_cli_invalid_start_date(running_app, cli_runner):
     """Test CLI with invalid start date format."""
-    runner = CliRunner()
-    result = runner.invoke(update_created_dates, ["--start-date", "not-a-date"])
+    result = cli_runner(update_created_dates, "--start-date", "not-a-date")
 
     assert result.exit_code == 0
     assert "Invalid start-date format" in result.output
 
 
-def test_cli_invalid_end_date(running_app):
+def test_cli_invalid_end_date(running_app, cli_runner):
     """Test CLI with invalid end date format."""
-    runner = CliRunner()
-    result = runner.invoke(update_created_dates, ["--end-date", "invalid-date"])
+    result = cli_runner(update_created_dates, "--end-date", "invalid-date")
 
     assert result.exit_code == 0
     assert "Invalid end-date format" in result.output
 
 
 def test_cli_dry_run_communities_only(
-    running_app, sample_community_with_group_id, capsys
+    running_app, sample_community_with_group_id, cli_runner
 ):
     """Test CLI dry run for communities only."""
-    runner = CliRunner()
-    result = runner.invoke(
+    result = cli_runner(
         update_created_dates,
-        [
-            "--communities-only",
-            "--dry-run",
-            "--verbose",
-            "--batch-size",
-            "10",
-        ],
+        "--communities-only",
+        "--dry-run",
+        "--verbose",
+        "--batch-size",
+        "10",
     )
 
     assert result.exit_code == 0
     assert "Updating community created dates" in result.output
-    # After CommunitiesHelper.update_community_created_dates() returns,
-    # later click.echo calls can bypass CliRunner isolation and land on
-    # real stdout (still visible via capsys). Combine both.
-    captured = capsys.readouterr()
-    combined = f"{result.output}{captured.out}{captured.err}"
-    assert "Community Update Results" in combined
-    assert "Total found:" in combined
+    assert "Community Update Results" in result.output
+    assert "Total found:" in result.output
 
 
