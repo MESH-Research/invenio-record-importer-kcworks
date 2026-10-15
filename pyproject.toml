@@ -1,6 +1,6 @@
 [build-system]
 build-backend = "setuptools.build_meta"
-requires = ["babel>2.8", "setuptools>=61", "wheel"]
+requires = ["babel>2.8", "setuptools>=83", "wheel"]
 
 [project]
 name = "invenio-record-importer-kcworks"
@@ -50,7 +50,7 @@ dependencies = [
   "python-iso639",
   "python-stdnum",
   "pytz",
-  "requests",
+  "requests>=2.33",
   "timefhuman",
   "titlecase",
   "unidecode",
@@ -71,9 +71,9 @@ optional-dependencies.test = [
   "pytest-ruff>=0.1",
   "requests-mock",
   "ruff>=0.3",
-  "selenium",
+  "selenium>=4",
   "ty",
-  "wheel",
+  "wheel>=0.46.2",
 ]
 urls.Homepage = "https://github.com/Knowledge-Commons-Works/invenio-record-importer-kcworks"
 scripts.importer = "invenio_record_importer_kcworks.cli:cli"
@@ -245,7 +245,6 @@ message = "Bump version: {current_version} → {new_version}"
 # pyproject.toml project.version and tool.bumpversion.current_version are
 # updated automatically by bump-my-version's update_config_file; listing them
 # here double-applies a whole-file search and fails on the second entry.
-
 [[tool.bumpversion.files]]
 filename = "README.md"
 search = "Version {current_version}"
