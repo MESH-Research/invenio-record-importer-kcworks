@@ -63,7 +63,7 @@ optional-dependencies.dev = [
 ]
 optional-dependencies.test = [
   "coverage",
-  "pytest",
+  "pytest>=8.4.2",
   "pytest-cov>=6.2.1",
   "pytest-invenio>=3.3,<4",
   "pytest-isort>=4",
