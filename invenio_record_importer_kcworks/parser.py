@@ -72,10 +72,20 @@ class RequestMultipartParser:
         Returns:
             Description of the return value.
         """
-        app.logger.debug(f"form type: {type(request.form)}")
-        app.logger.debug(f"Request form: {request.form}")
-        app.logger.debug(f"files type: {type(request.files)}")
-        app.logger.debug(f"Request files: {request.files}")
+        form_keys = sorted(request.form.keys()) if request.form else []
+        file_meta = {
+            name: {
+                "filename": getattr(storage, "filename", None),
+                "content_type": getattr(storage, "content_type", None),
+                "content_length": getattr(storage, "content_length", None),
+            }
+            for name, storage in (request.files.items() if request.files else [])
+        }
+        app.logger.debug(
+            "Multipart import request: form_keys=%s file_fields=%s",
+            form_keys,
+            file_meta,
+        )
         return {
             "form": request.form,
             "files": request.files,

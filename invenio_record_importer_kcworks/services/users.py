@@ -65,7 +65,12 @@ class UsersHelper:
         Raises:
             RuntimeError: Raised when the operation fails.
         """
-        app.logger.debug(f"Sending welcome email to {user_email}...")
+        email_domain = user_email.partition("@")[2] if user_email else ""
+        app.logger.debug(
+            "Sending welcome email to user_id=%s domain=%s...",
+            getattr(user, "id", None),
+            email_domain or "[unknown]",
+        )
         app.logger.debug(f"community_id: {community_id}")
         record_data = records_service.read(system_identity, id_=record_id).to_dict()
         import_config = app.config.get("RECORD_IMPORTER_COMMUNITIES", {})
@@ -79,7 +84,7 @@ class UsersHelper:
             raise RuntimeError(
                 f"No collection config found for community "
                 f"{community_id}. Cannot send welcome "
-                f"email to {user_email}."
+                f"email to user_id={getattr(user, 'id', None)}."
             )
         else:
             user_dict = {
@@ -87,7 +92,11 @@ class UsersHelper:
                 "username": user.username,
                 "user_profile": user.user_profile,
             }
-            app.logger.debug(f"sending welcome email to {user_email}...")
+            app.logger.debug(
+                "sending welcome email to user_id=%s domain=%s...",
+                getattr(user, "id", None),
+                email_domain or "[unknown]",
+            )
             send_security_email(
                 subject=collection_config.get("email_subject_register"),
                 recipients=[user_email],
@@ -208,7 +217,12 @@ class UsersHelper:
             active_user = existing_user
         else:
             # FIXME: make proper password here
-            app.logger.debug(f"creating new user for email {user_email}...")
+            email_domain = user_email.partition("@")[2] if user_email else ""
+            app.logger.debug(
+                "creating new user for domain=%s idp_username=%s...",
+                email_domain or "[unknown]",
+                idp_username or None,
+            )
             profile = {} if not full_name else {"full_name": full_name}
             info_args = {
                 "email": user_email,
@@ -221,7 +235,11 @@ class UsersHelper:
             new_user = current_accounts.datastore.create_user(**info_args)
             current_accounts.datastore.commit()
             assert new_user.id
-            app.logger.info(f"    created new user {user_email}...")
+            app.logger.info(
+                "    created new user id=%s domain=%s...",
+                new_user.id,
+                email_domain or "[unknown]",
+            )
 
             if not new_user.active:
                 assert current_accounts.datastore.activate_user(new_user)
@@ -233,7 +251,11 @@ class UsersHelper:
                 new_user_flag = True
                 app.logger.info(f"    confirmed new user, id {user_id}...")
             else:
-                app.logger.error("Failed to create user %s", user_email, exc_info=True)
+                app.logger.error(
+                    "Failed to create user domain=%s",
+                    email_domain or "[unknown]",
+                    exc_info=True,
+                )
             active_user = user_confirmed
 
         new_profile = active_user.user_profile

@@ -1,6 +1,5 @@
 """High-level service entry points for record import."""
 
-from pprint import pformat
 from typing import Any, cast
 
 from flask import current_app as app
@@ -106,10 +105,20 @@ class RecordImporterService(Service):
         )
         # Resolve community_id to UUID if a slug was provided
         resolved_community_id = community_item.id
-        app.logger.debug(f"Importing records with metadata: {pformat(metadata)}")
-        app.logger.debug(f"Importing records with metadata: {type(metadata)}")
-        app.logger.debug(f"Importing records with form: {pformat(type(file_data))}")
-        app.logger.debug(f"Importing records with file data: {pformat(file_data)}")
+        metadata_keys = (
+            sorted(str(k) for k in metadata.keys())
+            if isinstance(metadata, dict)
+            else type(metadata).__name__
+        )
+        app.logger.debug(
+            "Importing records with metadata type=%s keys=%s",
+            type(metadata).__name__,
+            metadata_keys,
+        )
+        app.logger.debug(
+            "Importing records with file_data type=%s",
+            type(file_data).__name__,
+        )
         app.logger.debug(
             f"Importing records with community id: {community_id} "
             f"(resolved to: {resolved_community_id})"
