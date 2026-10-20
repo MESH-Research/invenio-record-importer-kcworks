@@ -452,9 +452,12 @@ def search_clear(search_clear) -> Generator[Any, None, None]:
     yield search_clear
 
     # Delete stats indices and templates if they exist
-    # Without this we get data pollution between tests
+    # Without this we get data pollution between tests.
+    # delete_template only clears legacy templates; also clear composable
+    # index templates registered via put_index_template.
     current_search_client.indices.delete("*stats*", ignore=[404])
     current_search_client.indices.delete_template("*stats*", ignore=[404])
+    current_search_client.indices.delete_index_template("*stats*", ignore=[404])
 
 
 @pytest.fixture(scope="module")
