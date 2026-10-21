@@ -31,6 +31,8 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
+  "setuptools>=83.0.0",
+  "marshmallow>=3.26.2",
   "click",
   "halo",
   "invenio-app-rdm[opensearch2]<14",
@@ -55,6 +57,7 @@ dependencies = [
   "titlecase",
   "unidecode",
   "validators",
+  "multidict>=6.9.1,<7",
 ]
 optional-dependencies.dev = [
   "bump-my-version==1.5.1",
