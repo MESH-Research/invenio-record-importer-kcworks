@@ -277,6 +277,11 @@ fi
 echo "Using docker-services-cli compose file: ${services_yml}"
 eval "$(uv run "${env_file_args[@]+"${env_file_args[@]}"}" docker-services-cli --filepath "${services_yml}" up --db ${DB:-postgresql} --cache ${CACHE:-redis} --search opensearch --mq ${MQ:-rabbitmq} --env)"
 
+# Unset so `uv --env-file tests/.env` can supply DB URI (uv will not
+# override existing shell vars). Fixtures default if `.env` omits it.
+unset SQLALCHEMY_DATABASE_URI
+unset INVENIO_SQLALCHEMY_DATABASE_URI
+
 if ! uv pip show invenio-record-importer-kcworks 2>/dev/null | grep -q "Editable project location"; then
   echo "Installing package in editable mode"
   uv pip install -e .
