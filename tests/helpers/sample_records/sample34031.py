@@ -79,7 +79,7 @@ rec34031 = {
                         "identifiers": [
                             {
                                 "identifier": "matthewjdillon",
-                                "scheme": "hc_username",
+                                "scheme": "kc_username",
                             }
                         ],
                         "name": "Dillon, M.",
@@ -241,7 +241,7 @@ rec34031 = {
                         "identifiers": [
                             {
                                 "identifier": "matthewjdillon",
-                                "scheme": "hc_username",
+                                "scheme": "kc_username",
                             }
                         ],
                         "name": "Dillon, M.",
@@ -392,7 +392,7 @@ rec34031 = {
                         "identifiers": [
                             {
                                 "identifier": "matthewjdillon",
-                                "scheme": "hc_username",
+                                "scheme": "kc_username",
                             }
                         ],
                         "name": "Dillon, M.",

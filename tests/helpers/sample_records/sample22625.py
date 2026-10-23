@@ -109,7 +109,7 @@ rec22625 = {
                         "family_name": "Tworek",
                         "given_name": "Wojciech",
                         "identifiers": [
-                            {"identifier": "wtworek", "scheme": "hc_username"}
+                            {"identifier": "wtworek", "scheme": "kc_username"}
                         ],
                         "name": "Tworek, Wojciech",
                         "type": "personal",
@@ -291,7 +291,7 @@ rec22625 = {
                         "family_name": "Tworek",
                         "given_name": "Wojciech",
                         "identifiers": [
-                            {"identifier": "wtworek", "scheme": "hc_username"}
+                            {"identifier": "wtworek", "scheme": "kc_username"}
                         ],
                         "name": "Tworek, Wojciech",
                         "type": "personal",
@@ -464,7 +464,7 @@ rec22625 = {
                         "family_name": "Tworek",
                         "given_name": "Wojciech",
                         "identifiers": [
-                            {"identifier": "wtworek", "scheme": "hc_username"}
+                            {"identifier": "wtworek", "scheme": "kc_username"}
                         ],
                         "name": "Tworek, Wojciech",
                         "type": "personal",

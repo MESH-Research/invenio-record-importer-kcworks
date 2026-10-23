@@ -11,6 +11,7 @@ Shared `app_config` from `kcworks-test-fixtures` supplies the common baseline;
 this conftest only wraps it for package-specific keys and template paths.
 """
 
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -60,10 +61,19 @@ pytest_plugins = (
 parent_path = Path(__file__).parent.parent
 raw_data_path = parent_path / "tests/helpers/sample_records"
 
-# Ensure test-local helpers (including a shim kcworks package) take precedence
+# Test-local helpers include a templates-only shim package named `kcworks`
+# for standalone clones (no site package). When nested under KCWorks the
+# real `site/kcworks` (with `kcworks.ext`) must win — putting the shim
+# first on sys.path shadows it and breaks Invenio entry-point loading.
 helpers_path = Path(__file__).parent / "helpers"
-if str(helpers_path) not in sys.path:
-    sys.path.insert(0, str(helpers_path))
+_helpers = str(helpers_path)
+if _helpers not in sys.path:
+    try:
+        _has_site_kcworks_ext = importlib.util.find_spec("kcworks.ext") is not None
+    except (ModuleNotFoundError, ValueError):
+        _has_site_kcworks_ext = False
+    if not _has_site_kcworks_ext:
+        sys.path.insert(0, _helpers)
 
 
 RECORD_IMPORTER_COMMUNITIES_DATA = {

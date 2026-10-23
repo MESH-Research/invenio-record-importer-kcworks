@@ -140,7 +140,7 @@ rec38367 = {
                         "identifiers": [
                             {
                                 "identifier": "gabogabito123",
-                                "scheme": "hc_username",
+                                "scheme": "kc_username",
                             }
                         ],
                         "name": "Martínez Hernández, Alberto-Gabino",
@@ -339,7 +339,7 @@ rec38367 = {
                         "identifiers": [
                             {
                                 "identifier": "gabogabito123",
-                                "scheme": "hc_username",
+                                "scheme": "kc_username",
                             }
                         ],
                         "name": "Martínez Hernández, Alberto-Gabino",
@@ -596,7 +596,7 @@ rec38367 = {
                         "identifiers": [
                             {
                                 "identifier": "gabogabito123",
-                                "scheme": "hc_username",
+                                "scheme": "kc_username",
                             }
                         ],
                         "name": "Martínez Hernández, Alberto-Gabino",

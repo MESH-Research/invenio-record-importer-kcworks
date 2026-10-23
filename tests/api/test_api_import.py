@@ -323,7 +323,11 @@ class BaseImportLoaderTest:
 
         result: LoaderResult = RecordLoader(
             user_id=user_id, community_id=community["id"]
-        ).load(index=0, import_data=copy.deepcopy(test_metadata.metadata_in))
+        ).load(
+            index=0,
+            import_data=copy.deepcopy(test_metadata.metadata_in),
+            notify_record_owners=True,
+        )
 
         assert result.log_object
         assert result.source_id
@@ -586,6 +590,7 @@ class BaseImportLoaderWithFilesTest(BaseImportLoaderTest):
             index=0,
             import_data=copy.deepcopy(test_metadata.metadata_in),
             files=files,
+            notify_record_owners=True,
         )
         file1.close()
         file2.close()

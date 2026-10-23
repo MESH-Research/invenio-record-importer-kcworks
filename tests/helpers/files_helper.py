@@ -37,13 +37,28 @@ class FilesHelper:
 
     @staticmethod
     def sanitize_filenames(directory) -> list:
-        """Sanitize filenames in a directory."""
+        """Sanitize filenames in a directory.
+
+        Args:
+            directory: Directory whose filenames would be sanitized.
+
+        Returns:
+            list: Empty list (stub for tests).
+        """
         # Simplified implementation for testing
         return []
 
     @unit_of_work()
     def set_to_metadata_only(self, draft_id: str, uow: UnitOfWork | None = None):
-        """Set record to metadata-only mode."""
+        """Set record to metadata-only mode.
+
+        Args:
+            draft_id: Record/draft id to convert.
+            uow: Required unit of work for the commit.
+
+        Raises:
+            RuntimeError: If `uow` is not provided.
+        """
         if uow:
             try:
                 record = records_service.read(system_identity, draft_id)._record
@@ -75,7 +90,18 @@ class FilesHelper:
         files_type: str = "",
         uow: UnitOfWork | None = None,
     ) -> bool:
-        """Delete a file from the record."""
+        """Delete a file from the record.
+
+        Args:
+            draft_id: Record/draft id that owns the file.
+            key: File key to delete.
+            files_service: Optional files service override.
+            files_type: Unused files-type hint kept for API parity.
+            uow: Optional unit of work for commit registration.
+
+        Returns:
+            bool: Always ``True`` when deletion completes without raising.
+        """
         if files_service is None:
             files_service = self.files_service
         read_method = (
@@ -120,7 +146,19 @@ class FilesHelper:
         source_filepaths: dict | None = None,
         uow: UnitOfWork | None = None,
     ) -> dict[str, FileUploadResult]:
-        """Handle file uploads for a record."""
+        """Handle file uploads for a record.
+
+        Args:
+            metadata: Record metadata including an ``id``.
+            file_data: File metadata payload (unused in this stub path).
+            files: Optional list of ``FileData`` objects to upload.
+            existing_record: Optional existing record context.
+            source_filepaths: Optional source path map.
+            uow: Optional unit of work.
+
+        Returns:
+            dict[str, FileUploadResult]: Per-filename upload status map.
+        """
         if files is None:
             files = []
         if existing_record is None:

@@ -129,7 +129,7 @@ rec33383 = {
                         "identifiers": [
                             {
                                 "identifier": "amroberts",
-                                "scheme": "hc_username",
+                                "scheme": "kc_username",
                             }
                         ],
                         "name": "Roberts, Alexandre",
@@ -372,7 +372,7 @@ rec33383 = {
                         "identifiers": [
                             {
                                 "identifier": "amroberts",
-                                "scheme": "hc_username",
+                                "scheme": "kc_username",
                             }
                         ],
                         "name": "Roberts, Alexandre",
@@ -604,7 +604,7 @@ rec33383 = {
                         "identifiers": [
                             {
                                 "identifier": "amroberts",
-                                "scheme": "hc_username",
+                                "scheme": "kc_username",
                             }
                         ],
                         "name": "Roberts, Alexandre",

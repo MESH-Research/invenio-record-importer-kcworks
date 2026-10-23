@@ -19,9 +19,12 @@ def remove_value_by_path(d: dict, path: str) -> dict:
     >>> remove_value_by_path(d, "a.b.c")
     {'a': {'b': {}}}
 
-    :param d: The dictionary to modify
-    :param path: The dot-separated path string to the value
-    :return: The modified dictionary
+    Args:
+        d: The dictionary to modify.
+        path: The dot-separated path string to the value.
+
+    Returns:
+        dict: The modified dictionary.
     """
     keys = parse_lookup_key(path)
     if not keys:
@@ -56,11 +59,13 @@ def replace_value_in_nested_dict(d: dict, path: str, new_value: Any) -> dict | b
     >>> replace_value_in_nested_dict(f, "a|b", {"e": 3})
     {'a': {'b': {'e': 3}}}
 
-    :param d: The dictionary or list to update.
-    :param path: The bar-separated path string to the value.
-    :param new_value: The new value to set.
+    Args:
+        d: The dictionary or list to update.
+        path: The bar-separated path string to the value.
+        new_value: The new value to set.
 
-    returns: dict: The updated dictionary.
+    Returns:
+        dict | bool: The updated dictionary, or ``False`` if the path is invalid.
     """
     keys = path.split("|")
     current = d

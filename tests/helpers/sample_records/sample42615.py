@@ -87,7 +87,7 @@ rec42615 = {
                         ),  # FIXME: why is initial with family name?
                         "given_name": "Pedro",
                         "identifiers": [
-                            {"identifier": "palazzo", "scheme": "hc_username"}
+                            {"identifier": "palazzo", "scheme": "kc_username"}
                         ],
                         "name": (
                             "P. Palazzo, Pedro"
@@ -295,7 +295,7 @@ rec42615 = {
                         ),  # FIXME: why is initial with family name?
                         "given_name": "Pedro",
                         "identifiers": [
-                            {"identifier": "palazzo", "scheme": "hc_username"}
+                            {"identifier": "palazzo", "scheme": "kc_username"}
                         ],
                         "name": (
                             "P. Palazzo, Pedro"
@@ -490,7 +490,7 @@ rec42615 = {
                         ),  # FIXME: why is initial with family name?
                         "given_name": "Pedro",
                         "identifiers": [
-                            {"identifier": "palazzo", "scheme": "hc_username"}
+                            {"identifier": "palazzo", "scheme": "kc_username"}
                         ],
                         "name": (
                             "P. Palazzo, Pedro"

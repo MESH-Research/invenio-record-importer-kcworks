@@ -27,13 +27,14 @@ class FakeDataCiteRESTClient:
     ):
         """Initialize the REST client wrapper.
 
-        :param username: DataCite username.
-        :param password: DataCite password.
-        :param prefix: DOI prefix (or CFG_DATACITE_DOI_PREFIX).
-        :param test_mode: use test URL when True
-        :param url: DataCite API base URL.
-        :param timeout: Connect and read timeout in seconds. Specify a tuple
-            (connect, read) to specify each timeout individually.
+        Args:
+            username: DataCite username.
+            password: DataCite password.
+            prefix: DOI prefix (or CFG_DATACITE_DOI_PREFIX).
+            test_mode: Use test URL when True.
+            url: DataCite API base URL.
+            timeout: Connect and read timeout in seconds. Specify a tuple
+                (connect, read) to specify each timeout individually.
         """
         self.username = str(username)
         self.password = str(password)
@@ -52,59 +53,81 @@ class FakeDataCiteRESTClient:
     def public_doi(self, metadata, url, doi=None):
         """Create a public doi ... not.
 
-        :param metadata: JSON format of the metadata.
-        :param doi: DOI (e.g. 10.123/456)
-        :param url: URL where the doi will resolve.
-        :return:
+        Args:
+            metadata: JSON format of the metadata.
+            url: URL where the doi will resolve.
+            doi: DOI (e.g. 10.123/456).
+
+        Returns:
+            Mock: A no-op mock standing in for the DataCite response.
         """
         return Mock()
 
     def update_doi(self, doi, metadata=None, url=None):
         """Update the metadata or url for a DOI ... not.
 
-        :param url: URL where the doi will resolve.
-        :param metadata: JSON format of the metadata.
-        :return:
+        Args:
+            doi: DOI to update.
+            metadata: JSON format of the metadata.
+            url: URL where the doi will resolve.
+
+        Returns:
+            Mock: A no-op mock standing in for the DataCite response.
         """
         return Mock()
 
     def delete_doi(self, doi):
         """Delete a doi ... not.
 
-        This will only work for draft dois
+        This will only work for draft dois.
 
-        :param doi: DOI (e.g. 10.123/456)
-        :return:
+        Args:
+            doi: DOI (e.g. 10.123/456).
+
+        Returns:
+            Mock: A no-op mock standing in for the DataCite response.
         """
         return Mock()
 
     def hide_doi(self, doi):
         """Hide a previously registered DOI ... not.
 
-        This DOI will no
-        longer be found in DataCite Search
+        This DOI will no longer be found in DataCite Search.
 
-        :param doi: DOI to hide e.g. 10.12345/1.
-        :return:
+        Args:
+            doi: DOI to hide e.g. 10.12345/1.
+
+        Returns:
+            Mock: A no-op mock standing in for the DataCite response.
         """
         return Mock()
 
     def show_doi(self, doi):
         """Show a previously hidden DOI ... not.
 
-        This DOI will no
-        longer be found in DataCite Search
+        This DOI will no longer be found in DataCite Search.
 
-        :param doi: DOI to hide e.g. 10.12345/1.
-        :return:
+        Args:
+            doi: DOI to show e.g. 10.12345/1.
+
+        Returns:
+            Mock: A no-op mock standing in for the DataCite response.
         """
         return Mock()
 
     def check_doi(self, doi):
         """Check doi structure.
 
-        Check that the doi has a form
-        12.12345/123 with the prefix defined
+        Check that the doi has a form 12.12345/123 with the prefix defined.
+
+        Args:
+            doi: DOI string to validate (with or without prefix).
+
+        Returns:
+            str: The normalized DOI.
+
+        Raises:
+            ValueError: If the DOI prefix does not match this client's prefix.
         """
         # If prefix is in doi
         if "/" in doi:
@@ -121,7 +144,11 @@ class FakeDataCiteRESTClient:
         return normalize_doi(doi)
 
     def __repr__(self):
-        """Create string representation of object."""
+        """Create string representation of object.
+
+        Returns:
+            str: Debug representation including the username.
+        """
         return f"<FakeDataCiteRESTClient: {self.username}>"
 
 
@@ -130,7 +157,11 @@ class FakeDataCiteClient(providers.DataCiteClient):
 
     @property
     def api(self):
-        """DataCite REST API client instance."""
+        """DataCite REST API client instance.
+
+        Returns:
+            FakeDataCiteRESTClient: Lazily constructed fake REST client.
+        """
         if self._api is None:
             self.check_credentials()
             self._api = FakeDataCiteRESTClient(

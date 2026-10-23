@@ -210,7 +210,7 @@ rec11451 = {
                         "family_name": "Alice Joubin",
                         "given_name": "Alexa",
                         "identifiers": [
-                            {"identifier": "joubin", "scheme": "hc_username"}
+                            {"identifier": "joubin", "scheme": "kc_username"}
                         ],
                         "name": "Alice Joubin, Alexa",
                         "type": "personal",
@@ -420,7 +420,7 @@ rec11451 = {
                         "family_name": "Alice Joubin",
                         "given_name": "Alexa",
                         "identifiers": [
-                            {"identifier": "joubin", "scheme": "hc_username"}
+                            {"identifier": "joubin", "scheme": "kc_username"}
                         ],
                         "name": "Alice Joubin, Alexa",
                         "type": "personal",
@@ -667,7 +667,7 @@ rec11451 = {
                         "family_name": "Alice Joubin",
                         "given_name": "Alexa",
                         "identifiers": [
-                            {"identifier": "joubin", "scheme": "hc_username"}
+                            {"identifier": "joubin", "scheme": "kc_username"}
                         ],
                         "name": "Alice Joubin, Alexa",
                         "type": "personal",

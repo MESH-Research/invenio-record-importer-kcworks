@@ -113,7 +113,7 @@ rec48799 = {
                         "identifiers": [
                             {
                                 "identifier": "jristola009",
-                                "scheme": "hc_username",
+                                "scheme": "kc_username",
                             }
                         ],
                         "name": "Ristola, Jacqueline",
@@ -315,7 +315,7 @@ rec48799 = {
                         "identifiers": [
                             {
                                 "identifier": "jristola009",
-                                "scheme": "hc_username",
+                                "scheme": "kc_username",
                             }
                         ],
                         "name": "Ristola, Jacqueline",
@@ -501,7 +501,7 @@ rec48799 = {
                         "identifiers": [
                             {
                                 "identifier": "jristola009",
-                                "scheme": "hc_username",
+                                "scheme": "kc_username",
                             }
                         ],
                         "name": "Ristola, Jacqueline",
