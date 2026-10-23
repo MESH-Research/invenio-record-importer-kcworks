@@ -211,10 +211,14 @@ ini_options.isort_show_files = true
 ini_options.log_cli_level = "DEBUG"
 ini_options.norecursedirs = []
 ini_options.plugins = [
+  "tests.fixtures.app",
+  "tests.fixtures.app_config",
+  "tests.fixtures.celery",
   "tests.fixtures.communities",
   "tests.fixtures.metadata_fields",
   "tests.fixtures.custom_fields",
   "tests.fixtures.identifiers",
+  "tests.fixtures.indexer_queues",
   "tests.fixtures.records",
   "tests.fixtures.saml",
   "tests.fixtures.stats",
