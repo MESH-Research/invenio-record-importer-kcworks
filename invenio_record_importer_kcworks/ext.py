@@ -10,6 +10,7 @@
 
 from .config import ConfigVariables, RecordImporterServiceConfig
 from .resources import RecordImporterResource, RecordImporterResourceConfig
+from .roles import ensure_bulk_import_role
 from .service import RecordImporterService
 
 
@@ -59,3 +60,13 @@ class InvenioRecordImporter:
         self.resource = RecordImporterResource(
             RecordImporterResourceConfig(), service=self.service
         )
+
+
+def finalize_app(app) -> None:
+    """UI finalize hook; ensure the bulk-import accounts role exists."""
+    ensure_bulk_import_role(app)
+
+
+def api_finalize_app(app) -> None:
+    """API finalize hook; ensure the bulk-import accounts role exists."""
+    ensure_bulk_import_role(app)

@@ -36,6 +36,40 @@ class ConfigVariables:
         """Initialize the instance."""
         self.RECORD_IMPORTER_ADMIN_EMAIL = app.config.get("ADMIN_EMAIL", "")
 
+        # Bulk-import RBAC: invenio-accounts role name (see roles.py).
+        self.RECORD_IMPORTER_BULK_IMPORT_ROLE = app.config.get(
+            "RECORD_IMPORTER_BULK_IMPORT_ROLE",
+            "bulk-importer",
+        )
+
+        # Max multipart body for /api/import (bytes). Align with nginx.
+        self.RECORD_IMPORTER_MAX_CONTENT_LENGTH = app.config.get(
+            "RECORD_IMPORTER_MAX_CONTENT_LENGTH",
+            (10**10) * 50,  # 500 GB
+        )
+
+        # Remote URL fetch allowlists (empty = deny all).
+        self.RECORD_IMPORTER_FETCH_ALLOWED_DOMAINS = app.config.get(
+            "RECORD_IMPORTER_FETCH_ALLOWED_DOMAINS",
+            [],
+        )
+        self.RECORD_IMPORTER_FETCH_ALLOWED_BUCKETS = app.config.get(
+            "RECORD_IMPORTER_FETCH_ALLOWED_BUCKETS",
+            [],
+        )
+
+        # When True, URL file fetches are enqueued on Celery (202 + job id).
+        # When False, fetches run inline during the import request.
+        self.RECORD_IMPORTER_FETCH_ASYNC = app.config.get(
+            "RECORD_IMPORTER_FETCH_ASYNC",
+            True,
+        )
+
+        self.RECORD_IMPORTER_JOB_TTL_SECONDS = app.config.get(
+            "RECORD_IMPORTER_JOB_TTL_SECONDS",
+            60 * 60 * 24,
+        )
+
         self.RECORD_IMPORTER_DATA_DIR = app.config.get(
             "RECORD_IMPORTER_DATA_DIR",
             Path(Path(__file__).parent, "data"),

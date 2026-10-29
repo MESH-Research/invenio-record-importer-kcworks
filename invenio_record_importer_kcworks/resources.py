@@ -120,17 +120,23 @@ def extract_zip_files(zip_file) -> list[FileData]:
                     f"Found folders: {', '.join(root_dirs)}"
                 )
 
+            chunk_size = 8 * 1024 * 1024  # 8 MiB
             for file_name in file_names:
                 # Skip directory entries
                 if file_name.endswith("/"):
                     continue
 
-                file_content = zip_archive.read(file_name)
-
+                # Stream member bytes into a spool instead of zip_archive.read()
+                # which loads the whole member into memory.
                 extracted_stream = SpooledTemporaryFile(
                     max_size=10 * 1024 * 1024
-                )  # 10MB
-                extracted_stream.write(file_content)
+                )  # 10MB before rolling to disk
+                with zip_archive.open(file_name, "r") as member:
+                    while True:
+                        chunk = member.read(chunk_size)
+                        if not chunk:
+                            break
+                        extracted_stream.write(chunk)
                 extracted_stream.seek(0)
 
                 display_filename = (
@@ -270,6 +276,7 @@ class RecordImporterResource(Resource):
         """
         return [
             route("POST", "/<community>", self.import_records),
+            route("GET", "/jobs/<job_id>", self.get_import_job),
         ]
 
     @request_parsed_view_args
@@ -384,14 +391,36 @@ class RecordImporterResource(Resource):
             notify_record_owners=notify_record_owners,
         )
         app.logger.debug(f"in resource import_result: {import_result.get('status')}")
-        if import_result.get("status") == "success":
+        status = import_result.get("status")
+        if status == "accepted":
+            return jsonify(import_result), 202
+        if status == "success":
             return Response(
                 json.dumps(import_result, sort_keys=False), mimetype="application/json"
             ), 201
-        elif import_result.get("status") == "multi_status" and not all_or_none:
+        if status in ("multi_status", "partial_success") and not all_or_none:
             return jsonify(import_result), 207
-        else:
-            return jsonify(import_result), 400
+        return jsonify(import_result), 400
+
+    @require_api_auth()
+    @require_oauth_scopes("records:import")
+    def get_import_job(self, job_id: str):
+        """Return status for an async import file-fetch job.
+
+        Args:
+            job_id: Job id from a prior ``202`` import response.
+
+        Returns:
+            JSON job status payload.
+
+        Raises:
+            NotFound: When the job id is unknown.
+        """
+        try:
+            job = self.service.get_import_job(g.identity, job_id)
+        except KeyError as exc:
+            raise NotFound(f"Import job not found: {job_id}") from exc
+        return jsonify(job), 200
 
 
 def create_api_blueprint(app):
@@ -402,5 +431,26 @@ def create_api_blueprint(app):
     """
     ext = app.extensions["invenio-record-importer-kcworks"]
     blueprint = ext.resource.as_blueprint()
+
+    @blueprint.before_request
+    def _raise_import_max_content_length():  # noqa: ANN202
+        """Allow large multipart bodies on import routes only."""
+        from flask import g as flask_g
+
+        flask_g._record_importer_prev_max_content = app.config.get("MAX_CONTENT_LENGTH")
+        app.config["MAX_CONTENT_LENGTH"] = app.config.get(
+            "RECORD_IMPORTER_MAX_CONTENT_LENGTH",
+            app.config.get("FILES_REST_DEFAULT_MAX_FILE_SIZE", (10**10) * 50),
+        )
+
+    @blueprint.after_request
+    def _restore_max_content_length(response):  # noqa: ANN001, ANN202
+        from flask import g as flask_g
+
+        if hasattr(flask_g, "_record_importer_prev_max_content"):
+            app.config["MAX_CONTENT_LENGTH"] = (
+                flask_g._record_importer_prev_max_content
+            )
+        return response
 
     return blueprint

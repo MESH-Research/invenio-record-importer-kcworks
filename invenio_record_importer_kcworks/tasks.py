@@ -4,9 +4,13 @@ from celery import shared_task
 from flask import current_app as app
 from flask import render_template
 from flask_mail import Message
+from invenio_access.permissions import system_identity
+from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_stats.proxies import current_stats
 
+from invenio_record_importer_kcworks.jobs import update_fetch_status
 from invenio_record_importer_kcworks.services.communities import CommunitiesHelper
+from invenio_record_importer_kcworks.services.files import FilesHelper
 
 
 @shared_task(ignore_result=False)
@@ -148,3 +152,57 @@ def update_community_created_dates_task(
         app.logger.error(f"Background task failed: {str(e)}")
         self.update_state(state="FAILURE", meta={"error": str(e)})
         raise
+
+
+@shared_task(ignore_result=True)
+def fetch_import_file(
+    draft_id: str,
+    file_key: str,
+    url: str,
+    job_id: str = "",
+) -> None:
+    """Download a remote URL into a draft file via the files service.
+
+    Args:
+        draft_id: Draft record id.
+        file_key: File key to fill.
+        url: Allowlisted source URL.
+        job_id: Optional import job id for status updates.
+    """
+    helper = FilesHelper(is_draft=True)
+    try:
+        spool = helper._download_url_to_spool(url)
+        helper.files_service.set_file_content(
+            system_identity, draft_id, file_key, spool
+        )
+        helper.files_service.commit_file(system_identity, draft_id, file_key)
+        if job_id:
+            update_fetch_status(
+                job_id,
+                record_id=draft_id,
+                file_key=file_key,
+                status="completed",
+            )
+    except Exception as exc:  # noqa: BLE001
+        app.logger.error(
+            "Import URL fetch failed for %s/%s from %s: %s",
+            draft_id,
+            file_key,
+            url,
+            exc,
+        )
+        try:
+            records_service.draft_files.delete_file(
+                system_identity, draft_id, file_key
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        if job_id:
+            update_fetch_status(
+                job_id,
+                record_id=draft_id,
+                file_key=file_key,
+                status="failed",
+                error=str(exc),
+            )
+

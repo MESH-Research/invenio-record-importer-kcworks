@@ -145,4 +145,44 @@ class RecordImporterService(Service):
             notify_record_owners=notify_record_owners,
         )
 
+        pending = list(import_result.pending_fetches or [])
+        if pending:
+            from .jobs import create_import_job
+            from .tasks import fetch_import_file
+
+            job_id = create_import_job(
+                community_id=str(resolved_community_id),
+                pending_fetches=pending,
+            )
+            import_result.job_id = job_id
+            for fetch in pending:
+                fetch_import_file.delay(
+                    fetch["record_id"],
+                    fetch["file_key"],
+                    fetch["url"],
+                    job_id,
+                )
+
         return import_result.model_dump()
+
+    def get_import_job(self, identity: Identity, job_id: str) -> dict:
+        """Return status for an async import file-fetch job.
+
+        Args:
+            identity: Caller identity (must pass ``read_import_job``).
+            job_id: Job identifier from a prior import response.
+
+        Returns:
+            Job status dict.
+
+        Raises:
+            KeyError: When the job id is unknown (also raised indirectly when
+                permission checks fail via the service base class).
+        """
+        self.require_permission(identity, "read_import_job")
+        from .jobs import get_import_job
+
+        job = get_import_job(job_id)
+        if job is None:
+            raise KeyError(job_id)
+        return job

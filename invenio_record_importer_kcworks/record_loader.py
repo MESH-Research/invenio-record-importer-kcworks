@@ -517,25 +517,27 @@ class RecordLoader:
             )
             draft_id = result.record_created["record_data"]["id"]
 
-            # Upload the files
+            # Upload the files (local multipart/zip parts and/or remote URLs)
             if len(result.submitted["files"].get("entries", [])) > 0:
                 app.logger.info("    uploading files for draft...")
-                result.uploaded_files = FilesHelper(
-                    is_draft=is_draft
-                ).handle_record_files(
+                files_helper = FilesHelper(is_draft=is_draft)
+                result.uploaded_files = files_helper.handle_record_files(
                     result.record_created["record_data"],
                     result.submitted["files"]["entries"],
                     files=files,
                     existing_record=result.existing_record,
                     clean_filenames=clean_filenames,
                 )
+                result.pending_fetches = list(files_helper.pending_fetches)
             else:
                 FilesHelper(is_draft=is_draft).set_to_metadata_only(draft_id)
                 result.record_created["record_data"]["files"]["enabled"] = False
                 if result.existing_record:
                     result.existing_record["files"]["enabled"] = False
             failed_files = [
-                k for k, f in result.uploaded_files.items() if f["status"] == "failed"
+                k
+                for k, f in result.uploaded_files.items()
+                if f["status"] not in ("uploaded", "already_uploaded", "fetch_pending")
             ]
             if any(failed_files):
                 app.logger.error(f"failed files: {pformat(result.uploaded_files)}")
@@ -1515,10 +1517,20 @@ class RecordLoader:
             for r in lists["failed_records"]
         ]
 
+        pending_fetches: list[dict] = []
+        for r in lists["successful_records"]:
+            pending_fetches.extend(r.pending_fetches)
+
         # Determine the overall status of the import operation
         if success_list and not error_list:
-            overall_status = "success"
-            message = "All records were successfully imported"
+            if pending_fetches:
+                overall_status = "accepted"
+                message = (
+                    "Records were created; remote file fetches are still in progress"
+                )
+            else:
+                overall_status = "success"
+                message = "All records were successfully imported"
         elif success_list and not flags["all_or_none"]:
             overall_status = "partial_success"
             message = "Some records were successfully imported, but some failed"
@@ -1544,4 +1556,5 @@ class RecordLoader:
             data=success_list,
             errors=error_list,
             message=message,
+            pending_fetches=pending_fetches,
         )

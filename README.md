@@ -48,6 +48,25 @@ from within the repository.
 
 Prior to running the importer, the required configuration variables listed below must be set either in the `invenio.cfg` file or as environment variables. A jsonlines file containing the serialized metadata records named `records-for-import.json` must also be placed in the folder identified by the RECORD_IMPORTER_DATA_DIR environment variable. All files for the records to be imported should be placed in the folder identified by the RECORD_IMPORTER_FILES_LOCATION environment variable.
 
+### Bulk import API (large files / URLs / RBAC)
+
+`POST /api/import/<community>` remains a **single bulk** multipart request
+(many file parts or one zip, plus metadata for many records). Nginx
+`/api/import` allows large bodies (500G) with long timeouts; the importer
+blueprint raises `MAX_CONTENT_LENGTH` for that blueprint only.
+
+Remote files: set `source_url` (or `transfer: {type: "F", url: ...}`) on a
+record’s `files.entries` entry. Domains must be listed in
+`RECORD_IMPORTER_FETCH_ALLOWED_DOMAINS` (and buckets in
+`RECORD_IMPORTER_FETCH_ALLOWED_BUCKETS` for `s3://`). Async fetches
+(`RECORD_IMPORTER_FETCH_ASYNC`, default true) return HTTP `202` with a
+`job_id`; poll `GET /api/import/jobs/<job_id>`.
+
+Authorization: OAuth scope `records:import` **and** either administration
+access or the invenio-accounts role named by
+`RECORD_IMPORTER_BULK_IMPORT_ROLE` (default `bulk-importer`). The role is
+ensured at app finalize.
+
 ## Dependencies
 
 In addition to the normal InvenioRDM packages and KCWorks, this module relies in particular

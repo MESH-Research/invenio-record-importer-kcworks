@@ -14,6 +14,7 @@ from pathlib import Path
 from pprint import pformat
 
 from flask_login import login_user
+from flask_principal import RoleNeed
 from invenio_access.permissions import authenticated_user, system_identity
 from invenio_access.utils import get_identity
 from invenio_accounts.models import User
@@ -27,8 +28,24 @@ from invenio_vocabularies.records.api import Vocabulary
 
 from invenio_record_importer_kcworks.proxies import current_record_importer_service
 from invenio_record_importer_kcworks.record_loader import RecordLoader
+from invenio_record_importer_kcworks.roles import (
+    DEFAULT_BULK_IMPORT_ROLE,
+    ensure_bulk_import_role,
+)
 from invenio_record_importer_kcworks.types import FileData, LoaderResult
 from tests.fixtures.communities import make_community_member
+
+
+def grant_bulk_import_role(user, identity=None):
+    """Assign the bulk-importer accounts role and RoleNeed on an identity."""
+    ensure_bulk_import_role()
+    role = current_accounts.datastore.find_role(DEFAULT_BULK_IMPORT_ROLE)
+    assert role is not None
+    if role not in (user.roles or []):
+        current_accounts.datastore.add_role_to_user(user, role)
+        current_accounts.datastore.commit()
+    if identity is not None:
+        identity.provides.add(RoleNeed(DEFAULT_BULK_IMPORT_ROLE))
 from tests.fixtures.files import file_md5
 from tests.fixtures.records import TestRecordMetadata, TestRecordMetadataWithFiles
 from tests.helpers.sample_records import (
@@ -1213,6 +1230,7 @@ class BaseImportServiceTest:
         user_id = u.user.id
         identity = get_identity(u.user)
         identity.provides.add(authenticated_user)
+        grant_bulk_import_role(u.user, identity)
 
         community_record = minimal_community_factory(
             slug="neh",
@@ -1226,6 +1244,8 @@ class BaseImportServiceTest:
         )
         if not submitter_identity:
             submitter_identity, submitter_token = identity, u.allowed_token
+        # Note: insufficient-permission make_submitter variants must NOT grant
+        # the bulk-importer role; success variants grant it themselves.
 
         # make_submitter may return a user id (API permission cases) or an
         # Identity (service path). Prefer the actual importer for ownership
@@ -1445,6 +1465,7 @@ class TestImportAPIJArticleSuccessHiddenOwner(TestImportAPIJArticleSuccess):
         make_community_member(
             new_user.user.id, "owner", community_id, visible=False
         )
+        grant_bulk_import_role(new_user.user)
         return new_user.user.id, new_user.allowed_token
 
     def _check_owners(

@@ -74,6 +74,8 @@ class APIResponsePayload(BaseModel):
     data: list[dict] = []
     errors: list[dict] = []
     message: str = ""
+    job_id: str = ""
+    pending_fetches: list[dict] = []
 
 
 class LoaderResult(BaseModel):
@@ -86,6 +88,7 @@ class LoaderResult(BaseModel):
     record_created: dict = {}
     existing_record: dict = {}
     uploaded_files: dict[str, FileUploadResult] = {}
+    pending_fetches: list[dict] = []
     community_review_result: dict = {}
     assigned_owners: dict = {}
     added_to_collections: list = []

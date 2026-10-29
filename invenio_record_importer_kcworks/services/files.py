@@ -40,10 +40,17 @@ from invenio_record_importer_kcworks.errors import (
     UploadFileNotFoundError,
 )
 from invenio_record_importer_kcworks.types import FileData, FileUploadResult
+from invenio_record_importer_kcworks.url_sources import (
+    FetchURLNotAllowedError,
+    split_upload_and_url_entries,
+    validate_fetch_url,
+)
 from invenio_record_importer_kcworks.utils.utils import (
     normalize_string,
     valid_date,
 )
+
+_STREAM_CHUNK_SIZE = 8 * 1024 * 1024  # 8 MiB
 
 
 class FilesHelper:
@@ -54,6 +61,7 @@ class FilesHelper:
         self.files_service = (
             records_service.draft_files if is_draft else records_service.files
         )
+        self.pending_fetches: list[dict] = []
 
     @staticmethod
     def sanitize_filenames(directory) -> list:
@@ -482,7 +490,10 @@ class FilesHelper:
         if isinstance(file_data, list):
             files_to_upload = {f["key"]: f for f in file_data}
         else:
-            files_to_upload = file_data
+            files_to_upload = dict(file_data)
+
+        upload_entries, url_by_key = split_upload_and_url_entries(files_to_upload)
+        files_to_upload = upload_entries
 
         if clean_filenames:
             files_to_upload = self.sanitize_all_filenames(files_to_upload, files)
@@ -490,7 +501,7 @@ class FilesHelper:
         uploaded_files: dict[str, FileUploadResult] = {}
         same_files = False
 
-        if existing_record:
+        if existing_record and files_to_upload:
             same_files, files_to_upload = self._compare_existing_files(
                 metadata["id"],
                 existing_record["is_draft"],
@@ -499,7 +510,7 @@ class FilesHelper:
                 files_to_upload,
             )
 
-        if existing_record and same_files:
+        if existing_record and same_files and not url_by_key:
             app.logger.info("skipping uploading files (same already uploaded)...")
 
             # Check that any published record has the correct file entries
@@ -532,19 +543,25 @@ class FilesHelper:
                 for k in files_to_upload.keys()
             }
 
-        elif len(files_to_upload) > 0:
+        elif len(files_to_upload) > 0 or url_by_key:
             app.logger.info("uploading new files...")
             # If we're updating a draft of a published record, we need to
             # unlock the published record files before we can upload new
             # files.
             self._unlock_files(existing_record)
 
-            uploaded_files = self._upload_draft_files(
-                metadata["id"],
-                files_to_upload,
-                source_filepaths or {},
-                files or [],
-            )
+            if files_to_upload:
+                uploaded_files = self._upload_draft_files(
+                    metadata["id"],
+                    files_to_upload,
+                    source_filepaths or {},
+                    files or [],
+                )
+            if url_by_key:
+                url_results = self._upload_files_from_urls(
+                    metadata["id"], url_by_key
+                )
+                uploaded_files.update(url_results)
 
             # Lock the files again for a published record
             self._lock_files(existing_record)
@@ -554,6 +571,137 @@ class FilesHelper:
         print("returning uploaded_files:", pformat(uploaded_files))
 
         return uploaded_files
+
+    def _download_url_to_spool(self, url: str) -> SpooledTemporaryFile:
+        """Stream a remote URL into a spooled temporary file.
+
+        Args:
+            url: Allowlisted HTTPS/HTTP/S3 URL.
+
+        Returns:
+            Spooled temporary file positioned at the start.
+
+        Raises:
+            FileUploadError: On HTTP/S3 download failure or disallowed URL.
+        """
+        import requests
+
+        try:
+            validate_fetch_url(url)
+        except FetchURLNotAllowedError as exc:
+            raise FileUploadError(str(exc)) from exc
+        spool = SpooledTemporaryFile(max_size=10 * 1024 * 1024)
+        if url.lower().startswith("s3://"):
+            try:
+                import boto3
+            except ImportError as exc:
+                raise FileUploadError(
+                    "boto3 is required to fetch s3:// URLs during import"
+                ) from exc
+            without_scheme = url[5:]
+            bucket, _, key = without_scheme.partition("/")
+            if not bucket or not key:
+                raise FileUploadError(f"Invalid s3 URL: {url}")
+            try:
+                client = boto3.client("s3")
+                obj = client.get_object(Bucket=bucket, Key=key)
+                body = obj["Body"]
+                while True:
+                    chunk = body.read(_STREAM_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    spool.write(chunk)
+            except FileUploadError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                raise FileUploadError(f"Failed to fetch s3 URL {url}: {exc}") from exc
+        else:
+            try:
+                with requests.get(
+                    url, stream=True, allow_redirects=True, timeout=60
+                ) as response:
+                    if response.status_code != 200:
+                        raise FileUploadError(
+                            f"Failed to fetch {url} (HTTP {response.status_code})"
+                        )
+                    for chunk in response.iter_content(chunk_size=_STREAM_CHUNK_SIZE):
+                        if chunk:
+                            spool.write(chunk)
+            except FileUploadError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                raise FileUploadError(f"Failed to fetch URL {url}: {exc}") from exc
+        spool.seek(0)
+        return spool
+
+    def _upload_files_from_urls(
+        self, draft_id: str, url_by_key: dict[str, str]
+    ) -> dict[str, FileUploadResult]:
+        """Attach remote URL sources to a draft via service-level file writes.
+
+        When ``RECORD_IMPORTER_FETCH_ASYNC`` is true, initializes each file and
+        enqueues a Celery fetch (recorded on ``self.pending_fetches``).
+        Otherwise downloads inline and commits content.
+
+        Args:
+            draft_id: Draft record id.
+            url_by_key: Mapping of file key → remote URL.
+
+        Returns:
+            Per-key upload/fetch status results.
+        """
+        async_fetch = app.config.get("RECORD_IMPORTER_FETCH_ASYNC", True)
+        output: dict[str, FileUploadResult] = {}
+
+        for key, url in url_by_key.items():
+            try:
+                validate_fetch_url(url)
+            except FetchURLNotAllowedError as exc:
+                output[key] = {"status": "failed", "messages": [str(exc)]}
+                continue
+
+            try:
+                self.files_service.init_files(
+                    system_identity, draft_id, data=[{"key": key}]
+                )
+            except Exception as exc:  # noqa: BLE001
+                output[key] = {
+                    "status": "failed",
+                    "messages": [f"Failed to init file {key}: {exc}"],
+                }
+                continue
+
+            if async_fetch:
+                # Caller creates a job id then enqueues ``fetch_import_file``.
+                self.pending_fetches.append(
+                    {
+                        "record_id": draft_id,
+                        "file_key": key,
+                        "url": url,
+                        "status": "pending",
+                    }
+                )
+                output[key] = {
+                    "status": "fetch_pending",
+                    "messages": [f"Queued fetch from {url}"],
+                }
+                continue
+
+            try:
+                spool = self._download_url_to_spool(url)
+                self.files_service.set_file_content(
+                    system_identity, draft_id, key, spool
+                )
+                self.files_service.commit_file(system_identity, draft_id, key)
+                output[key] = {"status": "uploaded", "messages": []}
+            except Exception as exc:  # noqa: BLE001
+                output[key] = {"status": "failed", "messages": [str(exc)]}
+                try:
+                    self.files_service.delete_file(system_identity, draft_id, key)
+                except Exception:  # noqa: BLE001
+                    pass
+
+        return output
 
     # FIXME: This method is not currently used.
     @unit_of_work()
@@ -661,15 +809,41 @@ class FilesHelper:
         size: int | None,
         key: str,
     ) -> None:
-        if size:
-            try:
-                file_object.seek(0, 2)  # seek to end of file
-                assert file_object.tell() == size  # check byte position
-                file_object.seek(0)  # seek to beginning of file
-            except AssertionError:
-                raise FileUploadError(f"file size mismatch for key {key}...") from None
-        else:
+        """Verify stream size when seekable; skip when stream cannot seek.
+
+        Args:
+            file_object: Open binary stream for the file body.
+            size: Expected byte length from metadata, if any.
+            key: File key (for error messages).
+
+        Raises:
+            FileUploadError: When a seekable stream's length does not match
+                ``size``.
+        """
+        if not size:
             app.logger.warning(f"file size not provided for key {key}")
+            return
+        seek = getattr(file_object, "seek", None)
+        tell = getattr(file_object, "tell", None)
+        if not callable(seek) or not callable(tell):
+            app.logger.warning(
+                f"file stream for key {key} is not seekable; skipping size check"
+            )
+            return
+        try:
+            seek(0, 2)  # seek to end of file
+            assert tell() == size  # check byte position
+            seek(0)  # seek to beginning of file
+        except OSError:
+            app.logger.warning(
+                f"file stream for key {key} cannot seek; skipping size check"
+            )
+            try:
+                seek(0)
+            except OSError:
+                pass
+        except AssertionError:
+            raise FileUploadError(f"file size mismatch for key {key}...") from None
 
     @unit_of_work()
     def _upload_draft_files(
