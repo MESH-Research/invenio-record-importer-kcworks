@@ -63,10 +63,10 @@ class InvenioRecordImporter:
 
 
 def finalize_app(app) -> None:
-    """UI finalize hook; ensure the bulk-import accounts role exists."""
-    ensure_bulk_import_role(app)
+    """UI finalize hook; ensure bulk-import role + action binding."""
+    ensure_bulk_import_role()
 
 
 def api_finalize_app(app) -> None:
-    """API finalize hook; ensure the bulk-import accounts role exists."""
-    ensure_bulk_import_role(app)
+    """API finalize hook; ensure bulk-import role + action binding."""
+    ensure_bulk_import_role()

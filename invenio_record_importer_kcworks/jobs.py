@@ -1,7 +1,5 @@
 """In-memory/cache-backed import job status for async URL fetches."""
 
-from __future__ import annotations
-
 import uuid
 from typing import Any
 
@@ -47,7 +45,7 @@ def create_import_job(
     return job_id
 
 
-def get_import_job(job_id: str) -> dict[str, Any] | None:
+def load_import_job(job_id: str) -> dict[str, Any] | None:
     """Load a job by id.
 
     Args:
@@ -86,7 +84,7 @@ def update_fetch_status(
     Returns:
         Updated job dict, or None if job missing.
     """
-    job = get_import_job(job_id)
+    job = load_import_job(job_id)
     if job is None:
         return None
     for fetch in job.get("fetches", []):

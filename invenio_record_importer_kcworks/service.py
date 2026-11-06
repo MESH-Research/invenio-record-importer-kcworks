@@ -6,6 +6,7 @@ from flask import current_app as app
 from flask_principal import Identity
 from invenio_records_resources.services.base import Service
 
+from .jobs import load_import_job
 from .record_loader import RecordLoader
 from .services.communities import CommunitiesHelper
 from .types import APIResponsePayload, FileData
@@ -17,6 +18,24 @@ class RecordImporterService(Service):
     def __init__(self, config):
         """Initialize the service."""
         super().__init__(config)
+
+    def check_permission(self, identity, action_name, **kwargs):
+        """Check a permission, passing `identity` into generator kwargs.
+
+        Needed so `And` (and any similar generators) can test child
+        satisfaction against the caller.
+
+        Args:
+            identity: Caller identity.
+            action_name: Policy action name (e.g. `import_records`).
+            **kwargs: Extra policy context (`record`, etc.).
+
+        Returns:
+            Whether the identity is allowed.
+        """
+        return self.permission_policy(
+            action_name, identity=identity, **kwargs
+        ).allows(identity)
 
     def import_records(
         self,
@@ -168,21 +187,30 @@ class RecordImporterService(Service):
     def get_import_job(self, identity: Identity, job_id: str) -> dict:
         """Return status for an async import file-fetch job.
 
+        Loads the job first so permission can use its `community_id` with the
+        same community ∧ import-action gate as `import_records`.
+
         Args:
-            identity: Caller identity (must pass ``read_import_job``).
+            identity: Caller identity (must pass `read_import_job`).
             job_id: Job identifier from a prior import response.
 
         Returns:
             Job status dict.
 
         Raises:
-            KeyError: When the job id is unknown (also raised indirectly when
-                permission checks fail via the service base class).
+            KeyError: When the job id is unknown.
+            PermissionDeniedError: When the identity fails `read_import_job`.
         """
-        self.require_permission(identity, "read_import_job")
-        from .jobs import get_import_job
-
-        job = get_import_job(job_id)
+        job = load_import_job(job_id)
         if job is None:
             raise KeyError(job_id)
+
+        community_item = CommunitiesHelper().look_up_community(
+            job.get("community_id") or ""
+        )
+        self.require_permission(
+            identity,
+            "read_import_job",
+            record=community_item._record,
+        )
         return job

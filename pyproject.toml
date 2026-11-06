@@ -87,6 +87,8 @@ entry-points."invenio_base.api_finalize_app".invenio_record_importer_kcworks = "
 entry-points."invenio_base.apps".invenio_record_importer_kcworks = "invenio_record_importer_kcworks.ext:InvenioRecordImporter"
 entry-points."invenio_base.finalize_app".invenio_record_importer_kcworks = "invenio_record_importer_kcworks.ext:finalize_app"
 entry-points."invenio_celery.tasks".invenio-record-importer-kcworks = "invenio_record_importer_kcworks.tasks"
+entry-points."invenio_db.models".invenio_record_importer_kcworks = "invenio_record_importer_kcworks.models"
+entry-points."invenio_db.alembic".invenio_record_importer_kcworks = "invenio_record_importer_kcworks:alembic"
 entry-points."invenio_oauth2server.scopes".records_import = "invenio_record_importer_kcworks.scopes:records_import_scope"
 
 [tool.uv]

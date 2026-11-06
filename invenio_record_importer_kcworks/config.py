@@ -36,7 +36,7 @@ class ConfigVariables:
         """Initialize the instance."""
         self.RECORD_IMPORTER_ADMIN_EMAIL = app.config.get("ADMIN_EMAIL", "")
 
-        # Bulk-import RBAC: invenio-accounts role name (see roles.py).
+        # Accounts role that receives import_records_action (see roles.py).
         self.RECORD_IMPORTER_BULK_IMPORT_ROLE = app.config.get(
             "RECORD_IMPORTER_BULK_IMPORT_ROLE",
             "bulk-importer",

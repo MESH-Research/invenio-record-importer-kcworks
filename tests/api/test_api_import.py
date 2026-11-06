@@ -14,7 +14,6 @@ from pathlib import Path
 from pprint import pformat
 
 from flask_login import login_user
-from flask_principal import RoleNeed
 from invenio_access.permissions import authenticated_user, system_identity
 from invenio_access.utils import get_identity
 from invenio_accounts.models import User
@@ -26,6 +25,7 @@ from invenio_rdm_records.proxies import current_rdm_records_service as records_s
 from invenio_vocabularies.proxies import current_service as current_vocabulary_service
 from invenio_vocabularies.records.api import Vocabulary
 
+from invenio_record_importer_kcworks.permissions import import_records_action
 from invenio_record_importer_kcworks.proxies import current_record_importer_service
 from invenio_record_importer_kcworks.record_loader import RecordLoader
 from invenio_record_importer_kcworks.roles import (
@@ -34,18 +34,6 @@ from invenio_record_importer_kcworks.roles import (
 )
 from invenio_record_importer_kcworks.types import FileData, LoaderResult
 from tests.fixtures.communities import make_community_member
-
-
-def grant_bulk_import_role(user, identity=None):
-    """Assign the bulk-importer accounts role and RoleNeed on an identity."""
-    ensure_bulk_import_role()
-    role = current_accounts.datastore.find_role(DEFAULT_BULK_IMPORT_ROLE)
-    assert role is not None
-    if role not in (user.roles or []):
-        current_accounts.datastore.add_role_to_user(user, role)
-        current_accounts.datastore.commit()
-    if identity is not None:
-        identity.provides.add(RoleNeed(DEFAULT_BULK_IMPORT_ROLE))
 from tests.fixtures.files import file_md5
 from tests.fixtures.records import TestRecordMetadata, TestRecordMetadataWithFiles
 from tests.helpers.sample_records import (
@@ -54,6 +42,18 @@ from tests.helpers.sample_records import (
     sample_metadata_journal_article2_pdf,
     sample_metadata_journal_article_pdf,
 )
+
+
+def grant_bulk_import_role(user, identity=None):
+    """Assign the bulk-importer role and import_records_action on an identity."""
+    ensure_bulk_import_role()
+    role = current_accounts.datastore.find_role(DEFAULT_BULK_IMPORT_ROLE)
+    assert role is not None
+    if role not in (user.roles or []):
+        current_accounts.datastore.add_role_to_user(user, role)
+        current_accounts.datastore.commit()
+    if identity is not None:
+        identity.provides.add(import_records_action)
 
 # TODO: Add tests for the other sample records
 # sample_metadata_chapter3_pdf,
