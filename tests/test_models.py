@@ -116,7 +116,7 @@ def test_cancel_and_completed_fields_serialize(
         created_by=_default_owner_id(),
         status=ImportStatusEnum.CANCELLED,
     )
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = datetime.now(UTC)
     row.cancelled_at = now
     row.completed_at = now
     row.task_id = uuid.uuid4()

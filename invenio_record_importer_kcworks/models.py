@@ -13,7 +13,8 @@ from sqlalchemy_utils.types import ChoiceType, JSONType, UUIDType
 
 # JSON column that uses JSONB on PostgreSQL (same pattern as invenio-jobs).
 JSON = (
-    db.JSON()
+    db
+    .JSON()
     .with_variant(postgresql.JSONB(none_as_null=True), "postgresql")
     .with_variant(JSONType(), "sqlite")
     .with_variant(JSONType(), "mysql")
@@ -35,24 +36,20 @@ class ImportStatusEnum(enum.Enum):
 
 
 # Statuses that block creating another import for the same community.
-ACTIVE_STATUSES: frozenset[ImportStatusEnum] = frozenset(
-    {
-        ImportStatusEnum.AWAITING_FILES,
-        ImportStatusEnum.UPLOADING,
-        ImportStatusEnum.STAGED,
-        ImportStatusEnum.QUEUED,
-        ImportStatusEnum.RUNNING,
-    }
-)
+ACTIVE_STATUSES: frozenset[ImportStatusEnum] = frozenset({
+    ImportStatusEnum.AWAITING_FILES,
+    ImportStatusEnum.UPLOADING,
+    ImportStatusEnum.STAGED,
+    ImportStatusEnum.QUEUED,
+    ImportStatusEnum.RUNNING,
+})
 
-TERMINAL_STATUSES: frozenset[ImportStatusEnum] = frozenset(
-    {
-        ImportStatusEnum.SUCCEEDED,
-        ImportStatusEnum.PARTIAL_SUCCESS,
-        ImportStatusEnum.FAILED,
-        ImportStatusEnum.CANCELLED,
-    }
-)
+TERMINAL_STATUSES: frozenset[ImportStatusEnum] = frozenset({
+    ImportStatusEnum.SUCCEEDED,
+    ImportStatusEnum.PARTIAL_SUCCESS,
+    ImportStatusEnum.FAILED,
+    ImportStatusEnum.CANCELLED,
+})
 
 
 class RecordImport(db.Model, Timestamp):
@@ -111,25 +108,11 @@ class RecordImport(db.Model, Timestamp):
     task_id = db.Column(UUIDType, nullable=True)
     """Celery task id once queued (for revoke on cancel)."""
 
-    cancelled_at = db.Column(db.DateTime, nullable=True)
-    """When cancel was requested/applied."""
+    cancelled_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    """When cancel was requested/applied (UTC-aware)."""
 
-    completed_at = db.Column(db.DateTime, nullable=True)
-    """When the import reached a terminal status; also anchors staging cleanup."""
-
-    @staticmethod
-    def _status_enum(status: ImportStatusEnum | str) -> ImportStatusEnum:
-        """Normalize a status value to `ImportStatusEnum`.
-
-        Args:
-            status: Enum member or its string value.
-
-        Returns:
-            The corresponding `ImportStatusEnum` member.
-        """
-        if isinstance(status, ImportStatusEnum):
-            return status
-        return ImportStatusEnum(status)
+    completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    """Terminal time (UTC-aware); also anchors staging cleanup."""
 
     @property
     def is_active(self) -> bool:
@@ -138,7 +121,7 @@ class RecordImport(db.Model, Timestamp):
         Returns:
             True if `status` is in `ACTIVE_STATUSES`.
         """
-        return self._status_enum(self.status) in ACTIVE_STATUSES
+        return self.status in ACTIVE_STATUSES
 
     @property
     def is_terminal(self) -> bool:
@@ -147,22 +130,25 @@ class RecordImport(db.Model, Timestamp):
         Returns:
             True if `status` is in `TERMINAL_STATUSES`.
         """
-        return self._status_enum(self.status) in TERMINAL_STATUSES
+        return self.status in TERMINAL_STATUSES
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the import for API responses.
 
         Returns:
-            Dict with UUID/datetime fields as strings where applicable.
+            Dict with keys: `id`, `community_id` (UUID strings), `created_by`,
+            `status` (string value), `records_metadata`, `options`,
+            `staging_manifest`, `progress`, `result`, `task_id` (string or
+            null), `cancelled_at` / `completed_at` / `created` / `updated`
+            (ISO-8601 strings or null).
         """
-        status = self._status_enum(self.status)
         return {
             "id": str(self.id) if self.id is not None else None,
             "community_id": (
                 str(self.community_id) if self.community_id is not None else None
             ),
             "created_by": self.created_by,
-            "status": status.value,
+            "status": self.status.value,
             "records_metadata": self.records_metadata or [],
             "options": self.options or {},
             "staging_manifest": self.staging_manifest or [],
@@ -188,7 +174,7 @@ class RecordImport(db.Model, Timestamp):
         records_metadata: list | None = None,
         options: dict | None = None,
         staging_manifest: list | None = None,
-        status: ImportStatusEnum | str = ImportStatusEnum.AWAITING_FILES,
+        status: ImportStatusEnum = ImportStatusEnum.AWAITING_FILES,
     ) -> "RecordImport":
         """Create and session-add a new import row.
 
@@ -198,7 +184,7 @@ class RecordImport(db.Model, Timestamp):
             records_metadata: Record metadata list to ingest later.
             options: Import flags / api_version / schemes.
             staging_manifest: Optional pre-declared file entries.
-            status: Initial status (default `awaiting_files`).
+            status: Initial status enum (default `AWAITING_FILES`).
 
         Returns:
             The new `RecordImport` instance (not yet committed).
@@ -209,7 +195,7 @@ class RecordImport(db.Model, Timestamp):
         row = cls(
             community_id=community_id,
             created_by=created_by,
-            status=cls._status_enum(status).value,
+            status=status,
             records_metadata=list(records_metadata or []),
             options=dict(options or {}),
             staging_manifest=list(staging_manifest or []),

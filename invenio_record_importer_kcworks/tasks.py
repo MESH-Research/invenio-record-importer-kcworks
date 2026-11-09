@@ -9,6 +9,9 @@ from invenio_rdm_records.proxies import current_rdm_records_service as records_s
 from invenio_stats.proxies import current_stats
 
 from invenio_record_importer_kcworks.jobs import update_fetch_status
+from invenio_record_importer_kcworks.proxies import (
+    current_record_importer_service,
+)
 from invenio_record_importer_kcworks.services.communities import CommunitiesHelper
 from invenio_record_importer_kcworks.services.files import FilesHelper
 
@@ -152,6 +155,22 @@ def update_community_created_dates_task(
         app.logger.error(f"Background task failed: {str(e)}")
         self.update_state(state="FAILURE", meta={"error": str(e)})
         raise
+
+
+@shared_task(ignore_result=True)
+def run_record_import(import_id: str) -> dict:
+    """Thin Celery entry: load app context and call `service.run_import`.
+
+    Layer 3 will flesh out ingestion inside the service method. This task
+    only bridges Celery → service.
+
+    Args:
+        import_id: UUID of the `RecordImport` row to run.
+
+    Returns:
+        Serialized import dict from the service stub.
+    """
+    return current_record_importer_service.run_import(system_identity, import_id)
 
 
 @shared_task(ignore_result=True)

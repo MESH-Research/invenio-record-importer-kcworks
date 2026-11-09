@@ -64,8 +64,8 @@ def upgrade():
             sqlalchemy_utils.types.uuid.UUIDType(),
             nullable=True,
         ),
-        sa.Column("cancelled_at", sa.DateTime(), nullable=True),
-        sa.Column("completed_at", sa.DateTime(), nullable=True),
+        sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_record_imports")),
     )
     op.create_index(

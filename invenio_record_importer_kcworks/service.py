@@ -1,12 +1,26 @@
+# Part of Invenio Record Importer KCWorks
+# Copyright (C) 2023-2026, MESH Research
+#
+# Invenio Record Importer KCWorks is free software; you can redistribute and/or
+# modify it under the terms of the MIT License; see LICENSE file for more details.
+
+
 """High-level service entry points for record import."""
 
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from flask import current_app as app
 from flask_principal import Identity
+from invenio_db import db
 from invenio_records_resources.services.base import Service
 
-from .jobs import load_import_job
+from .errors import (
+    ActiveImportExistsError,
+    ImportCommunityMismatchError,
+    ImportNotFoundError,
+)
+from .models import ACTIVE_STATUSES, ImportStatusEnum, RecordImport
 from .record_loader import RecordLoader
 from .services.communities import CommunitiesHelper
 from .types import APIResponsePayload, FileData
@@ -33,9 +47,9 @@ class RecordImporterService(Service):
         Returns:
             Whether the identity is allowed.
         """
-        return self.permission_policy(
-            action_name, identity=identity, **kwargs
-        ).allows(identity)
+        return self.permission_policy(action_name, identity=identity, **kwargs).allows(
+            identity
+        )
 
     def import_records(
         self,
@@ -92,8 +106,8 @@ class RecordImporterService(Service):
             the records fail. If it is `True`, no records will be imported if
             any of the records fail.
         no_updates : bool
-            When ``True``, refuse to change an existing matched record if its
-            metadata differs from the import payload. When ``False`` (default),
+            When `True`, refuse to change an existing matched record if its
+            metadata differs from the import payload. When `False` (default),
             differing metadata is applied to the existing draft/record.
         notify_record_owners : bool
             Whether to notify the owners of the records of the work's creation.
@@ -164,53 +178,305 @@ class RecordImporterService(Service):
             notify_record_owners=notify_record_owners,
         )
 
-        pending = list(import_result.pending_fetches or [])
-        if pending:
-            from .jobs import create_import_job
-            from .tasks import fetch_import_file
-
-            job_id = create_import_job(
-                community_id=str(resolved_community_id),
-                pending_fetches=pending,
-            )
-            import_result.job_id = job_id
-            for fetch in pending:
-                fetch_import_file.delay(
-                    fetch["record_id"],
-                    fetch["file_key"],
-                    fetch["url"],
-                    job_id,
-                )
-
         return import_result.model_dump()
 
-    def get_import_job(self, identity: Identity, job_id: str) -> dict:
-        """Return status for an async import file-fetch job.
+    def _require_community_permission(
+        self,
+        identity: Identity,
+        action_name: str,
+        community_id: str,
+    ):
+        """Resolve community and require a permission against it.
 
-        Loads the job first so permission can use its `community_id` with the
-        same community ∧ import-action gate as `import_records`.
+        Args:
+            identity: Caller identity.
+            action_name: Policy action name.
+            community_id: Community UUID or slug.
+
+        Returns:
+            The resolved community service item.
+        """
+        community_item = CommunitiesHelper().look_up_community(community_id)
+        self.require_permission(
+            identity,
+            action_name,
+            record=community_item._record,
+        )
+        return community_item
+
+    def _active_import_for_community(self, community_id) -> RecordImport | None:
+        """Return the active import row for a community, if any.
+
+        Args:
+            community_id: Resolved community UUID (or uuid-shaped string).
+
+        Returns:
+            The active `RecordImport`, or `None`.
+        """
+        return (
+            RecordImport.query
+            .filter(
+                RecordImport.community_id == community_id,
+                RecordImport.status.in_(ACTIVE_STATUSES),
+            )
+            .order_by(RecordImport.created.desc())
+            .first()
+        )
+
+    def _get_import_row(self, community_id, import_id: str) -> RecordImport:
+        """Load an import scoped to a community.
+
+        Args:
+            community_id: Resolved community UUID (or uuid-shaped string).
+            import_id: Import UUID (or uuid-shaped string).
+
+        Returns:
+            The matching `RecordImport` row.
+
+        Raises:
+            ImportNotFoundError: When no row exists for `import_id`.
+            ImportCommunityMismatchError: When the row belongs to another community.
+        """
+        row = db.session.get(RecordImport, import_id)
+        if row is None:
+            raise ImportNotFoundError(import_id=import_id)
+        if str(row.community_id) != str(community_id):
+            raise ImportCommunityMismatchError(
+                import_id=import_id,
+                community_id=str(community_id),
+                actual_community_id=str(row.community_id),
+            )
+        return row
+
+    def create_import(
+        self,
+        identity: Identity,
+        community_id: str,
+        *,
+        records_metadata: list | None = None,
+        options: dict | None = None,
+        staging_manifest: list | None = None,
+    ) -> dict:
+        """Create a community-scoped import in `awaiting_files` status.
+
+        Enforces one active import per community.
+
+        Args:
+            identity: Caller identity (must pass `import_records`).
+            community_id: Community UUID or slug.
+            records_metadata: Record metadata list to ingest after commit.
+            options: Import flags including `api_version`.
+            staging_manifest: Optional pre-declared file entries.
+
+        Returns:
+            Serialized import dict.
+
+        Raises:
+            ActiveImportExistsError: When an active import already exists.
+        """
+        community_item = self._require_community_permission(
+            identity, "import_records", community_id
+        )
+        existing = self._active_import_for_community(community_item.id)
+        if existing is not None:
+            raise ActiveImportExistsError(
+                community_id=str(community_item.id),
+                existing_import_id=str(existing.id),
+            )
+
+        row = RecordImport.create(
+            community_id=community_item.id,
+            created_by=cast(Any, identity).user.id,
+            records_metadata=records_metadata,
+            options=options,
+            staging_manifest=staging_manifest,
+            status=ImportStatusEnum.AWAITING_FILES,
+        )
+        db.session.commit()
+        return row.to_dict()
+
+    def get_import(
+        self,
+        identity: Identity,
+        community_id: str,
+        import_id: str,
+    ) -> dict:
+        """Return one import for a community.
 
         Args:
             identity: Caller identity (must pass `read_import_job`).
-            job_id: Job identifier from a prior import response.
+            community_id: Community UUID or slug.
+            import_id: Import UUID.
 
         Returns:
-            Job status dict.
+            Serialized import dict.
+        """
+        community_item = self._require_community_permission(
+            identity, "read_import_job", community_id
+        )
+        row = self._get_import_row(community_item.id, import_id)
+        return row.to_dict()
+
+    def get_current_import(
+        self,
+        identity: Identity,
+        community_id: str,
+    ) -> dict:
+        """Return the active import, else the latest terminal import.
+
+        Args:
+            identity: Caller identity (must pass `read_import_job`).
+            community_id: Community UUID or slug.
+
+        Returns:
+            Serialized import dict.
 
         Raises:
-            KeyError: When the job id is unknown.
-            PermissionDeniedError: When the identity fails `read_import_job`.
+            ImportNotFoundError: When the community has no imports.
         """
-        job = load_import_job(job_id)
-        if job is None:
-            raise KeyError(job_id)
-
-        community_item = CommunitiesHelper().look_up_community(
-            job.get("community_id") or ""
+        community_item = self._require_community_permission(
+            identity, "read_import_job", community_id
         )
+        active = self._active_import_for_community(community_item.id)
+        if active is not None:
+            return active.to_dict()
+
+        latest = (
+            RecordImport.query
+            .filter(RecordImport.community_id == community_item.id)
+            .order_by(RecordImport.created.desc())
+            .first()
+        )
+        if latest is None:
+            raise ImportNotFoundError(community_id=str(community_item.id))
+        return latest.to_dict()
+
+    def list_imports(
+        self,
+        identity: Identity,
+        community_id: str,
+    ) -> dict:
+        """List imports for a community (newest first).
+
+        Args:
+            identity: Caller identity (must pass `read_import_job`).
+            community_id: Community UUID or slug.
+
+        Returns:
+            Dict with `imports` (list of serialized rows) and `total`.
+        """
+        community_item = self._require_community_permission(
+            identity, "read_import_job", community_id
+        )
+        rows = (
+            RecordImport.query
+            .filter(RecordImport.community_id == community_item.id)
+            .order_by(RecordImport.created.desc())
+            .all()
+        )
+        imports = [row.to_dict() for row in rows]
+        return {"imports": imports, "total": len(imports)}
+
+    def _cancel_import_row(self, row: RecordImport) -> dict:
+        """Mark an active import row cancelled and commit.
+
+        Args:
+            row: Active `RecordImport` to cancel.
+
+        Returns:
+            Serialized import dict.
+
+        Raises:
+            ValueError: When the import is not active.
+        """
+        if not row.is_active:
+            raise ValueError(f"Import {row.id} is not active and cannot be cancelled")
+
+        now = datetime.now(UTC)
+        row.status = ImportStatusEnum.CANCELLED
+        row.cancelled_at = now
+        row.completed_at = now
+        db.session.commit()
+        return row.to_dict()
+
+    def cancel_import(
+        self,
+        identity: Identity,
+        community_id: str,
+        import_id: str,
+    ) -> dict:
+        """Cancel an active import by id.
+
+        Sets `cancelled` status plus `cancelled_at` and `completed_at`.
+
+        Args:
+            identity: Caller identity (must pass `import_records`).
+            community_id: Community UUID or slug.
+            import_id: Import UUID.
+
+        Returns:
+            Serialized import dict.
+        """
+        community_item = self._require_community_permission(
+            identity, "import_records", community_id
+        )
+        row = self._get_import_row(community_item.id, import_id)
+        return self._cancel_import_row(row)
+
+    def cancel_current_import(
+        self,
+        identity: Identity,
+        community_id: str,
+    ) -> dict:
+        """Cancel the active import for a community.
+
+        Args:
+            identity: Caller identity (must pass `import_records`).
+            community_id: Community UUID or slug.
+
+        Returns:
+            Serialized cancelled import dict.
+
+        Raises:
+            ImportNotFoundError: When there is no active import.
+        """
+        community_item = self._require_community_permission(
+            identity, "import_records", community_id
+        )
+        active = self._active_import_for_community(community_item.id)
+        if active is None:
+            raise ImportNotFoundError(community_id=str(community_item.id))
+        return self._cancel_import_row(active)
+
+    def run_import(self, identity: Identity, import_id: str) -> dict:
+        """Thin stub for async ingestion (Layer 3 will flesh this out).
+
+        Loads the import, checks permission, and transitions
+        `queued` → `running` when applicable. Does not extract or ingest.
+
+        Args:
+            identity: Caller identity (must pass `import_records`).
+            import_id: Import UUID.
+
+        Returns:
+            Serialized import dict.
+
+        Raises:
+            ImportNotFoundError: When the import id is unknown.
+        """
+        row = db.session.get(RecordImport, import_id)
+        if row is None:
+            raise ImportNotFoundError(import_id=import_id)
+
+        community_item = CommunitiesHelper().look_up_community(str(row.community_id))
         self.require_permission(
             identity,
-            "read_import_job",
+            "import_records",
             record=community_item._record,
         )
-        return job
+
+        if row.status == ImportStatusEnum.QUEUED:
+            row.status = ImportStatusEnum.RUNNING
+            db.session.commit()
+
+        return row.to_dict()

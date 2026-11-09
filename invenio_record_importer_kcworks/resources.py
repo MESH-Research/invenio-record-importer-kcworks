@@ -11,6 +11,8 @@ from flask import current_app as app
 from flask_resources import Resource, ResourceConfig
 from flask_resources.config import from_conf
 from flask_resources.context import resource_requestctx
+from flask_resources.deserializers import JSONDeserializer
+from flask_resources.parsers.body import RequestBodyParser
 from flask_resources.parsers.decorators import request_parser
 from flask_resources.resources import route
 from flask_resources.responses import ResponseHandler
@@ -20,6 +22,7 @@ from invenio_records_resources.services.errors import PermissionDeniedError
 from werkzeug.datastructures import ImmutableMultiDict
 from werkzeug.exceptions import (
     BadRequest,
+    Conflict,
     Forbidden,
     MethodNotAllowed,
     NotFound,
@@ -27,6 +30,11 @@ from werkzeug.exceptions import (
 )
 from werkzeug.utils import secure_filename
 
+from .errors import (
+    ActiveImportExistsError,
+    ImportCommunityMismatchError,
+    ImportNotFoundError,
+)
 from .parser import RequestMultipartParser, request_body_parser
 from .types import FileData
 
@@ -178,6 +186,7 @@ request_form_data = request_body_parser(
 request_parsed_view_args = request_parser(
     {
         "community": ma.fields.String(),
+        "import_id": ma.fields.String(required=False),
     },
     location="view_args",
 )
@@ -191,7 +200,7 @@ class RecordImporterResourceConfig(ResourceConfig):
     url_prefix = "/import"
 
     # Error handlers are registered on the blueprint by flask_resources
-    # using the ``Blueprint.register_error_handler()`` method.
+    # using the `Blueprint.register_error_handler()` method.
     error_handlers = {
         Forbidden: lambda e: (
             {"message": str(e), "status": 403},
@@ -215,6 +224,26 @@ class RecordImporterResourceConfig(ResourceConfig):
             {"message": str(e), "status": 404},
             404,
         ),
+        Conflict: lambda e: (
+            {"message": str(e), "status": 409},
+            409,
+        ),
+        ActiveImportExistsError: lambda e: (
+            {
+                "message": str(e),
+                "status": 409,
+                "existing_import_id": getattr(e, "existing_import_id", None),
+            },
+            409,
+        ),
+        ImportNotFoundError: lambda e: (
+            {"message": str(e), "status": 404},
+            404,
+        ),
+        ImportCommunityMismatchError: lambda e: (
+            {"message": str(e), "status": 404},
+            404,
+        ),
         BadRequest: lambda e: (
             {"message": str(e), "status": 400},
             400,
@@ -227,6 +256,8 @@ class RecordImporterResourceConfig(ResourceConfig):
                 ),
                 "status": 400,
             },
+        ValueError: lambda e: (
+            {"message": str(e), "status": 400},
             400,
         ),
         ma.ValidationError: lambda e: (
@@ -249,7 +280,10 @@ class RecordImporterResourceConfig(ResourceConfig):
 
     # Request parsing
     default_content_type = "multipart/form-data"
-    request_body_parsers = {"multipart/form-data": RequestMultipartParser()}
+    request_body_parsers = {
+        "multipart/form-data": RequestMultipartParser(),
+        "application/json": RequestBodyParser(deserializer=JSONDeserializer()),
+    }
 
     # Response handling
     default_accept_mimetype = "application/json"
@@ -268,7 +302,7 @@ class RecordImporterResource(Resource):
         """Create the URL rules for the record resource.
 
         Registered by flask_resources on the blueprint using the
-        ``Blueprint.add_url_rule()`` method.
+        `Blueprint.add_url_rule()` method.
 
 
         Returns:
@@ -276,7 +310,12 @@ class RecordImporterResource(Resource):
         """
         return [
             route("POST", "/<community>", self.import_records),
-            route("GET", "/jobs/<job_id>", self.get_import_job),
+            # Register `/current` before `/<import_id>`.
+            route("GET", "/<community>/current", self.get_current_import),
+            route("DELETE", "/<community>/current", self.cancel_current_import),
+            route("GET", "/<community>", self.list_imports),
+            route("GET", "/<community>/<import_id>", self.get_import),
+            route("DELETE", "/<community>/<import_id>", self.cancel_import),
         ]
 
     @request_parsed_view_args
@@ -284,76 +323,152 @@ class RecordImporterResource(Resource):
     @require_api_auth()
     @require_oauth_scopes("records:import")
     def import_records(self):
-        """Import records.
+        """Create an async import (v2) or run the legacy sync import.
 
-        Expects one view argument (url path parameter) for the community ID. This
-        can be either the community UUID or the community url slug.
+        Path: `POST /api/import/<community>` (community UUID or slug).
 
-        Expects a multipart/form-data request with the following fields in the
-        form data:
+        **v2 — `application/json`:** creates a `RecordImport` row
+        (`awaiting_files`) and returns **202**. No file bytes on this request.
+        Body fields:
 
-        - community(str): The community ID.
-        - files(ImmutableMultiDict[str, FileStorage]): The files to import. Each
-          key in the dictionary should be identical, "files". Each value is a
-          werkzeug.datastructures.FileStorage object. *Note: the list of values
-          must be obtained by calling .getlist("files") on the ImmutableMultiDict.
-          Requesting the key "files" will return only the first value in the
-          dictionary.
-        - metadata(dict): The metadata to attach to the records.
-        - review_required(bool): Whether to require review of the records.
-        - strict_validation(bool): Whether to strictly validate the records.
-        - all_or_none(bool): Whether to import all records or none.
-        - notify_record_owners(bool): Whether to send email notifications to users
-          identified as record owners.
-        - no_updates(bool): When True, refuse to update existing matched records
-          whose metadata differs. Default False (updates allowed).
-        - id_scheme(str): Primary source identifier scheme for dedupe.
-        - alternate_id_scheme(str): Optional secondary source identifier scheme.
+        - `api_version` (int, optional): defaults to `2` when omitted; if
+          present, must be `2`
+        - `metadata` (list): record metadata objects to ingest after commit
+        - `review_required` (bool)
+        - `strict_validation` (bool)
+        - `all_or_none` (bool)
+        - `no_updates` (bool)
+        - `notify_record_owners` (bool)
+        - `id_scheme` (str)
+        - `alternate_id_scheme` (str)
+
+        Flags (everything except `metadata`) are stored on the import
+        `options` column (`api_version` recorded as `2` when omitted).
+
+        **Legacy — `multipart/form-data`:** sync import; see
+        `_import_records_legacy` for the field contract.
 
         Returns:
-            Description of the return value.
-
-        Raises:
-            BadRequest: Raised when the operation fails.
+            Flask `(response, status)` for create (202) or sync import.
         """
         community_id = resource_requestctx.view_args.get("community")
-        file_data = resource_requestctx.data["files"]
+        data = resource_requestctx.data
+
+        # JSON body → async create (v2). Multipart → legacy sync.
+        if isinstance(data, dict) and "form" not in data and "files" not in data:
+            return self._create_import_v2(community_id, data)
+
+        return self._import_records_legacy(community_id, data)
+
+    def _create_import_v2(self, community_id: str, data: dict):
+        """Handle JSON create for the async import protocol.
+
+        Omitting `api_version` defaults to v2. An explicit non-2 value is
+        rejected (use multipart for the legacy sync path).
+
+        Args:
+            community_id: Community UUID or slug from the URL.
+            data: Parsed JSON body.
+
+        Returns:
+            `(jsonify(body), 202)` where `body` is a `RecordImport.to_dict()`
+            payload for the new row, typically:
+
+            - `id` (str): import UUID
+            - `community_id` (str): resolved community UUID
+            - `created_by` (int): creating user id
+            - `status` (str): `"awaiting_files"`
+            - `records_metadata` (list): echo of request `metadata`
+            - `options` (dict): flags including `api_version: 2`
+            - `staging_manifest` (list): `[]` until file init
+            - `progress` (dict): `{}`
+            - `result` (null)
+            - `task_id` (null)
+            - `cancelled_at` / `completed_at` (null)
+            - `created` / `updated` (str): ISO-8601 timestamps
+
+        Raises:
+            BadRequest: When `api_version` is present and not 2, or metadata
+                is invalid.
+        """
+        api_version = data.get("api_version", 2)
+        if api_version != 2:
+            raise BadRequest(
+                "JSON create only supports api_version 2 (or omit api_version). "
+                "Use multipart/form-data for the legacy sync import."
+            )
+
+        metadata = data.get("metadata")
+        if metadata is None:
+            metadata = []
+        if not isinstance(metadata, list):
+            raise BadRequest(
+                "Invalid metadata. 'metadata' must be an array of metadata objects."
+            )
+
+        options = {key: value for key, value in data.items() if key != "metadata"}
+        options["api_version"] = 2
+        created = self.service.create_import(
+            identity=g.identity,
+            community_id=community_id,
+            records_metadata=metadata,
+            options=options,
+        )
+        return jsonify(created), 202
+
+    def _import_records_legacy(self, community_id: str, data: dict):
+        """Legacy multipart sync import (unchanged contract).
+
+        Expects `community_id` as the community UUID or slug from the URL.
+
+        Expects a multipart/form-data request with:
+
+        - files (`ImmutableMultiDict[str, FileStorage]`): The files to import.
+          Each key should be `"files"`. Obtain the list via `.getlist("files")`
+          on the multi-dict (indexing `"files"` returns only the first value).
+        - metadata: JSON array of metadata objects for the records.
+        - review_required (bool): Whether to require review of the records.
+        - strict_validation (bool): Whether to strictly validate the records.
+        - all_or_none (bool): Whether to import all records or none.
+        - notify_record_owners (bool): Whether to email identified record owners.
+        - no_updates (bool): When True, refuse to update existing matched records
+          whose metadata differs. Default False (updates allowed).
+        - id_scheme (str): Primary source identifier scheme for dedupe.
+        - alternate_id_scheme (str): Optional secondary source identifier scheme.
+
+        Args:
+            community_id: Community UUID or slug from the URL.
+            data: Parsed multipart payload (`form` + `files`).
+
+        Returns:
+            Sync import response with status 201/202/207/400.
+
+        Raises:
+            BadRequest: When metadata or boolean form fields are invalid.
+        """
+        file_data = data["files"]
         app.logger.debug(f"in resource file_data type: {file_data}")
         if isinstance(file_data, ImmutableMultiDict):
             file_data = file_data.getlist("files")
 
-        raw_metadata = resource_requestctx.data["form"].get("metadata")
-        if raw_metadata is None or raw_metadata == "":
-            raise BadRequest(
-                "Missing metadata form field. Provide a JSON array of record objects."
-            )
-        metadata = json.loads(raw_metadata)
-
+        metadata = json.loads(data["form"].get("metadata"))
         if not isinstance(metadata, list):
             raise BadRequest(
                 "Invalid metadata. 'Metadata' must be an array of metadata objects. "
                 "Did you submit a single metadata object not enclosed in an array?"
             )
 
-        id_scheme = resource_requestctx.data["form"].get("id_scheme", "import-recid")
-        alternate_id_scheme = resource_requestctx.data["form"].get(
-            "alternate_id_scheme", ""
-        )
-        review_required = bool_from_string(
-            resource_requestctx.data["form"].get("review_required", True)
-        )
+        id_scheme = data["form"].get("id_scheme", "import-recid")
+        alternate_id_scheme = data["form"].get("alternate_id_scheme", "")
+        review_required = bool_from_string(data["form"].get("review_required", True))
         strict_validation = bool_from_string(
-            resource_requestctx.data["form"].get("strict_validation", True)
+            data["form"].get("strict_validation", True)
         )
-        all_or_none = bool_from_string(
-            resource_requestctx.data["form"].get("all_or_none", True)
-        )
+        all_or_none = bool_from_string(data["form"].get("all_or_none", True))
         notify_record_owners = bool_from_string(
-            resource_requestctx.data["form"].get("notify_record_owners", False)
+            data["form"].get("notify_record_owners", False)
         )
-        no_updates = bool_from_string(
-            resource_requestctx.data["form"].get("no_updates", False)
-        )
+        no_updates = bool_from_string(data["form"].get("no_updates", False))
 
         processed_files = []
         for file in file_data:
@@ -402,25 +517,72 @@ class RecordImporterResource(Resource):
             return jsonify(import_result), 207
         return jsonify(import_result), 400
 
+    @request_parsed_view_args
     @require_api_auth()
     @require_oauth_scopes("records:import")
-    def get_import_job(self, job_id: str):
-        """Return status for an async import file-fetch job.
-
-        Args:
-            job_id: Job id from a prior ``202`` import response.
+    def get_current_import(self):
+        """Return the active import for a community, else the latest terminal.
 
         Returns:
-            JSON job status payload.
-
-        Raises:
-            NotFound: When the job id is unknown.
+            JSON import payload with status 200.
         """
-        try:
-            job = self.service.get_import_job(g.identity, job_id)
-        except KeyError as exc:
-            raise NotFound(f"Import job not found: {job_id}") from exc
-        return jsonify(job), 200
+        community_id = resource_requestctx.view_args.get("community")
+        payload = self.service.get_current_import(g.identity, community_id)
+        return jsonify(payload), 200
+
+    @request_parsed_view_args
+    @require_api_auth()
+    @require_oauth_scopes("records:import")
+    def list_imports(self):
+        """List imports for a community (newest first).
+
+        Returns:
+            JSON `{imports, total}` with status 200.
+        """
+        community_id = resource_requestctx.view_args.get("community")
+        payload = self.service.list_imports(g.identity, community_id)
+        return jsonify(payload), 200
+
+    @request_parsed_view_args
+    @require_api_auth()
+    @require_oauth_scopes("records:import")
+    def get_import(self):
+        """Return one import by id for a community.
+
+        Returns:
+            JSON import payload with status 200.
+        """
+        community_id = resource_requestctx.view_args.get("community")
+        import_id = resource_requestctx.view_args.get("import_id")
+        payload = self.service.get_import(g.identity, community_id, import_id)
+        return jsonify(payload), 200
+
+    @request_parsed_view_args
+    @require_api_auth()
+    @require_oauth_scopes("records:import")
+    def cancel_import(self):
+        """Cancel an active import by id.
+
+        Returns:
+            JSON cancelled import payload with status 200.
+        """
+        community_id = resource_requestctx.view_args.get("community")
+        import_id = resource_requestctx.view_args.get("import_id")
+        payload = self.service.cancel_import(g.identity, community_id, import_id)
+        return jsonify(payload), 200
+
+    @request_parsed_view_args
+    @require_api_auth()
+    @require_oauth_scopes("records:import")
+    def cancel_current_import(self):
+        """Cancel the active import for a community.
+
+        Returns:
+            JSON cancelled import payload with status 200.
+        """
+        community_id = resource_requestctx.view_args.get("community")
+        payload = self.service.cancel_current_import(g.identity, community_id)
+        return jsonify(payload), 200
 
 
 def create_api_blueprint(app):

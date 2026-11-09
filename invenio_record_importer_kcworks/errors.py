@@ -1,6 +1,95 @@
 """Custom exceptions for invenio-record-importer-kcworks."""
 
 
+class ActiveImportExistsError(Exception):
+    """Raised when creating an import while one is already active for the community."""
+
+    def __init__(
+        self,
+        community_id: str,
+        existing_import_id: str | None = None,
+        message: str | None = None,
+    ):
+        """Initialize the exception.
+
+        Args:
+            community_id: Community UUID (string) that already has an active import.
+            existing_import_id: Id of the blocking import, if known.
+            message: Optional override message.
+        """
+        self.community_id = community_id
+        self.existing_import_id = existing_import_id
+        if message is None:
+            message = (
+                f"An active import is already running for community {community_id}"
+                + (
+                    f" (import_id={existing_import_id})"
+                    if existing_import_id
+                    else ""
+                )
+            )
+        super().__init__(message)
+        self.message = message
+
+
+class ImportNotFoundError(Exception):
+    """Raised when a `RecordImport` row does not exist."""
+
+    def __init__(
+        self,
+        import_id: str | None = None,
+        community_id: str | None = None,
+        message: str | None = None,
+    ):
+        """Initialize the exception.
+
+        Args:
+            import_id: Missing import id, if known.
+            community_id: Community id when looking up current/latest, if known.
+            message: Optional override message.
+        """
+        self.import_id = import_id
+        self.community_id = community_id
+        if message is None:
+            if import_id is not None:
+                message = f"Import not found: {import_id}"
+            elif community_id is not None:
+                message = f"No import found for community: {community_id}"
+            else:
+                message = "Import not found"
+        super().__init__(message)
+        self.message = message
+
+
+class ImportCommunityMismatchError(Exception):
+    """Raised when an import exists but belongs to a different community."""
+
+    def __init__(
+        self,
+        import_id: str,
+        community_id: str,
+        actual_community_id: str | None = None,
+        message: str | None = None,
+    ):
+        """Initialize the exception.
+
+        Args:
+            import_id: Import id that was requested.
+            community_id: Community id from the request path.
+            actual_community_id: Community id on the import row, if known.
+            message: Optional override message.
+        """
+        self.import_id = import_id
+        self.community_id = community_id
+        self.actual_community_id = actual_community_id
+        if message is None:
+            message = (
+                f"Import {import_id} does not belong to community {community_id}"
+            )
+        super().__init__(message)
+        self.message = message
+
+
 class CollectionDoesNotExistError(Exception):
     """Collection does not exist error."""
 
