@@ -1353,10 +1353,7 @@ class RecordLoader:
             "notify_record_owners": notify_record_owners,
         }
 
-        # sanitize the names of files before upload to avoid
-        # issues with special characters
-        # FIXME: Move this to the record file actions
-        if clean_filenames:
+        if clean_filenames and not files:
             app.logger.info("Sanitizing file names...")
             FilesHelper.sanitize_filenames(app.config["RECORD_IMPORTER_FILES_LOCATION"])
 

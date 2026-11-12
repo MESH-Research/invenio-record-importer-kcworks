@@ -213,6 +213,16 @@ class RecordImporterResourceConfig(ResourceConfig):
             {"message": str(e), "status": 400},
             400,
         ),
+        json.JSONDecodeError: lambda e: (
+            {
+                "message": (
+                    f"Invalid metadata JSON: {e.msg} "
+                    f"(line {e.lineno} column {e.colno})"
+                ),
+                "status": 400,
+            },
+            400,
+        ),
         ma.ValidationError: lambda e: (
             {"message": str(e), "status": 400},
             400,
@@ -305,8 +315,13 @@ class RecordImporterResource(Resource):
         if isinstance(file_data, ImmutableMultiDict):
             file_data = file_data.getlist("files")
 
-        metadata = json.loads(resource_requestctx.data["form"].get("metadata"))
-        app.logger.debug(f"metadata type: {type(metadata)}")
+        raw_metadata = resource_requestctx.data["form"].get("metadata")
+        if raw_metadata is None or raw_metadata == "":
+            raise BadRequest(
+                "Missing metadata form field. Provide a JSON array of record objects."
+            )
+        metadata = json.loads(raw_metadata)
+
         if not isinstance(metadata, list):
             raise BadRequest(
                 "Invalid metadata. 'Metadata' must be an array of metadata objects. "
