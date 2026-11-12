@@ -65,6 +65,35 @@ class ConfigVariables:
             True,
         )
 
+        # Async v2 staging: prefix on the existing Invenio S3 bucket.
+        prefix = app.config.get("RECORD_IMPORTER_STAGING_PREFIX", "imports/")
+        prefix = str(prefix)
+        if not prefix.endswith("/"):
+            prefix = f"{prefix}/"
+        self.RECORD_IMPORTER_STAGING_PREFIX = prefix
+        # Defaults to S3_BUCKET_NAME when unset.
+        self.RECORD_IMPORTER_STAGING_BUCKET = app.config.get(
+            "RECORD_IMPORTER_STAGING_BUCKET",
+            app.config.get("S3_BUCKET_NAME", ""),
+        )
+        # Files at or below this size use a single presigned PUT (not MPU).
+        self.RECORD_IMPORTER_STAGING_SINGLE_PUT_MAX = app.config.get(
+            "RECORD_IMPORTER_STAGING_SINGLE_PUT_MAX",
+            app.config.get("S3_DEFAULT_BLOCK_SIZE", 5 * 2**20),
+        )
+        self.RECORD_IMPORTER_STAGING_URL_EXPIRATION = app.config.get(
+            "RECORD_IMPORTER_STAGING_URL_EXPIRATION",
+            app.config.get("S3_UPLOAD_URL_EXPIRATION", 3600 * 24 * 7),
+        )
+        self.RECORD_IMPORTER_STAGING_MAX_PARTS = app.config.get(
+            "RECORD_IMPORTER_STAGING_MAX_PARTS",
+            app.config.get("S3_MAXIMUM_NUMBER_OF_PARTS", 10000),
+        )
+        self.RECORD_IMPORTER_STAGING_PART_SIZE = app.config.get(
+            "RECORD_IMPORTER_STAGING_PART_SIZE",
+            app.config.get("S3_DEFAULT_BLOCK_SIZE", 5 * 2**20),
+        )
+
         self.RECORD_IMPORTER_JOB_TTL_SECONDS = app.config.get(
             "RECORD_IMPORTER_JOB_TTL_SECONDS",
             60 * 60 * 24,

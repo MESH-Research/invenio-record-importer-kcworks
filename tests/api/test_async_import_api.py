@@ -1,12 +1,15 @@
 """Tests for async community-scoped import API (Layer 1: row CRUD + HTTP)."""
 
 import json
+import uuid
+from unittest.mock import MagicMock
 
 import pytest
 from flask_principal import Identity, UserNeed
 from invenio_communities.generators import CommunityRoleNeed
 from invenio_communities.utils import load_community_needs
 from invenio_records_resources.services.errors import PermissionDeniedError
+from marshmallow import ValidationError
 
 from invenio_record_importer_kcworks.errors import (
     ActiveImportExistsError,
@@ -16,6 +19,21 @@ from invenio_record_importer_kcworks.errors import (
 from invenio_record_importer_kcworks.models import ImportStatusEnum, RecordImport
 from invenio_record_importer_kcworks.proxies import current_record_importer_service
 from invenio_record_importer_kcworks.roles import DEFAULT_BULK_IMPORT_ROLE
+
+
+@pytest.fixture(autouse=True)
+def _mock_run_import_delay(monkeypatch):
+    """Metadata-only create enqueues Celery; stub delay for all tests here.
+
+    Returns:
+        MagicMock standing in for `run_record_import.delay`.
+    """
+    delay = MagicMock(return_value=MagicMock(id=str(uuid.uuid4())))
+    monkeypatch.setattr(
+        "invenio_record_importer_kcworks.tasks.run_record_import.delay",
+        delay,
+    )
+    return delay
 
 
 def _owner_identity_with_import(user, community, assign_roles):
@@ -30,7 +48,23 @@ def _owner_identity_with_import(user, community, assign_roles):
     return identity
 
 
-def _create_body(metadata=None, **flags):
+def _with_import_recid(record_meta, source_id: str = "async-test-1"):
+    """Attach an `import-recid` identifier to a `TestRecordMetadata` instance.
+
+    Returns:
+        The same metadata object after update.
+    """
+    record_meta.update_metadata(
+        {
+            "metadata|identifiers": [
+                {"identifier": source_id, "scheme": "import-recid"},
+            ]
+        }
+    )
+    return record_meta
+
+
+def _create_body(metadata, **flags):
     """Build a v2 create JSON body (legacy field shape + api_version).
 
     Returns:
@@ -38,7 +72,7 @@ def _create_body(metadata=None, **flags):
     """
     body = {
         "api_version": 2,
-        "metadata": metadata if metadata is not None else [{"title": "One"}],
+        "metadata": metadata,
         "review_required": True,
         "strict_validation": True,
         "all_or_none": True,
@@ -55,7 +89,12 @@ def _create_body(metadata=None, **flags):
 
 
 def test_create_get_list_current_cancel(
-    running_app, db, minimal_community_factory, user_factory, assign_roles
+    running_app,
+    db,
+    minimal_community_factory,
+    user_factory,
+    assign_roles,
+    record_metadata,
 ):
     """Happy path: create → get → current → list → cancel."""
     u = user_factory(email="async-happy@example.com")
@@ -63,16 +102,21 @@ def test_create_get_list_current_cancel(
     identity = _owner_identity_with_import(u.user, community, assign_roles)
     service = current_record_importer_service
 
+    meta = [_with_import_recid(record_metadata()).metadata_in]
     created = service.create_import(
         identity,
         community["slug"],
-        records_metadata=[{"title": "One"}],
+        records_metadata=meta,
         options={"api_version": 2, "all_or_none": True},
     )
-    assert created["status"] == "awaiting_files"
+    assert created["status"] == "queued"
+    assert created["uploads"] == []
+    assert created["task_id"] is not None
     assert created["community_id"] == str(community.id)
     assert created["created_by"] == u.user.id
-    assert created["records_metadata"] == [{"title": "One"}]
+    assert created["records_metadata"][0]["metadata"]["title"] == (
+        meta[0]["metadata"]["title"]
+    )
     assert created["options"]["api_version"] == 2
     import_id = created["id"]
 
@@ -81,7 +125,7 @@ def test_create_get_list_current_cancel(
 
     current = service.get_current_import(identity, community["slug"])
     assert current["id"] == import_id
-    assert current["status"] == "awaiting_files"
+    assert current["status"] == "queued"
 
     listed = service.list_imports(identity, community["slug"])
     assert listed["total"] == 1
@@ -95,6 +139,25 @@ def test_create_get_list_current_cancel(
     current_after = service.get_current_import(identity, community["slug"])
     assert current_after["id"] == import_id
     assert current_after["status"] == "cancelled"
+
+
+def test_create_import_rejects_invalid_metadata(
+    running_app, db, minimal_community_factory, user_factory, assign_roles
+):
+    """Create fails before row/enqueue when metadata fails the RDM schema."""
+    u = user_factory(email="async-bad-meta@example.com")
+    community = minimal_community_factory(slug="async-bad-meta", owner=u.user.id)
+    identity = _owner_identity_with_import(u.user, community, assign_roles)
+    service = current_record_importer_service
+
+    with pytest.raises(ValidationError) as exc_info:
+        service.create_import(
+            identity,
+            community["slug"],
+            records_metadata=[{"title": "not a full RDM record"}],
+            options={"api_version": 2},
+        )
+    assert "metadata" in exc_info.value.messages
 
 
 def test_create_import_conflict_when_active(
@@ -197,7 +260,12 @@ def test_run_import_stub_queued_to_running(
 
 
 def test_api_create_get_list_current_cancel(
-    running_app, db, minimal_community_factory, user_factory, assign_roles
+    running_app,
+    db,
+    minimal_community_factory,
+    user_factory,
+    assign_roles,
+    record_metadata,
 ):
     """HTTP happy path for v2 create and community-scoped routes."""
     app = running_app.app
@@ -211,16 +279,18 @@ def test_api_create_get_list_current_cancel(
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
+    body = _create_body([_with_import_recid(record_metadata()).metadata_in])
 
     with app.test_client() as client:
         create_resp = client.post(
             base,
-            data=json.dumps(_create_body()),
+            data=json.dumps(body),
             headers=headers,
         )
         assert create_resp.status_code == 202, create_resp.get_data(as_text=True)
         created = create_resp.json
-        assert created["status"] == "awaiting_files"
+        assert created["status"] == "queued"
+        assert created["uploads"] == []
         import_id = created["id"]
 
         get_resp = client.get(f"{base}/{import_id}", headers=headers)
@@ -241,7 +311,12 @@ def test_api_create_get_list_current_cancel(
 
 
 def test_api_create_conflict_409(
-    running_app, db, minimal_community_factory, user_factory, assign_roles
+    running_app,
+    db,
+    minimal_community_factory,
+    user_factory,
+    assign_roles,
+    record_metadata,
 ):
     """Second JSON create while active returns 409."""
     app = running_app.app
@@ -255,7 +330,9 @@ def test_api_create_conflict_409(
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
-    body = json.dumps(_create_body())
+    body = json.dumps(
+        _create_body([_with_import_recid(record_metadata()).metadata_in])
+    )
 
     with app.test_client() as client:
         first = client.post(base, data=body, headers=headers)
@@ -267,7 +344,7 @@ def test_api_create_conflict_409(
 
 
 def test_api_create_denied_403(
-    running_app, db, minimal_community_factory, user_factory
+    running_app, db, minimal_community_factory, user_factory, record_metadata
 ):
     """Authenticated user without community role / import action gets 403."""
     app = running_app.app
@@ -280,18 +357,24 @@ def test_api_create_denied_403(
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
+    body = _create_body([_with_import_recid(record_metadata()).metadata_in])
 
     with app.test_client() as client:
         resp = client.post(
             base,
-            data=json.dumps(_create_body()),
+            data=json.dumps(body),
             headers=headers,
         )
         assert resp.status_code == 403
 
 
 def test_api_cancel_current(
-    running_app, db, minimal_community_factory, user_factory, assign_roles
+    running_app,
+    db,
+    minimal_community_factory,
+    user_factory,
+    assign_roles,
+    record_metadata,
 ):
     """DELETE /current cancels the active import."""
     app = running_app.app
@@ -305,9 +388,10 @@ def test_api_cancel_current(
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
+    body = _create_body([_with_import_recid(record_metadata()).metadata_in])
 
     with app.test_client() as client:
-        created = client.post(base, data=json.dumps(_create_body()), headers=headers)
+        created = client.post(base, data=json.dumps(body), headers=headers)
         assert created.status_code == 202
         cancel = client.delete(f"{base}/current", headers=headers)
         assert cancel.status_code == 200

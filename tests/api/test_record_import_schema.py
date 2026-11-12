@@ -102,7 +102,9 @@ def test_load_requires_import_source_id(
     with pytest.raises(ValidationError) as exc_info:
         _load(_create_payload(metadata=[meta.metadata_in]), superuser_identity)
 
-    assert "metadata" in exc_info.value.messages
+    metadata_errors = str(exc_info.value.messages["metadata"])
+    assert "import identifier for scheme" in metadata_errors
+    assert "import-recid" in metadata_errors
 
 
 def test_load_accepts_alternate_id_scheme(
@@ -138,7 +140,9 @@ def test_load_rejects_duplicate_source_ids(
     with pytest.raises(ValidationError) as exc_info:
         _load(_create_payload(metadata=[first, second]), superuser_identity)
 
-    assert "metadata" in exc_info.value.messages
+    metadata_errors = str(exc_info.value.messages["metadata"])
+    assert "duplicate import source id" in metadata_errors
+    assert "dup" in metadata_errors
 
 
 def test_load_rejects_invalid_rdm_metadata(
@@ -156,7 +160,11 @@ def test_load_rejects_invalid_rdm_metadata(
     with pytest.raises(ValidationError) as exc_info:
         _load(_create_payload(metadata=[payload_record]), superuser_identity)
 
-    assert "metadata" in exc_info.value.messages
+    metadata_errors = exc_info.value.messages["metadata"]
+    # Nested under metadata[0].metadata (RDM nested field errors).
+    nested = str(metadata_errors)
+    assert "creators" in nested
+    assert "resource_type" in nested or "title" in nested
 
 
 def test_stock_rdm_schema_drops_dump_only_import_fields(
@@ -376,7 +384,9 @@ def test_load_rejects_invalid_part_checksum(
     with pytest.raises(ValidationError) as exc_info:
         _load(payload, superuser_identity)
 
-    assert "files" in exc_info.value.messages
+    files_errors = str(exc_info.value.messages["files"])
+    assert "checksum" in files_errors
+    assert "not-a-checksum" in files_errors
 
 
 def test_load_accepts_multipart_layout(
@@ -428,7 +438,8 @@ def test_load_rejects_noncontiguous_part_numbers(
     with pytest.raises(ValidationError) as exc_info:
         _load(payload, superuser_identity)
 
-    assert "files" in exc_info.value.messages
+    files_errors = str(exc_info.value.messages["files"])
+    assert "contiguous" in files_errors
 
 
 def test_load_rejects_inconsistent_parts_layout(
@@ -450,7 +461,9 @@ def test_load_rejects_inconsistent_parts_layout(
     with pytest.raises(ValidationError) as exc_info:
         _load(payload, superuser_identity)
 
-    assert "files" in exc_info.value.messages
+    files_errors = str(exc_info.value.messages["files"])
+    assert "sum of part sizes" in files_errors
+    assert "does not match size" in files_errors
 
 
 def test_load_rejects_non_v2_api_version(
@@ -464,7 +477,8 @@ def test_load_rejects_non_v2_api_version(
             superuser_identity,
         )
 
-    assert "api_version" in exc_info.value.messages
+    api_version_errors = str(exc_info.value.messages["api_version"])
+    assert "must be 2" in api_version_errors
 
 
 def test_load_rejects_unknown_top_level_keys(

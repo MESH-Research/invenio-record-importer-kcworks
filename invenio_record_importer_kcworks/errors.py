@@ -90,6 +90,86 @@ class ImportCommunityMismatchError(Exception):
         self.message = message
 
 
+class ImportInvalidStateError(Exception):
+    """Raised when an import status does not allow the requested operation."""
+
+    def __init__(
+        self,
+        import_id: str,
+        status: str | None = None,
+        message: str | None = None,
+    ):
+        """Initialize the exception.
+
+        Args:
+            import_id: Import id.
+            status: Current status string, if known.
+            message: Optional override message.
+        """
+        self.import_id = import_id
+        self.status = status
+        if message is None:
+            message = (
+                f"Import {import_id} is in an invalid state for this operation"
+                + (f" (status={status})" if status else "")
+            )
+        super().__init__(message)
+        self.message = message
+
+
+class ImportFileNotFoundError(Exception):
+    """Raised when a staging manifest entry is missing for the given filename."""
+
+    def __init__(
+        self,
+        import_id: str,
+        filename: str,
+        message: str | None = None,
+    ):
+        """Initialize the exception.
+
+        Args:
+            import_id: Import id.
+            filename: Manifest filename / URL key that was not found.
+            message: Optional override message.
+        """
+        self.import_id = import_id
+        self.filename = filename
+        if message is None:
+            message = f"Import file not found: {filename} (import {import_id})"
+        super().__init__(message)
+        self.message = message
+
+
+class ImportStagingIncompleteError(Exception):
+    """Raised when commit is requested before required files are complete."""
+
+    def __init__(
+        self,
+        import_id: str,
+        incomplete: list[str] | None = None,
+        message: str | None = None,
+    ):
+        """Initialize the exception.
+
+        Args:
+            import_id: Import id.
+            incomplete: Filenames still pending/uploading, if known.
+            message: Optional override message.
+        """
+        self.import_id = import_id
+        self.incomplete = list(incomplete or [])
+        if message is None:
+            detail = (
+                f": {', '.join(self.incomplete)}" if self.incomplete else ""
+            )
+            message = (
+                f"Import {import_id} has incomplete staged files{detail}"
+            )
+        super().__init__(message)
+        self.message = message
+
+
 class CollectionDoesNotExistError(Exception):
     """Collection does not exist error."""
 

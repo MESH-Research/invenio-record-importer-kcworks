@@ -51,7 +51,7 @@ def test_create_persists_and_round_trips(running_app, db, minimal_community_fact
     assert loaded is not None
     assert loaded.community_id == uuid.UUID(str(community.id))
     assert loaded.created_by == created_by
-    assert loaded.status == ImportStatusEnum.AWAITING_FILES
+    assert loaded.status == ImportStatusEnum.STAGED
     assert loaded.records_metadata == metadata
     assert loaded.options == options
     assert loaded.staging_manifest == manifest
@@ -65,7 +65,7 @@ def test_create_persists_and_round_trips(running_app, db, minimal_community_fact
     assert payload["id"] == str(loaded.id)
     assert payload["community_id"] == str(community.id)
     assert payload["created_by"] == created_by
-    assert payload["status"] == "awaiting_files"
+    assert payload["status"] == "staged"
     assert payload["records_metadata"] == metadata
     assert payload["options"] == options
     assert payload["staging_manifest"] == manifest

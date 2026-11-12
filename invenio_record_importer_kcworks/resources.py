@@ -33,7 +33,10 @@ from werkzeug.utils import secure_filename
 from .errors import (
     ActiveImportExistsError,
     ImportCommunityMismatchError,
+    ImportFileNotFoundError,
+    ImportInvalidStateError,
     ImportNotFoundError,
+    ImportStagingIncompleteError,
 )
 from .parser import RequestMultipartParser, request_body_parser
 from .types import FileData
@@ -187,6 +190,7 @@ request_parsed_view_args = request_parser(
     {
         "community": ma.fields.String(),
         "import_id": ma.fields.String(required=False),
+        "filename": ma.fields.String(required=False),
     },
     location="view_args",
 )
@@ -244,6 +248,22 @@ class RecordImporterResourceConfig(ResourceConfig):
             {"message": str(e), "status": 404},
             404,
         ),
+        ImportFileNotFoundError: lambda e: (
+            {"message": str(e), "status": 404},
+            404,
+        ),
+        ImportInvalidStateError: lambda e: (
+            {"message": str(e), "status": 409},
+            409,
+        ),
+        ImportStagingIncompleteError: lambda e: (
+            {
+                "message": str(e),
+                "status": 400,
+                "incomplete": getattr(e, "incomplete", []),
+            },
+            400,
+        ),
         BadRequest: lambda e: (
             {"message": str(e), "status": 400},
             400,
@@ -261,7 +281,11 @@ class RecordImporterResourceConfig(ResourceConfig):
             400,
         ),
         ma.ValidationError: lambda e: (
-            {"message": str(e), "status": 400},
+            {
+                "message": "Validation error",
+                "errors": getattr(e, "messages", str(e)),
+                "status": 400,
+            },
             400,
         ),
         UnprocessableEntity: lambda e: (
@@ -314,6 +338,24 @@ class RecordImporterResource(Resource):
             route("GET", "/<community>/current", self.get_current_import),
             route("DELETE", "/<community>/current", self.cancel_current_import),
             route("GET", "/<community>", self.list_imports),
+            # File staging + commit before bare `/<import_id>` GET/DELETE.
+            route("POST", "/<community>/<import_id>/files", self.init_import_file),
+            route(
+                "GET",
+                "/<community>/<import_id>/files/<filename>",
+                self.refresh_import_file,
+            ),
+            route(
+                "POST",
+                "/<community>/<import_id>/files/<filename>/complete",
+                self.complete_import_file,
+            ),
+            route(
+                "DELETE",
+                "/<community>/<import_id>/files/<filename>",
+                self.delete_import_file,
+            ),
+            route("POST", "/<community>/<import_id>/commit", self.commit_import),
             route("GET", "/<community>/<import_id>", self.get_import),
             route("DELETE", "/<community>/<import_id>", self.cancel_import),
         ]
@@ -327,13 +369,17 @@ class RecordImporterResource(Resource):
 
         Path: `POST /api/import/<community>` (community UUID or slug).
 
-        **v2 — `application/json`:** creates a `RecordImport` row
-        (`awaiting_files`) and returns **202**. No file bytes on this request.
-        Body fields:
+        **v2 — `application/json`:** creates a `RecordImport`, optionally
+        stages declared files (presigned S3 URLs), returns **202**. No file
+        bytes on this request. Body fields:
 
         - `api_version` (int, optional): defaults to `2` when omitted; if
           present, must be `2`
         - `metadata` (list): record metadata objects to ingest after commit
+        - `files` (list, optional): `[{filename, size, content_type?, is_zip?,
+          parts: [{part_number, size, checksum}, …]}, …]` — client splits each
+          file and supplies per-part MD5 (`checksum` base64 or `md5:<hex>`);
+          URLs are signed with `ContentMD5` and returned in `uploads`
         - `review_required` (bool)
         - `strict_validation` (bool)
         - `all_or_none` (bool)
@@ -342,8 +388,8 @@ class RecordImporterResource(Resource):
         - `id_scheme` (str)
         - `alternate_id_scheme` (str)
 
-        Flags (everything except `metadata`) are stored on the import
-        `options` column (`api_version` recorded as `2` when omitted).
+        Flags (everything except `metadata` and `files`) are stored on the
+        import `options` column (`api_version` recorded as `2` when omitted).
 
         **Legacy — `multipart/form-data`:** sync import; see
         `_import_records_legacy` for the field contract.
@@ -354,8 +400,10 @@ class RecordImporterResource(Resource):
         community_id = resource_requestctx.view_args.get("community")
         data = resource_requestctx.data
 
-        # JSON body → async create (v2). Multipart → legacy sync.
-        if isinstance(data, dict) and "form" not in data and "files" not in data:
+        # JSON body → async create (v2). Multipart parser yields `form`.
+        # JSON may include a `files` declaration list — do not treat that as
+        # legacy multipart.
+        if isinstance(data, dict) and "form" not in data:
             return self._create_import_v2(community_id, data)
 
         return self._import_records_legacy(community_id, data)
@@ -371,48 +419,24 @@ class RecordImporterResource(Resource):
             data: Parsed JSON body.
 
         Returns:
-            `(jsonify(body), 202)` where `body` is a `RecordImport.to_dict()`
-            payload for the new row, typically:
+            `(jsonify(body), 202)` where `body` is the import row serialization
+            plus `uploads` (presigned instructions per declared file; `[]`
+            when `files` omitted/empty). With files, `status` is `uploading`;
+            with no files, `status` is `queued` (ingest enqueued immediately).
 
-            - `id` (str): import UUID
-            - `community_id` (str): resolved community UUID
-            - `created_by` (int): creating user id
-            - `status` (str): `"awaiting_files"`
-            - `records_metadata` (list): echo of request `metadata`
-            - `options` (dict): flags including `api_version: 2`
-            - `staging_manifest` (list): `[]` until file init
-            - `progress` (dict): `{}`
-            - `result` (null)
-            - `task_id` (null)
-            - `cancelled_at` / `completed_at` (null)
-            - `created` / `updated` (str): ISO-8601 timestamps
-
-        Raises:
-            BadRequest: When `api_version` is present and not 2, or metadata
-                is invalid.
         """
-        api_version = data.get("api_version", 2)
-        if api_version != 2:
-            raise BadRequest(
-                "JSON create only supports api_version 2 (or omit api_version). "
-                "Use multipart/form-data for the legacy sync import."
-            )
-
-        metadata = data.get("metadata")
-        if metadata is None:
-            metadata = []
-        if not isinstance(metadata, list):
-            raise BadRequest(
-                "Invalid metadata. 'metadata' must be an array of metadata objects."
-            )
-
-        options = {key: value for key, value in data.items() if key != "metadata"}
-        options["api_version"] = 2
+        # Full create-body validation (RDM metadata + files) runs in
+        # `create_import` via `RecordImportSchema`.
         created = self.service.create_import(
             identity=g.identity,
             community_id=community_id,
-            records_metadata=metadata,
-            options=options,
+            records_metadata=data.get("metadata"),
+            options={
+                key: value
+                for key, value in data.items()
+                if key not in ("metadata", "files")
+            },
+            files=data.get("files"),
         )
         return jsonify(created), 202
 
@@ -516,6 +540,127 @@ class RecordImporterResource(Resource):
         if status in ("multi_status", "partial_success") and not all_or_none:
             return jsonify(import_result), 207
         return jsonify(import_result), 400
+
+    @request_parsed_view_args
+    @request_form_data
+    @require_api_auth()
+    @require_oauth_scopes("records:import")
+    def init_import_file(self):
+        """Late-add one file (presigned MPU or PUT) with client part checksums.
+
+        Body JSON: `filename` (or `key`), `size`, `parts` (required), optional
+        `content_type`, `is_zip`.
+
+        Returns:
+            JSON upload instructions with status 200.
+
+        Raises:
+            BadRequest: When the body is missing required fields.
+        """
+        community_id = resource_requestctx.view_args.get("community")
+        import_id = resource_requestctx.view_args.get("import_id")
+        data = resource_requestctx.data or {}
+        if not isinstance(data, dict):
+            raise BadRequest("Expected JSON body")
+        filename = data.get("filename") or data.get("key")
+        if not filename:
+            raise BadRequest("filename is required")
+        if "size" not in data:
+            raise BadRequest("size is required")
+        if not data.get("parts"):
+            raise BadRequest("parts is required (part_number, size, checksum)")
+        payload = self.service.init_import_file(
+            g.identity,
+            community_id,
+            import_id,
+            filename=filename,
+            size=data["size"],
+            parts=data.get("parts"),
+            content_type=data.get("content_type") or "application/octet-stream",
+            is_zip=bool(data.get("is_zip", False)),
+        )
+        return jsonify(payload), 200
+
+    @request_parsed_view_args
+    @require_api_auth()
+    @require_oauth_scopes("records:import")
+    def refresh_import_file(self):
+        """Refresh expired presigned URLs for an in-progress staging file.
+
+        Returns:
+            JSON upload instructions with status 200.
+        """
+        community_id = resource_requestctx.view_args.get("community")
+        import_id = resource_requestctx.view_args.get("import_id")
+        filename = resource_requestctx.view_args.get("filename")
+        payload = self.service.refresh_import_file(
+            g.identity, community_id, import_id, filename
+        )
+        return jsonify(payload), 200
+
+    @request_parsed_view_args
+    @request_form_data
+    @require_api_auth()
+    @require_oauth_scopes("records:import")
+    def complete_import_file(self):
+        """Complete one file's MPU (or verify single PUT) and update manifest.
+
+        Body JSON: optional `parts` (`[{part_number, etag}, …]`), `checksum`.
+
+        Returns:
+            JSON `{entry, import}` with status 200.
+
+        Raises:
+            BadRequest: When the body is not JSON.
+        """
+        community_id = resource_requestctx.view_args.get("community")
+        import_id = resource_requestctx.view_args.get("import_id")
+        filename = resource_requestctx.view_args.get("filename")
+        data = resource_requestctx.data or {}
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            raise BadRequest("Expected JSON body")
+        payload = self.service.complete_import_file(
+            g.identity,
+            community_id,
+            import_id,
+            filename,
+            parts=data.get("parts"),
+            checksum=data.get("checksum"),
+        )
+        return jsonify(payload), 200
+
+    @request_parsed_view_args
+    @require_api_auth()
+    @require_oauth_scopes("records:import")
+    def delete_import_file(self):
+        """Abort MPU / drop a declared staging file before commit.
+
+        Returns:
+            JSON import payload with status 200.
+        """
+        community_id = resource_requestctx.view_args.get("community")
+        import_id = resource_requestctx.view_args.get("import_id")
+        filename = resource_requestctx.view_args.get("filename")
+        payload = self.service.delete_import_file(
+            g.identity, community_id, import_id, filename
+        )
+        return jsonify(payload), 200
+
+    @request_parsed_view_args
+    @require_api_auth()
+    @require_oauth_scopes("records:import")
+    def commit_import(self):
+        """Mark staging complete and enqueue async `run_import`.
+
+        Returns:
+            JSON import payload (`queued`) with status 202.
+        """
+        community_id = resource_requestctx.view_args.get("community")
+        import_id = resource_requestctx.view_args.get("import_id")
+        payload = self.service.commit_import(g.identity, community_id, import_id)
+        return jsonify(payload), 202
 
     @request_parsed_view_args
     @require_api_auth()

@@ -85,7 +85,7 @@ class RecordImport(db.Model, Timestamp):
     status = db.Column(
         ChoiceType(ImportStatusEnum, impl=db.String(32)),
         nullable=False,
-        default=ImportStatusEnum.AWAITING_FILES.value,
+        default=ImportStatusEnum.STAGED.value,
     )
     """Lifecycle status (see `ACTIVE_STATUSES` / `TERMINAL_STATUSES`)."""
 
@@ -174,7 +174,7 @@ class RecordImport(db.Model, Timestamp):
         records_metadata: list | None = None,
         options: dict | None = None,
         staging_manifest: list | None = None,
-        status: ImportStatusEnum = ImportStatusEnum.AWAITING_FILES,
+        status: ImportStatusEnum = ImportStatusEnum.STAGED,
     ) -> "RecordImport":
         """Create and session-add a new import row.
 
@@ -184,7 +184,7 @@ class RecordImport(db.Model, Timestamp):
             records_metadata: Record metadata list to ingest later.
             options: Import flags / api_version / schemes.
             staging_manifest: Optional pre-declared file entries.
-            status: Initial status enum (default `AWAITING_FILES`).
+            status: Initial status enum (default `STAGED`).
 
         Returns:
             The new `RecordImport` instance (not yet committed).
