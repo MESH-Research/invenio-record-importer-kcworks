@@ -1064,8 +1064,9 @@ class FilesHelper:
                     inner_files_to_upload[k] = new_entries[k]
                     print("no existing file found")
 
-                elif (existing_file[0]["status"] == "pending") or (
-                    str(v["size"]) != str(existing_file[0]["size"])
+                elif existing_file[0]["status"] == "pending" or (
+                    v.get("size") is not None
+                    and str(v["size"]) != str(existing_file[0].get("size"))
                 ):
                     inner_same_files = False
                     inner_files_to_upload[k] = new_entries[k]
