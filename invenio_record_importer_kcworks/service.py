@@ -135,6 +135,9 @@ class RecordImporterService(Service):
             views_field=views_field,
             downloads_field=downloads_field,
             sourceid_schemes=[id_scheme, alternate_id_scheme],
+            # API imports return the report in the response; do not require
+            # a writable RECORD_IMPORTER_LOGS_LOCATION on the API host.
+            persist_status_logs=False,
         ).load_all(
             files=file_data,
             metadata=metadata,

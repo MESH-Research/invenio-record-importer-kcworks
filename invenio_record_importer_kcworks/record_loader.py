@@ -105,8 +105,13 @@ class RecordLoader:
         sourceid_schemes: list[str] | None = None,
         views_field: str = "",
         downloads_field: str = "",
+        persist_status_logs: bool = True,
     ):
         """Initialize the instance.
+
+        Set `persist_status_logs=False` for API imports that return the
+        report in the response and should not write created/failed JSONL
+        status files under `RECORD_IMPORTER_LOGS_LOCATION`.
 
         Raises:
             ValueError: Raised when the operation fails.
@@ -116,6 +121,7 @@ class RecordLoader:
         self.user_id = user_id
         self.community_id = community_id
         self.import_identifier = community_id or user_id
+        self.persist_status_logs = persist_status_logs
         self.metadata_overrides_folder = Path(
             f"{app.config.get('RECORD_IMPORTER_OVERRIDES_FOLDER', '')}/"
             f"{self.import_identifier}"
@@ -128,15 +134,15 @@ class RecordLoader:
             f"{app.config.get('RECORD_IMPORTER_LOGS_LOCATION')}/"
             f"record_importer_failed_log_{self.import_identifier}.jsonl"
         )
-        if not os.path.exists(os.path.dirname(self.failed_log_path)):
-            os.makedirs(os.path.dirname(self.failed_log_path), exist_ok=True)
-
         self.created_log_path = Path(
             f"{app.config.get('RECORD_IMPORTER_LOGS_LOCATION')}/"
             f"record_importer_created_log_{self.import_identifier}.jsonl"
         )
-        if not os.path.exists(os.path.dirname(self.created_log_path)):
-            os.makedirs(os.path.dirname(self.created_log_path), exist_ok=True)
+        if self.persist_status_logs:
+            if not os.path.exists(os.path.dirname(self.failed_log_path)):
+                os.makedirs(os.path.dirname(self.failed_log_path), exist_ok=True)
+            if not os.path.exists(os.path.dirname(self.created_log_path)):
+                os.makedirs(os.path.dirname(self.created_log_path), exist_ok=True)
         self.sourceid_scheme, self.sourceid_scheme2 = sourceid_schemes
 
         self.created_records = self._get_created_records()
@@ -708,8 +714,9 @@ class RecordLoader:
         ]
         if not existing_lines:
             self.created_records.append(rec_log_object)
-            with jsonlines.open(self.created_log_path, "a") as created_writer:
-                created_writer.write(rec_log_object)
+            if self.persist_status_logs:
+                with jsonlines.open(self.created_log_path, "a") as created_writer:
+                    created_writer.write(rec_log_object)
         elif (
             existing_lines
             and existing_lines[0][1]["invenio_recid"] != rec_log_object["invenio_recid"]
@@ -720,9 +727,10 @@ class RecordLoader:
                 *self.created_records[i + 1 :],  # noqa: E203
                 rec_log_object,
             ]
-            with jsonlines.open(self.created_log_path, "w") as created_writer:
-                for t in self.created_records:
-                    created_writer.write(t)
+            if self.persist_status_logs:
+                with jsonlines.open(self.created_log_path, "w") as created_writer:
+                    for t in self.created_records:
+                        created_writer.write(t)
 
         # Append the full result object to the successful records
         success_list.append(load_result)
@@ -761,6 +769,8 @@ class RecordLoader:
 
     def _update_failed_logfile(self, lists: RecordListsDict) -> None:
         """Update the failed records logfile."""
+        if not self.persist_status_logs:
+            return
         failed_list = lists["failed_records"]
         skipped_ids = []
         if len(lists["skipped_records"]) > 0:
@@ -821,14 +831,15 @@ class RecordLoader:
             Description of the return value.
         """
         existing_failed_records: list[dict] = []
-        try:
-            with jsonlines.open(
-                self.failed_log_path,
-                "r",
-            ) as reader:
-                existing_failed_records = [obj for obj in reader]
-        except FileNotFoundError:
-            app.logger.info("**no existing failed records log file found...**")
+        if self.persist_status_logs:
+            try:
+                with jsonlines.open(
+                    self.failed_log_path,
+                    "r",
+                ) as reader:
+                    existing_failed_records = [obj for obj in reader]
+            except FileNotFoundError:
+                app.logger.info("**no existing failed records log file found...**")
         existing_failed_indices = [r["index"] for r in existing_failed_records]
         existing_failed_sourceids = [r["source_id"] for r in existing_failed_records]
         existing_failed_invenioids = [
@@ -1067,6 +1078,8 @@ class RecordLoader:
         return lists
 
     def _get_created_records(self) -> list[dict]:
+        if not self.persist_status_logs:
+            return []
         created_records = []
         try:
             with jsonlines.open(self.created_log_path, "r") as reader:
