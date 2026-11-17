@@ -534,10 +534,20 @@ class FilesHelper:
 
         elif len(files_to_upload) > 0:
             app.logger.info("uploading new files...")
-            # If we're updating a draft of a published record, we need to
-            # unlock the published record files before we can upload new
-            # files.
-            self._unlock_files(existing_record)
+
+            if existing_record and existing_record["is_published"]:
+                # Ensure a draft exists for a published record
+                try:
+                    check_record = records_service.read_draft(
+                        system_identity, id_=metadata["id"]
+                    )._record
+                except (NoResultFound, DraftNotCreatedError):
+                    records_service.edit(system_identity, id_=metadata["id"])
+
+                # If we're updating a draft of a published record, we need to
+                # unlock the published record files before we can upload new
+                # files.
+                self._unlock_files(existing_record)
 
             uploaded_files = self._upload_draft_files(
                 metadata["id"],
@@ -671,6 +681,224 @@ class FilesHelper:
         else:
             app.logger.warning(f"file size not provided for key {key}")
 
+    def _do_file_upload(
+        self,
+        key: str,
+        val: dict,
+        prior_failed: bool,
+        draft_id: str,
+        files: list[FileData],
+        source_filenames: dict[str, str],
+        files_dict: dict[str, dict],
+        output: dict[str, FileUploadResult],
+        uow: UnitOfWork | None,
+    ) -> tuple[dict[str, FileUploadResult], bool]:
+        """Upload one file using the draft files manager.
+
+        Args:
+            key: File key for this upload.
+            val: Entry metadata for the file (may include a `key` field).
+            prior_failed: Whether a previous file in this batch already failed.
+            draft_id: Draft (or published) record id shared by both file managers.
+            files: Binary file payloads when uploading from request data.
+            source_filenames: Map of file keys to on-disk paths when not using
+                `files`.
+            files_dict: Full set of entries being uploaded in this batch.
+            output: Accumulator of per-file upload results (mutated in place).
+            uow: Unit of work for creating a missing draft file bucket, if needed.
+
+        Returns:
+            A tuple of `(output, prior_failed)` after this file attempt.
+
+        Raises:
+            FileUploadError: Raised for anticipated upload failures; caught in this
+                method and recorded on `output` rather than propagated.
+        """
+        app.logger.debug(f"uploading file: {key}")
+
+        try:  # initialize try/catch for single file
+            output[key] = {"status": "uploaded", "messages": []}
+
+            # first check that the binary file data is available to upload
+            binary_file_data: SpooledTemporaryFile | BufferedReader | None = None
+            if not files:  # we expect to find file paths in the source_filenames
+                if not source_filenames or not source_filenames[key]:
+                    msg = f"No source file content or file path found for file {key}."
+                    raise FileUploadError(msg)
+                else:
+                    long_filename = self._sanitize_filename(source_filenames[key])
+                    file_path = self._find_file_path(long_filename, key)
+                    app.logger.debug(f"uploading file from path: {file_path}")
+
+                    binary_file_data = open(file_path, "rb")
+            else:  # if binary file data is provided in the files list
+                app.logger.debug(f"uploading file {key} from submitted binary data")
+                try:
+                    # Use the 'key' field from the entry if available,
+                    # otherwise use the dict key.
+                    # The 'key' field contains the full filename with extension
+                    file_key = val.get("key", key)
+                    file_item = [
+                        f for f in files if f.filename.split("/")[-1] == file_key
+                    ][0]
+                    binary_file_data = file_item.stream
+                except IndexError:
+                    msg = f"File {key} not found in list of files."
+                    raise FileUploadError(msg) from None
+                except Exception as e:
+                    msg = f"Failed to upload file {key} from list: {str(e)}."
+                    raise FileUploadError(msg) from e
+
+            # then check that the file size is correct
+            try:
+                assert binary_file_data is not None
+                binary_file_data.seek(0)
+                # check will raise FileUploadError for incorrect size (catch below)
+                self._check_file_size(
+                    binary_file_data, files_dict[key].get("size"), key
+                )
+            except AssertionError:
+                msg = f"File {key} has no binary file data."
+                raise FileUploadError(msg) from None
+
+            # initialize the file upload
+            try:
+                initialization = records_service.draft_files.init_files(
+                    system_identity, draft_id, data=[{"key": key}]
+                ).to_dict()
+                assert (
+                    len([
+                        e["key"] for e in initialization["entries"] if e["key"] == key
+                    ])
+                    == 1
+                )
+            except InvalidKeyError as e:
+                msg = (
+                    f"Failed to initialize file upload. Key {key} is invalid: {str(e)}."
+                )
+                raise FileUploadError(msg) from e
+            except Exception as e:
+                msg = f"Failed to initialize file upload for {key}: {str(e)}."
+                raise FileUploadError(msg) from e
+
+            # If a draft's file upload is interrupted, occasionally the
+            # file bucket is not created.
+            try:
+                check_record = records_service.read_draft(
+                    system_identity, id_=draft_id
+                )._record
+                draft_files = check_record.files
+                if uow and draft_files.bucket is None:
+                    draft_files.create_bucket()
+                    app.logger.info("created bucket for draft files...")
+                    uow.register(RecordCommitOp(check_record))
+            except (NoResultFound, DraftNotCreatedError):
+                pass
+            except Exception as e:
+                msg = f"Failed to get the bucket for draft files: {str(e)}."
+                raise FileUploadError(msg) from e
+
+            # upload the file content
+            try:
+                records_service.draft_files.set_file_content(
+                    system_identity, draft_id, key, binary_file_data
+                )
+            except Exception as e:
+                msg = f"Failed to set file content for {key}: {str(e)}."
+                raise FileUploadError(msg) from e
+
+            # commit the file upload
+            try:
+                records_service.draft_files.commit_file(system_identity, draft_id, key)
+            except Exception as e:
+                msg = f"Failed to commit file upload for {key}: {str(e)}."
+                raise FileUploadError(msg) from e
+        except FileUploadError as e:  # catches anticipated errors for file
+            app.logger.error(e.message)
+            prior_failed = True
+            output[key]["status"] = "failed"
+            output[key]["messages"].append(e.message)
+            # clean up pending initialization
+            try:
+                records_service.draft_files.delete_file(system_identity, draft_id, key)
+            except (PIDDoesNotExistError, FileKeyNotFoundError) as e:
+                # FIXME: This delete fails because recid not found. Problem?
+                app.logger.error(
+                    f"Failed to delete initialized file {key} for {draft_id}."
+                )
+                app.logger.error(str(e))
+        except Exception as e:  # catches unexpected errors for individual file
+            prior_failed = True
+            msg = f"Failed to upload file {key}: {str(e)}."
+            app.logger.error(msg)
+            output[key]["status"] = "failed"
+            output[key]["messages"].append(msg)
+            try:
+                records_service.draft_files.delete_file(system_identity, draft_id, key)
+            except PIDDoesNotExistError as e:
+                app.logger.error(
+                    f"Failed to delete initialized file {key} for {draft_id}."
+                )
+                app.logger.error(str(e))
+        return output, prior_failed
+
+    def _validate_file_upload(
+        self,
+        result: dict,
+        draft_id: str,
+        files_dict: dict[str, dict],
+        output: dict[str, FileUploadResult],
+    ) -> dict[str, FileUploadResult]:
+        """Check that one listed draft file matches the submitted upload metadata.
+
+        Args:
+            result: One entry from `draft_files.list_files(...).to_dict()["entries"]`.
+            draft_id: Draft record id whose files are being validated.
+            files_dict: Submitted entries keyed by file key (expected sizes, etc.).
+            output: Accumulator of per-file upload results (mutated in place).
+
+        Returns:
+            The updated `output` dictionary.
+
+        Raises:
+            FileUploadError: Raised when validation fails; caught in this method and
+                recorded on `output` rather than propagated.
+        """
+        try:
+            submitted_rec = files_dict[result["key"]]
+            if result["status"] != "completed":
+                raise FileUploadError(
+                    f"File {result['key']} upload was not completed correctly "
+                    f"for {draft_id}: status is {result['status']}."
+                )
+            if submitted_rec.get("size") and str(result["size"]) != str(
+                submitted_rec["size"]
+            ):
+                raise FileUploadError(
+                    f"Uploaded file size ({result['size']}) does not match "
+                    f"expected size ({submitted_rec['size']})"
+                )
+            if not (valid_date(result["created"]) and valid_date(result["updated"])):
+                raise FileUploadError(
+                    f"File {result['key']} metadata is missing created or "
+                    "updated dates."
+                )
+        except FileUploadError as e:
+            output[result["key"]]["status"] = "failed"
+            output[result["key"]]["messages"].append(str(e.message))
+            # clean up pending initialization
+            try:
+                records_service.draft_files.delete_file(
+                    system_identity, draft_id, result["key"]
+                )
+            except PIDDoesNotExistError as e:
+                # FIXME: This delete fails because recid not found. Problem?
+                app.logger.error(
+                    f"Failed to delete initialized file {result['key']} for {draft_id}."
+                )
+                app.logger.error(str(e))
+        return output
+
     @unit_of_work()
     def _upload_draft_files(
         self,
@@ -697,24 +925,13 @@ class FilesHelper:
             objects with 'status' (str) and 'messages' (list[str]) fields.
 
         Returns:
-            Description of the return value.
-
-        Raises:
-            FileUploadError: Raised when the operation fails.
+            A dictionary keyed by file key with `FileUploadResult` values.
         """
         if files is None:
             files = []
         if source_filenames is None:
             source_filenames = {}
         output: dict[str, FileUploadResult] = {}
-
-        # Ensure a draft exists for a published record
-        try:
-            check_record = records_service.read_draft(
-                system_identity, id_=draft_id
-            )._record
-        except (NoResultFound, DraftNotCreatedError):
-            records_service.edit(system_identity, id_=draft_id)
 
         prior_failed = False
         for k, v in files_dict.items():
@@ -724,146 +941,22 @@ class FilesHelper:
                     "messages": ["Prior file upload failed."],
                 }
                 continue
-            app.logger.debug(f"uploading file: {k}")
-
-            try:  # initialize try/catch for single file
-                output[k] = {"status": "uploaded", "messages": []}
-
-                # first check that the binary file data is available to upload
-                binary_file_data: SpooledTemporaryFile | BufferedReader | None = None
-                if not files:  # we expect to find file paths in the source_filenames
-                    if not source_filenames or not source_filenames[k]:
-                        msg = f"No source file content or file path found for file {k}."
-                        raise FileUploadError(msg)
-                    else:
-                        long_filename = self._sanitize_filename(source_filenames[k])
-                        file_path = self._find_file_path(long_filename, k)
-                        app.logger.debug(f"uploading file from path: {file_path}")
-
-                        binary_file_data = open(file_path, "rb")
-                else:  # if binary file data is provided in the files list
-                    app.logger.debug(f"uploading file {k} from submitted binary data")
-                    try:
-                        # Use the 'key' field from the entry if available,
-                        # otherwise use the dict key.
-                        # The 'key' field contains the full filename with extension
-                        file_key = v.get("key", k)
-                        file_item = [
-                            f for f in files if f.filename.split("/")[-1] == file_key
-                        ][0]
-                        binary_file_data = file_item.stream
-                    except IndexError:
-                        msg = f"File {k} not found in list of files."
-                        raise FileUploadError(msg) from None
-                    except Exception as e:
-                        msg = f"Failed to upload file {k} from list: {str(e)}."
-                        raise FileUploadError(msg) from e
-
-                # then check that the file size is correct
-                try:
-                    assert binary_file_data is not None
-                    binary_file_data.seek(0)
-                    # check will raise FileUploadError for incorrect size (catch below)
-                    self._check_file_size(
-                        binary_file_data, files_dict[k].get("size"), k
-                    )
-                except AssertionError:
-                    msg = f"File {k} has no binary file data."
-                    raise FileUploadError(msg) from None
-
-                # initialize the file upload
-                try:
-                    initialization = self.files_service.init_files(
-                        system_identity, draft_id, data=[{"key": k}]
-                    ).to_dict()
-                    assert (
-                        len(
-                            [
-                                e["key"]
-                                for e in initialization["entries"]
-                                if e["key"] == k
-                            ]
-                        )
-                        == 1
-                    )
-                except InvalidKeyError as e:
-                    msg = (
-                        f"Failed to initialize file upload. Key {k} is invalid: "
-                        f"{str(e)}."
-                    )
-                    raise FileUploadError(msg) from e
-                except Exception as e:
-                    msg = f"Failed to initialize file upload for {k}: {str(e)}."
-                    raise FileUploadError(msg) from e
-
-                # If a draft's file upload is interrupted, occasionally the
-                # file bucket is not created.
-                try:
-                    check_record = records_service.read_draft(
-                        system_identity, id_=draft_id
-                    )._record
-                    draft_files = check_record.files
-                    if uow and draft_files.bucket is None:
-                        draft_files.create_bucket()
-                        app.logger.info("created bucket for draft files...")
-                        uow.register(RecordCommitOp(check_record))
-                except (NoResultFound, DraftNotCreatedError):
-                    pass
-                except Exception as e:
-                    msg = f"Failed to get the bucket for draft files: {str(e)}."
-                    raise FileUploadError(msg) from e
-
-                # upload the file content
-                try:
-                    self.files_service.set_file_content(
-                        system_identity, draft_id, k, binary_file_data
-                    )
-                except Exception as e:
-                    msg = f"Failed to set file content for {k}: {str(e)}."
-                    raise FileUploadError(msg) from e
-
-                # commit the file upload
-                try:
-                    self.files_service.commit_file(system_identity, draft_id, k)
-                except Exception as e:
-                    msg = f"Failed to commit file upload for {k}: {str(e)}."
-                    raise FileUploadError(msg) from e
-
-            except FileUploadError as e:  # catches anticipated errors for file
-                app.logger.error(e.message)
-                prior_failed = True
-                output[k]["status"] = "failed"
-                output[k]["messages"].append(e.message)
-                # clean up pending initialization
-                try:
-                    self.files_service.delete_file(system_identity, draft_id, k)
-                except (PIDDoesNotExistError, FileKeyNotFoundError) as e:
-                    # FIXME: This delete fails because recid not found. Problem?
-                    app.logger.error(
-                        f"Failed to delete initialized file {k} for {draft_id}."
-                    )
-                    app.logger.error(str(e))
-
-            except Exception as e:  # catches unexpected errors for individual file
-                prior_failed = True
-                msg = f"Failed to upload file {k}: {str(e)}."
-                app.logger.error(msg)
-                output[k]["status"] = "failed"
-                output[k]["messages"].append(msg)
-                # clean up pending initialization
-                try:
-                    self.files_service.delete_file(system_identity, draft_id, k)
-                except PIDDoesNotExistError as e:
-                    # FIXME: This delete fails because recid not found. Problem?
-                    app.logger.error(
-                        f"Failed to delete initialized file {k} for {draft_id}."
-                    )
-                    app.logger.error(str(e))
+            output, prior_failed = self._do_file_upload(
+                k,
+                v,
+                prior_failed,
+                draft_id,
+                files,
+                source_filenames,
+                files_dict,
+                output,
+                uow,
+            )
 
         # Confirm that successful files were uploaded correctly
         if not prior_failed:  # Don't check if any files failed
             try:
-                result_record = self.files_service.list_files(
+                result_record = records_service.draft_files.list_files(
                     system_identity, draft_id
                 ).to_dict()
                 assert all(
@@ -872,40 +965,7 @@ class FilesHelper:
                     if r["key"] in files_dict.keys()
                 )
                 for v in result_record["entries"]:
-                    try:
-                        submitted_rec = files_dict[v["key"]]
-                        if v["status"] != "completed":
-                            raise FileUploadError(
-                                f"File {v['key']} upload was not completed correctly "
-                                f"for {draft_id}: status is {v['status']}."
-                            )
-                        if submitted_rec.get("size") and str(v["size"]) != str(
-                            submitted_rec["size"]
-                        ):
-                            raise FileUploadError(
-                                f"Uploaded file size ({v['size']}) does not match "
-                                f"expected size ({submitted_rec['size']})"
-                            )
-                        if not (valid_date(v["created"]) and valid_date(v["updated"])):
-                            raise FileUploadError(
-                                f"File {v['key']} metadata is missing created or "
-                                "updated dates."
-                            )
-                    except FileUploadError as e:
-                        output[v["key"]]["status"] = "failed"
-                        output[v["key"]]["messages"].append(str(e.message))
-                        # clean up pending initialization
-                        try:
-                            self.files_service.delete_file(
-                                system_identity, draft_id, v["key"]
-                            )
-                        except PIDDoesNotExistError as e:
-                            # FIXME: This delete fails because recid not found. Problem?
-                            app.logger.error(
-                                f"Failed to delete initialized file {v['key']} "
-                                f"for {draft_id}."
-                            )
-                            app.logger.error(str(e))
+                    output = self._validate_file_upload(v, draft_id, files_dict, output)
             except AssertionError as e:
                 msg = (
                     f"Failed to confirm that the files were uploaded correctly:"
@@ -1021,7 +1081,6 @@ class FilesHelper:
         Raises:
             ValueError: Raised when the operation fails.
         """
-        print("is_draft:", is_draft)
         same_files = True
         files_to_upload = {}
 
@@ -1034,15 +1093,12 @@ class FilesHelper:
             normalized_new_keys = [
                 unicodedata.normalize("NFC", k) for k in new_entries.keys()
             ]
-            print("normalized new keys:", normalized_new_keys)
             old_wrong_files = [
                 f
                 for f in existing_files
                 if unicodedata.normalize("NFC", f["key"]) not in normalized_new_keys
             ]
-            print("old_wrong_files:", old_wrong_files)
             for o in old_wrong_files:
-                print("old wrong file:", o)
                 self._delete_file(
                     draft_id,
                     o["key"],
@@ -1111,10 +1167,6 @@ class FilesHelper:
             files_service = records_service.files
         else:
             raise ValueError("Invalid record state for file comparison")
-
-        print("files service:", files_service.config)
-        print("existing files:", existing_files)
-        print("new entries:", new_entries)
 
         # If the existing record has no files
         if len(existing_files) == 0 or old_files == {}:

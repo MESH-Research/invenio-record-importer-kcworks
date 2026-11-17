@@ -200,11 +200,15 @@ def compare_metadata(A: dict, B: dict) -> dict:
         elif type(a) is list:
             return all(deep_compare(a[i], b[i]) for i in range(len(a)))
         elif type(a) is dict:
-            # if the key "en" is present, then we only care about that
-            # because Invenio automatically adds other translations
-            # to things like titles
-            if "en" in list(a.keys()):
-                a = {k: v for k, v in a.items() if k == "en"}
+            # If either side looks like an i18n title map, only compare `en`.
+            # Invenio often adds other locales (e.g. `de`) on the stored
+            # record; callers may pass (incoming, existing) or the reverse,
+            # so both sides must be normalized.
+            if isinstance(b, dict) and ("en" in a or "en" in b):
+                if "en" in a:
+                    a = {"en": a["en"]}
+                if "en" in b:
+                    b = {"en": b["en"]}
             # Check if both dictionaries have the same keys
             if set(a.keys()) != set(b.keys()):
                 return False

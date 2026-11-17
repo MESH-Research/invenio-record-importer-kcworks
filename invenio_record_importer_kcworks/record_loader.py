@@ -663,7 +663,13 @@ class RecordLoader:
             app.logger.error(f"FileUploadError: {e}")
             result.errors.append({"file_upload_error": e.message})
             result.status = "error"
-            if result.record_created:
+            # Only delete a draft we created in this import. Deleting on
+            # unchanged/updated existing published (or draft) records
+            # soft-deletes live works.
+            if (
+                result.record_created
+                and result.record_created.get("status") == "new_record"
+            ):
                 try:
                     record_id = result.record_created["record_data"]["id"]
                     RecordsHelper().delete_invenio_record(record_id)
@@ -675,6 +681,13 @@ class RecordLoader:
                     ""  # FIXME: Can we search by UUID?
                 )
                 result.record_created["status"] = "deleted"
+            elif result.record_created:
+                record_id = result.record_created.get("record_data", {}).get("id", "")
+                app.logger.error(
+                    f"File upload failed for existing record {record_id} "
+                    f"(status={result.record_created.get('status')}); "
+                    "not deleting the existing record."
+                )
 
         result.log_object = self._update_record_log_object(result)
 
