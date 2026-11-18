@@ -8,19 +8,7 @@
 
 """Tests for created date update CLI functionality."""
 
-import arrow
-import pytest
-from invenio_access.permissions import system_identity
-from invenio_communities.proxies import current_communities
-from invenio_rdm_records.proxies import (
-    current_rdm_records_service as records_service,
-)
-from invenio_rdm_records.records.api import RDMRecord
-from invenio_search.proxies import current_search_client
-
 from invenio_record_importer_kcworks.cli import update_created_dates
-from invenio_record_importer_kcworks.services.communities import CommunitiesHelper
-from invenio_record_importer_kcworks.services.records import RecordsHelper
 
 
 def test_cli_help(running_app, cli_runner):
