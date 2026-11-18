@@ -6,7 +6,7 @@
 # and/or modify it under the terms of the MIT License; see LICENSE file for
 # more details.
 
-"""Tests for created date update functionality."""
+"""Tests for RecordsHelper created date methods."""
 
 import arrow
 import pytest
@@ -15,51 +15,10 @@ from invenio_communities.proxies import current_communities
 from invenio_rdm_records.proxies import (
     current_rdm_records_service as records_service,
 )
-from invenio_rdm_records.records.api import RDMRecord
 from invenio_search.proxies import current_search_client
 
-from invenio_record_importer_kcworks.cli import update_created_dates
 from invenio_record_importer_kcworks.services.communities import CommunitiesHelper
 from invenio_record_importer_kcworks.services.records import RecordsHelper
-
-
-@pytest.fixture(scope="function")
-def sample_record_with_legacy_date(
-    app,
-    db,
-    search_clear,
-    create_records_custom_fields,
-    minimal_published_record_factory,
-):
-    """Create a sample record with a known created date for testing date updates.
-
-    Yields:
-        dict: Dictionary containing:
-            - id (str): The record ID
-            - legacy_date (str): A test date to update to
-            - current_date (str): The current date
-    """
-    # Create a record with a known creation date for testing
-    test_date = "2020-01-15T10:30:00Z"
-    current_date = arrow.utcnow().isoformat()
-
-    # Create record using factory - the created date will be set to current time
-    record = minimal_published_record_factory()
-    record_id = record.id
-
-    # Ensure the record is indexed and searchable
-    RDMRecord.index.refresh()
-    # Refresh search indices to make the record searchable
-    current_search_client.indices.refresh(index="*rdmrecords*")
-
-    yield {
-        "id": record_id,
-        "legacy_date": test_date,
-        "current_date": current_date,
-    }
-
-
-# Tests for RecordsHelper created date methods
 
 
 def test_check_opensearch_health_records(running_app):
@@ -178,8 +137,8 @@ def test_find_oldest_record_with_records(
         current_search_client.indices.refresh(index="*rdmrecords*")
 
         created_records.append({
-            'pid': record['id'],
-            'date': date,
+            "pid": record["id"],
+            "date": date,
         })
 
     # Final refresh to be sure
@@ -203,7 +162,7 @@ def test_update_single_community_created_date(
     helper = CommunitiesHelper()
     community_id = sample_community_with_group_id["id"]
     community = sample_community_with_group_id["community"]
-    
+
     # Get the community's current created date
     current_date = arrow.get(community._record.model.created)
 
@@ -263,65 +222,3 @@ def test_update_community_created_dates_no_records(
     assert stats["total_found"] >= 1
     assert stats["no_records"] >= 1  # Our test community has no records
     assert isinstance(stats["errors"], list)
-
-
-# Tests for CLI command
-
-
-def test_cli_help(running_app, cli_runner):
-    """Test CLI help text."""
-    result = cli_runner(update_created_dates, "--help")
-
-    assert result.exit_code == 0
-    assert "Update created dates" in result.output
-    assert "--records-only" in result.output
-    assert "--communities-only" in result.output
-    assert "--dry-run" in result.output
-    assert "--background" in result.output
-
-
-def test_cli_mutually_exclusive_flags(running_app, cli_runner):
-    """Test that records-only and communities-only are mutually exclusive."""
-    result = cli_runner(
-        update_created_dates, "--records-only", "--communities-only"
-    )
-
-    assert result.exit_code == 0
-    assert "Cannot use both" in result.output
-
-
-def test_cli_invalid_start_date(running_app, cli_runner):
-    """Test CLI with invalid start date format."""
-    result = cli_runner(update_created_dates, "--start-date", "not-a-date")
-
-    assert result.exit_code == 0
-    assert "Invalid start-date format" in result.output
-
-
-def test_cli_invalid_end_date(running_app, cli_runner):
-    """Test CLI with invalid end date format."""
-    result = cli_runner(update_created_dates, "--end-date", "invalid-date")
-
-    assert result.exit_code == 0
-    assert "Invalid end-date format" in result.output
-
-
-def test_cli_dry_run_communities_only(
-    running_app, sample_community_with_group_id, cli_runner
-):
-    """Test CLI dry run for communities only."""
-    result = cli_runner(
-        update_created_dates,
-        "--communities-only",
-        "--dry-run",
-        "--verbose",
-        "--batch-size",
-        "10",
-    )
-
-    assert result.exit_code == 0
-    assert "Updating community created dates" in result.output
-    assert "Community Update Results" in result.output
-    assert "Total found:" in result.output
-
-
