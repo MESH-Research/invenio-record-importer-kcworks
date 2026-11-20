@@ -24,12 +24,16 @@ from invenio_pidstore.errors import PIDDoesNotExistError, PIDUnregistered
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_rdm_records.records.api import RDMRecord
 from invenio_rdm_records.records.systemfields.access.owners import Owner
+from invenio_rdm_records.records.systemfields.deletion_status import (
+    RecordDeletionStatusEnum,
+)
 from invenio_rdm_records.resources.serializers.csl import (
     CSLJSONSerializer,
     get_citation_string,
     get_style_location,
 )
 from invenio_rdm_records.services.errors import (
+    RecordDeletedException,
     ReviewNotFoundError,
 )
 from invenio_rdm_records.services.pids.providers.base import PIDProvider
@@ -47,6 +51,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound
 
 from invenio_record_importer_kcworks.errors import (
+    DeletedRecordExistsError,
     DraftDeletionFailedError,
     ExistingRecordNotUpdatedError,
     NoUpdates,
@@ -535,13 +540,87 @@ class RecordsHelper:
                 return True
         return False
 
+    @staticmethod
+    def _is_deleted_record_hit(record: dict) -> bool:
+        """Return True if a search/read dump represents a soft-deleted record."""
+        deletion_status = record.get("deletion_status")
+        published = RecordDeletionStatusEnum.PUBLISHED.value
+        if deletion_status and deletion_status != published:
+            return True
+        return bool(record.get("tombstone"))
+
+    @staticmethod
+    def _deleted_record_error_message(
+        record: Any,
+        *,
+        match_label: str,
+        match_value: str,
+    ) -> str:
+        """Build a message for a soft-deleted identifier match.
+
+        Args:
+            record: Soft-deleted record API object or dump dict.
+            match_label: Human-readable match key (e.g. ``DOI``, ``import-recid``).
+            match_value: Matched identifier value.
+
+        Returns:
+            Message with restore and new-identifier guidance.
+        """
+        recid: str | None = None
+        if hasattr(record, "pid"):
+            recid = getattr(record.pid, "pid_value", None)
+        if recid is None and isinstance(record, dict):
+            recid = record.get("id")
+        if recid is None:
+            recid = str(getattr(record, "id", "unknown"))
+
+        removal_reason: str | None = None
+        removal_date: str | None = None
+        tombstone = (
+            record.get("tombstone")
+            if isinstance(record, dict)
+            else getattr(record, "tombstone", None)
+        )
+        if tombstone is not None:
+            if isinstance(tombstone, dict):
+                reason = tombstone.get("removal_reason") or {}
+                removal_reason = (
+                    reason.get("id") if isinstance(reason, dict) else reason
+                )
+                removal_date = tombstone.get("removal_date")
+            else:
+                reason = getattr(tombstone, "removal_reason", None)
+                if isinstance(reason, dict):
+                    removal_reason = reason.get("id")
+                elif reason is not None:
+                    removal_reason = getattr(reason, "id", str(reason))
+                removal_date = getattr(tombstone, "removal_date", None)
+                if removal_date is not None:
+                    removal_date = str(removal_date)
+
+        details: list[str] = []
+        if removal_reason:
+            details.append(f"removal reason: {removal_reason}")
+        if removal_date:
+            details.append(f"removal date: {removal_date}")
+        detail_suffix = f" ({'; '.join(details)})" if details else ""
+
+        return (
+            f"A deleted record (id={recid}) already exists with the same "
+            f"{match_label} ({match_value!r}){detail_suffix}. "
+            "Restore that record before re-importing if you intend to update it. "
+            "To create a separate work instead, import with a new identifier "
+            "(and a new DOI, if one is set)."
+        )
+
     def _find_existing_by_source_id(self, scheme: str, identifier: str) -> dict | None:
         """Find a published or draft record matching a source identifier.
 
-        Searches published records then drafts, verifies the scheme/identifier
-        pair on the hit (OpenSearch object fields are not nested, so query hits
-        can be false positives), then reloads via ``read`` / ``read_draft`` so
-        callers get the same full dump shape as DOI lookup (includes ``status``).
+        Searches published records then drafts (including soft-deleted published
+        hits via ``include_deleted``), verifies the scheme/identifier pair on
+        the hit (OpenSearch object fields are not nested, so query hits can be
+        false positives), then reloads via ``read`` / ``read_draft`` so callers
+        get the same full dump shape as DOI lookup (includes ``status``).
 
         Parameters:
             scheme: Identifier scheme (e.g. ``import-recid``).
@@ -550,6 +629,9 @@ class RecordsHelper:
         Returns:
             Full record dict for the best match (published preferred), or
             ``None``.
+
+        Raises:
+            DeletedRecordExistsError: When the only matches are soft-deleted.
         """
         escaped = identifier.replace("\\", "\\\\").replace('"', '\\"')
         q = (
@@ -568,7 +650,12 @@ class RecordsHelper:
                 candidates.append(data)
 
         try:
-            published = records_service.search(system_identity, q=q)
+            # include_deleted so soft-deleted published matches are visible;
+            # otherwise service search filters them out and re-import can 500
+            # later on DOI PID conflicts (or miss the deleted match entirely).
+            published = records_service.search(
+                system_identity, q=q, include_deleted=True
+            )
             _extend_from_results(published._results)
         except Exception as e:
             app.logger.error(f"error checking for existing record with same {scheme}:")
@@ -592,16 +679,41 @@ class RecordsHelper:
                 "using published match if available, otherwise the first draft"
             )
 
-        published_matches = [
-            c for c in candidates if c.get("is_published") and not c.get("is_draft")
+        live_candidates = [
+            c for c in candidates if not self._is_deleted_record_hit(c)
         ]
-        hit = (published_matches or candidates)[0]
+        deleted_candidates = [
+            c for c in candidates if self._is_deleted_record_hit(c)
+        ]
+        if not live_candidates:
+            raise DeletedRecordExistsError(
+                self._deleted_record_error_message(
+                    deleted_candidates[0],
+                    match_label=scheme,
+                    match_value=identifier,
+                )
+            )
+
+        published_matches = [
+            c
+            for c in live_candidates
+            if c.get("is_published") and not c.get("is_draft")
+        ]
+        hit = (published_matches or live_candidates)[0]
         rec_id = hit["id"]
 
         # Match DOI lookup: reconcile expects a service read/read_draft dump,
         # not a thinner search hit (e.g. top-level ``status``).
         try:
             loaded = records_service.read(system_identity, id_=rec_id).to_dict()
+        except RecordDeletedException as e:
+            raise DeletedRecordExistsError(
+                self._deleted_record_error_message(
+                    e.record,
+                    match_label=scheme,
+                    match_value=identifier,
+                )
+            ) from e
         except PIDUnregistered:
             loaded = records_service.read_draft(system_identity, id_=rec_id).to_dict()
 
@@ -869,6 +981,8 @@ class RecordsHelper:
             - status: the status of the metadata record
 
         Raises:
+            DeletedRecordExistsError: When a soft-deleted record matches DOI
+                or source id.
             DraftDeletionFailedError: Raised when the operation fails.
             PublicationValidationError: Raised when the operation fails.
         """
@@ -884,7 +998,6 @@ class RecordsHelper:
         if "pids" in metadata.keys() and "doi" in metadata["pids"].keys():
             my_doi = metadata["pids"]["doi"]["identifier"]
             doi_for_query = my_doi.split("/")
-            # TODO: Can we flag presence of deleted records here somehow?
             try:
                 print(f"searching for existing record with DOI: {my_doi}")
                 print(
@@ -904,6 +1017,7 @@ class RecordsHelper:
             if same_doi["hits"]["total"]["value"] > 0:
                 draft_recs = []
                 published_recs = []
+                deleted_recs: list[Any] = []
                 rec_ids = [r["_source"]["id"] for r in same_doi["hits"]["hits"]]
                 for rec_id in rec_ids:
                     try:
@@ -921,6 +1035,8 @@ class RecordsHelper:
                             pass  # Don't use this record
                         else:
                             published_recs.append(published_rec)
+                    except RecordDeletedException as e:
+                        deleted_recs.append(e.record)
                     except PIDUnregistered:
                         draft_recs.append(
                             records_service.read_draft(
@@ -954,6 +1070,16 @@ class RecordsHelper:
                     f"found {same_doi['hits']['total']['value']} existing"
                     " records with same DOI..."
                 )
+                # Soft-deleted DOI matches (raw OpenSearch still finds them)
+                # must not fall through to create — that previously 500'd.
+                if not recs and deleted_recs:
+                    raise DeletedRecordExistsError(
+                        self._deleted_record_error_message(
+                            deleted_recs[0],
+                            match_label="DOI",
+                            match_value=my_doi,
+                        )
+                    )
                 # check for corrupted draft with different DOI and add to recs
                 # so that we can delete it
                 try:
