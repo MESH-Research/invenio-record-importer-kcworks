@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2 (2026-11-21)
+
+- **Error handling:** add proper handling for errors raised when the import
+  record's identifiers belong to a previously deleted record
+
 ## 1.0.1 (2026-11-20)
 
 - **Bug fix:** importer was trying to sanitize files on the local file system
