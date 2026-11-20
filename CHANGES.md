@@ -1,9 +1,17 @@
 # Changelog
 
+## 1.0.1 (2026-11-20)
+
+- **Bug fix:** importer was trying to sanitize files on the local file system
+  for any metadata-only import. We've now cleared up the confusion so that this
+  only runs for true local-files imports.
+
+**Restarting version numbering after a long period of neglect**
+
 ## 0.4.0 (2025-10-05)
 
-- Added service methods and a CLI to updated created dates for legacy
-  CORE records and communities based on their original creation dates.
+- Added service methods and a CLI to updated created dates for legacy CORE
+  records and communities based on their original creation dates.
 - Updated testing infrastructure.
 - Updated dependencies and submodule structure.
 

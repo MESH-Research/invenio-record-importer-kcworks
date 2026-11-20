@@ -340,7 +340,7 @@ class RecordLoader:
                 are created. If False, do not notify the owners of the records.
                 Defaults to True.
             clean_filenames : bool
-                If True, sanitize filenames before uploading.
+                If True, sanitize filenames before uploading. Defaults to True.
 
         Returns:
             LoaderResult
@@ -1315,8 +1315,12 @@ class RecordLoader:
                 aggregate is True
             end_date (str): the ending date of usage events to aggregate if
                 aggregate is True
-            clean_filenames (bool): whether to sanitize the filenames of the
-                files to upload (Defaults to True.)
+            clean_filenames (bool): whether to sanitize filenames. Defaults to
+                True. Directory sanitization under
+                `RECORD_IMPORTER_FILES_LOCATION` is only for CLI/disk-backed
+                imports (no in-memory `metadata`, no `FileData`). API uploads
+                are sanitized per record in `handle_record_files` when `load()`
+                finds `files.entries`.
             verbose (bool): whether to print and log verbose output during the
                 loading process
             stop_on_error (bool): whether to stop the loading process if an
@@ -1379,9 +1383,14 @@ class RecordLoader:
             "notify_record_owners": notify_record_owners,
         }
 
-        if clean_filenames and not files:
+        # Directory sanitize is CLI/disk-only. API imports pass `metadata`
+        # and/or `FileData`; per-file sanitization for uploads is gated in
+        # `load()` on `files.entries` (same check as upload vs metadata-only).
+        if clean_filenames and not files and not metadata:
             app.logger.info("Sanitizing file names...")
-            FilesHelper.sanitize_filenames(app.config["RECORD_IMPORTER_FILES_LOCATION"])
+            FilesHelper.sanitize_filenames(
+                app.config["RECORD_IMPORTER_FILES_LOCATION"]
+            )
 
         app.logger.info("Starting to load records into Invenio...")
         record_set = self._get_record_set(
