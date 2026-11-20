@@ -35,6 +35,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm.exc import StaleDataError
 
 from invenio_record_importer_kcworks.errors import (
+    DeletedRecordExistsError,
     DraftValidationError,
     FileUploadError,
     InvalidParametersError,
@@ -659,6 +660,18 @@ class RecordLoader:
                 result.record_created["status"] = "deleted"
             else:
                 result.record_created["status"] = "not_created"
+        except DeletedRecordExistsError as e:
+            app.logger.error(f"DeletedRecordExistsError: {e}")
+            result.errors.append({"deleted_record_error": e.message})
+            result.status = "error"
+            if not result.record_created:
+                result.record_created = {
+                    "record_data": {},
+                    "record_uuid": "",
+                    "status": "not_created",
+                }
+            else:
+                result.record_created["status"] = "not_created"
         except FileUploadError as e:
             app.logger.error(f"FileUploadError: {e}")
             result.errors.append({"file_upload_error": e.message})
@@ -1047,6 +1060,7 @@ class RecordLoader:
         error_reasons = {
             "CommonsGroupNotFoundError": msg,
             "CommonsGroupServiceError": msg,
+            "DeletedRecordExistsError": msg,
             "DraftDeletionFailedError": msg,
             "ExistingRecordNotUpdatedError": msg,
             "FileKeyNotFoundError": msg,

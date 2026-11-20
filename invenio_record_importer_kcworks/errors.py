@@ -37,6 +37,15 @@ class DraftValidationError(Exception):
         self.message = message
 
 
+class DeletedRecordExistsError(Exception):
+    """A soft-deleted record already matches the import identifier."""
+
+    def __init__(self, message):
+        """Initialize the exception."""
+        super().__init__(message)
+        self.message = message
+
+
 class ExistingRecordNotUpdatedError(Exception):
     """Existing record not updated error."""
 

@@ -16,7 +16,10 @@ from invenio_rdm_records.proxies import current_rdm_records_service as records_s
 from invenio_rdm_records.records.api import RDMDraft
 from invenio_search.proxies import current_search_client
 
-from invenio_record_importer_kcworks.errors import NoUpdates
+from invenio_record_importer_kcworks.errors import (
+    DeletedRecordExistsError,
+    NoUpdates,
+)
 from invenio_record_importer_kcworks.services.records import RecordsHelper
 from invenio_record_importer_kcworks.utils import generate_random_string
 from tests.fixtures.records import TestRecordMetadata
@@ -308,3 +311,123 @@ def test_create_invenio_record_no_updates_raises_on_import_recid_change(
     assert updated["record_data"]["metadata"]["title"] == "Updated title"
 
     helper.delete_invenio_record(first_id)
+
+
+def test_deleted_record_error_message():
+    """Deleted-record error includes restore and new-identifier guidance."""
+    message = RecordsHelper._deleted_record_error_message(
+        {
+            "id": "abcde-12345",
+            "tombstone": {
+                "removal_reason": {"id": "test-record"},
+                "removal_date": "2026-11-14T17:25:17.476802",
+            },
+        },
+        match_label="DOI",
+        match_value="10.59348/xf29n-ycd32",
+    )
+    assert "id=abcde-12345" in message
+    assert "DOI" in message
+    assert "10.59348/xf29n-ycd32" in message
+    assert "removal reason: test-record" in message
+    assert "Restore that record before re-importing" in message
+    assert "import with a new identifier" in message
+    assert "new DOI" in message
+
+
+def _publish_and_soft_delete(record_id: str) -> None:
+    """Publish a draft then soft-delete the published record."""
+    published = records_service.publish(system_identity, id_=record_id)
+    records_service.delete_record(
+        system_identity,
+        id_=published.id,
+        data={
+            "removal_reason": {"id": "test-record"},
+            "is_visible": False,
+        },
+    )
+    RDMDraft.index.refresh()
+    current_search_client.indices.refresh(index="*rdm*")
+
+
+def test_create_invenio_record_errors_on_deleted_doi_match(
+    app,
+    db,
+    nested_unit_of_work,
+    monkeypatch,
+    create_records_custom_fields,
+    create_communities_custom_fields,
+    location,
+    admin,
+    search_clear,
+    resource_type_v,
+    creators_role_v,
+):
+    """Re-importing a soft-deleted DOI match raises DeletedRecordExistsError."""
+    monkeypatch.setattr(
+        "invenio_records_resources.services.uow.UnitOfWork", nested_unit_of_work
+    )
+    doi = f"10.1234/deleted-{generate_random_string(8)}"
+    import_recid = f"deleted-doi-{generate_random_string(8)}"
+    payload = _minimal_import_recid_payload(import_recid, title="Deleted DOI match")
+    payload["pids"] = {
+        "doi": {
+            "identifier": doi,
+            "provider": "external",
+        }
+    }
+    helper = RecordsHelper()
+
+    first = helper.create_invenio_record(payload, no_updates=True)
+    assert first["status"] == "new_record"
+    first_id = first["record_data"]["id"]
+    _publish_and_soft_delete(first_id)
+
+    with pytest.raises(DeletedRecordExistsError) as exc_info:
+        helper.create_invenio_record(deepcopy(payload), no_updates=True)
+
+    message = exc_info.value.message
+    assert first_id in message
+    assert "DOI" in message
+    assert doi in message
+    assert "Restore that record before re-importing" in message
+    assert "import with a new identifier" in message
+
+
+def test_create_invenio_record_errors_on_deleted_import_recid_match(
+    app,
+    db,
+    nested_unit_of_work,
+    monkeypatch,
+    create_records_custom_fields,
+    create_communities_custom_fields,
+    location,
+    admin,
+    search_clear,
+    resource_type_v,
+    creators_role_v,
+):
+    """Re-importing a soft-deleted import-recid match raises clearly."""
+    monkeypatch.setattr(
+        "invenio_records_resources.services.uow.UnitOfWork", nested_unit_of_work
+    )
+    import_recid = f"deleted-import-{generate_random_string(8)}"
+    payload = _minimal_import_recid_payload(
+        import_recid, title="Deleted import-recid match"
+    )
+    helper = RecordsHelper()
+
+    first = helper.create_invenio_record(payload, no_updates=True)
+    assert first["status"] == "new_record"
+    first_id = first["record_data"]["id"]
+    _publish_and_soft_delete(first_id)
+
+    with pytest.raises(DeletedRecordExistsError) as exc_info:
+        helper.create_invenio_record(deepcopy(payload), no_updates=True)
+
+    message = exc_info.value.message
+    assert first_id in message
+    assert "import-recid" in message
+    assert import_recid in message
+    assert "Restore that record before re-importing" in message
+    assert "import with a new identifier" in message
