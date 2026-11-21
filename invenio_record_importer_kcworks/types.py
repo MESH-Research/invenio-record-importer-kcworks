@@ -71,9 +71,9 @@ class APIResponsePayload(BaseModel):
     """A class to represent an API endpoint response payload."""
 
     status: str
-    data: list[dict] = []
-    errors: list[dict] = []
     message: str = ""
+    errors: list[dict] = []
+    imported_records: list[dict] = []
 
 
 class LoaderResult(BaseModel):

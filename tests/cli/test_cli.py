@@ -22,7 +22,9 @@ def test_record_loader(running_app, admin, minimal_community_factory, cli_runner
     # Mock the RecordLoader.load_all method to return a successful response
     mock_response = APIResponsePayload(
         status="success",
-        data=[
+        message="All records were successfully imported",
+        errors=[],
+        imported_records=[
             {
                 "item_index": 1,
                 "record_id": "test-record-id",
@@ -34,8 +36,6 @@ def test_record_loader(running_app, admin, minimal_community_factory, cli_runner
                 "metadata": {},
             }
         ],
-        errors=[],
-        message="All records were successfully imported",
     )
 
     with patch("invenio_record_importer_kcworks.cli.RecordLoader") as mock_loader_class:

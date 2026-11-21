@@ -73,10 +73,10 @@ def test_import_records_errors_on_deleted_import_recid_match(
         notify_record_owners=False,
     )
     assert first["status"] == "success"
-    assert len(first["data"]) == 1
-    record_id = first["data"][0]["record_id"]
+    assert len(first["imported_records"]) == 1
+    record_id = first["imported_records"][0]["record_id"]
     assert record_id
-    assert first["data"][0]["metadata"]["status"] == "published"
+    assert first["imported_records"][0]["metadata"]["status"] == "published"
 
     _soft_delete_published(record_id)
 
@@ -89,7 +89,7 @@ def test_import_records_errors_on_deleted_import_recid_match(
     )
 
     assert second["status"] == "error"
-    assert second["data"] == []
+    assert second["imported_records"] == []
     assert len(second["errors"]) == 1
     error_item = second["errors"][0]
     assert error_item["item_index"] == 0

@@ -174,7 +174,7 @@ class ServiceTest:
         if expected_fail_count == 0:
             if self.by_api:
                 assert status_code == 201
-            assert len(import_results["data"]) == len(self.metadata_sources)
+            assert len(import_results["imported_records"]) == len(self.metadata_sources)
             assert import_results.get("status") == "success"
             assert (
                 import_results.get("message")
@@ -186,7 +186,7 @@ class ServiceTest:
             if self.by_api:
                 assert status_code == 207
             assert import_results.get("status") == "partial_success"
-            assert len(import_results["data"]) == expected_success_count
+            assert len(import_results["imported_records"]) == expected_success_count
             assert len(import_results["errors"]) == expected_fail_count
             assert import_results.get("message") == (
                 "Some records were successfully imported, but some failed"
@@ -195,7 +195,7 @@ class ServiceTest:
 
         if self.by_api:
             assert status_code == 400
-        assert len(import_results["data"]) == 0
+        assert len(import_results["imported_records"]) == 0
         assert import_results.get("status") == "error"
 
         if self.all_or_none:
@@ -240,7 +240,7 @@ class ServiceTest:
             ]:  # make sure metadata present when expected
                 item_recid = actual_error_item["metadata"]["id"]
                 assert item_recid not in [
-                    r["metadata"]["id"] for r in import_results["data"]
+                    r["metadata"]["id"] for r in import_results["imported_records"]
                 ]
                 created_record = records_service.read(
                     system_identity, id_=item_recid
@@ -500,14 +500,14 @@ class ServiceTest:
         expected_success_count = len(metadata_sources) - expected_error_count
 
         if expected_error_count > 0 and self.all_or_none:
-            assert len(import_results["data"]) == 0
+            assert len(import_results["imported_records"]) == 0
             return
 
-        assert len(import_results["data"]) == expected_success_count
+        assert len(import_results["imported_records"]) == expected_success_count
         files_per_item = (
             len(files) // len(metadata_sources) if metadata_sources and files else 0
         )
-        for actual_record_result in import_results["data"]:
+        for actual_record_result in import_results["imported_records"]:
             idx = actual_record_result["item_index"]
             assert not self.expected_errors[idx]
 

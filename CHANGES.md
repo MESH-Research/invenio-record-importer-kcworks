@@ -2,6 +2,9 @@
 
 ## 1.1.1 (2026-11-21)
 
+- **API response shape (breaking)**: Rename the successful-records array from
+  `data` to `imported_records`, and serialize keys as `status`, `message`,
+  `errors`, then `imported_records` last.
 - **Error reporting**: Fix lazy string serialization error when collecting some
   validation error message for reporting.
 

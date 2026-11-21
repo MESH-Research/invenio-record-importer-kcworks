@@ -1688,7 +1688,7 @@ class RecordLoader:
 
         return APIResponsePayload(
             status=overall_status,
-            data=success_list,
-            errors=error_list,
             message=message,
+            errors=error_list,
+            imported_records=success_list,
         )
