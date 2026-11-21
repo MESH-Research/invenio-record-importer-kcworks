@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1 (2026-11-21)
+
+- **Error reporting**: Fix lazy string serialization error when collecting some
+  validation error message for reporting.
+
 ## 1.1.0 (2026-11-21)
 
 - **Error reporting**

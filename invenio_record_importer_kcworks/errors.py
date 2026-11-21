@@ -8,11 +8,30 @@ from invenio_records_resources.errors import validation_error_to_list_errors
 from marshmallow import ValidationError
 
 
+def _stringify_messages(messages: Any) -> list[str]:
+    """Coerce validation messages to plain strings (e.g. Babel LazyString)."""
+    if isinstance(messages, (list, tuple)):
+        return [str(m) for m in messages]
+    if messages is None:
+        return []
+    return [str(messages)]
+
+
+def _as_field_messages_item(item: dict) -> dict:
+    """Return a JSON-safe `{field, messages}` dict."""
+    return {
+        "field": str(item.get("field", "")),
+        "messages": _stringify_messages(item.get("messages")),
+    }
+
+
 def normalize_validation_errors(payload: Any) -> list[dict]:
     """Normalize validation payloads to Invenio `{field, messages}` list form.
 
     Accepts marshmallow nested dicts, an already-normalized list of
     `{field, messages}` dicts, a single such dict, or a scalar message.
+    Message values are coerced with `str()` so Babel `LazyString` and similar
+    lazy text objects are JSON-serializable.
 
     Args:
         payload: Nested marshmallow messages, PID-style error list, or scalar.
@@ -28,7 +47,7 @@ def normalize_validation_errors(payload: Any) -> list[dict]:
             isinstance(item, dict) and "field" in item and "messages" in item
             for item in payload
         ):
-            return payload
+            return [_as_field_messages_item(item) for item in payload]
         normalized: list[dict] = []
         for item in payload:
             normalized.extend(normalize_validation_errors(item))
@@ -36,8 +55,11 @@ def normalize_validation_errors(payload: Any) -> list[dict]:
 
     if isinstance(payload, dict):
         if "field" in payload and "messages" in payload:
-            return [payload]
-        return validation_error_to_list_errors(ValidationError(payload))
+            return [_as_field_messages_item(payload)]
+        return [
+            _as_field_messages_item(item)
+            for item in validation_error_to_list_errors(ValidationError(payload))
+        ]
 
     return [{"field": "", "messages": [str(payload)]}]
 

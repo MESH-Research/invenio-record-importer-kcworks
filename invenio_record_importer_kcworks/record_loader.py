@@ -1591,7 +1591,9 @@ class RecordLoader:
                     ):
                         lists = self._log_repaired_record(result, lists)
                 else:
-                    reason = "|".join(json.dumps(e) for e in result.errors)
+                    reason = "|".join(
+                        json.dumps(e, default=str) for e in result.errors
+                    )
                     lists = self._log_failed_record(result, lists, reason)
                     if flags["all_or_none"]:
                         self._roll_back_created_records(lists["successful_records"])

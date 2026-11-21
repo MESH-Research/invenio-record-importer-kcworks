@@ -122,11 +122,14 @@ def _metadata_only(sample: dict) -> dict:
 
 
 class MixedPublishValidationRESTTest(ServiceTest):
-    """One REST import with three publish outcomes in a single request.
+    """One REST import with three real publish outcomes in a single request.
 
-    Record 0: empty title → marshmallow ``ValidationError`` on publish.
-    Record 1: invalid external DOI → ``ValidationErrorWithMessageAsList``.
-    Record 2: valid metadata-only record → success when ``all_or_none`` is false.
+    Record 0: empty title → marshmallow `ValidationError` on publish.
+    Record 1: DataCite DOI present but publisher removed →
+    `ValidationErrorWithMessageAsList` from DataCite provider validation,
+    with Babel `LazyString` messages (must normalize to plain strings for
+    JSON / failed-record logging).
+    Record 2: valid metadata-only record → success when `all_or_none` is false.
     """
 
     @property
@@ -142,11 +145,14 @@ class MixedPublishValidationRESTTest(ServiceTest):
         bad_title = _metadata_only(sample_metadata_journal_article_pdf)
         bad_title["metadata"]["title"] = ""
 
-        bad_pid = _metadata_only(sample_metadata_journal_article2_pdf)
-        bad_pid["pids"] = {
+        # Real DataCite publish validation (same path as prod LazyString failure).
+        missing_publisher = _metadata_only(sample_metadata_journal_article2_pdf)
+        missing_publisher["metadata"].pop("publisher", None)
+        missing_publisher["pids"] = {
             "doi": {
-                "identifier": "not-a-valid/doi",
-                "provider": "external",
+                "identifier": "10.17613/test-missing-publisher",
+                "provider": "datacite",
+                "client": "datacite",
             }
         }
 
@@ -154,7 +160,7 @@ class MixedPublishValidationRESTTest(ServiceTest):
         good.pop("pids", None)
         good.pop("id", None)
 
-        return [bad_title, bad_pid, good]
+        return [bad_title, missing_publisher, good]
 
     @property
     def title_validation_error(self):
@@ -172,13 +178,15 @@ class MixedPublishValidationRESTTest(ServiceTest):
 
     @property
     def pid_validation_error(self):
-        """Expected per-record errors for the invalid external DOI record."""
+        """Expected errors for DataCite DOI without publisher (LazyString msgs)."""
         return [
             {
                 "validation_error": [
                     {
-                        "field": "pids.doi",
-                        "messages": ["Invalid DOI"],
+                        "field": "metadata.publisher",
+                        "messages": [
+                            "Missing publisher field required for DOI registration."
+                        ],
                     }
                 ]
             }

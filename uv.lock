@@ -3004,7 +3004,7 @@ provides-extras = ["tests", "elasticsearch7", "opensearch1", "opensearch2"]
 
 [[package]]
 name = "invenio-record-importer-kcworks"
-version = "1.0.2"
+version = "1.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -3969,7 +3969,7 @@ wheels = [
 
 [[package]]
 name = "kcworks"
-version = "1.5.3"
+version = "1.5.5"
 source = { editable = "../../../../" }
 dependencies = [
     { name = "aiohttp" },
