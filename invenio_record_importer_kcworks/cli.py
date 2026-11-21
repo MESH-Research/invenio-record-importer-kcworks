@@ -217,8 +217,11 @@ def _extract_community_id_from_first_record(
     is_flag=True,
     default=False,
     help=(
-        "If set, roll back all records if any record fails. "
-        "If not set (default), continue importing other records even if some fail."
+        "If set, abort on first failure and roll back earlier successes from "
+        "this run where safe (newly created works, and drafts created by this import "
+        "via edit() on a published work). Does not reverse re-published "
+        "updates to pre-existing works or revert drafts that already existed. "
+        "If not set (default), keep successes and continue on failures."
     ),
 )
 @click.option(

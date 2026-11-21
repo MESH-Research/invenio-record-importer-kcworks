@@ -42,6 +42,7 @@ from invenio_record_importer_kcworks.errors import (
     NoAvailableRecordsError,
     PublicationValidationError,
     SkipRecord,
+    normalize_validation_errors,
 )
 from invenio_record_importer_kcworks.services.communities import (
     CommunitiesHelper,
@@ -64,12 +65,12 @@ from invenio_record_importer_kcworks.utils.utils import (
 
 
 def _strip_exported_parent_id_if_absent(parent: dict) -> None:
-    """Drop ``parent['id']`` when it is not a row in ``rdm_parents_metadata``.
+    """Drop `parent['id']` when it is not a row in `rdm_parents_metadata`.
 
     Export/API payloads reuse the internal parent UUID. If that UUID is absent
-    in this database, passing it into ``records_service.create`` makes
-    ``ParentField`` skip creating a parent while the draft still references the
-    id, causing an FK violation. When the row exists locally, keep ``id``.
+    in this database, passing it into `records_service.create` makes
+    `ParentField` skip creating a parent while the draft still references the
+    id, causing an FK violation. When the row exists locally, keep `id`.
 
     Args:
         parent: Parent payload (mutated in place).
@@ -499,10 +500,16 @@ class RecordLoader:
                 .get("errors", [])
             )
             if strict_validation and len(validation_errors) > 0:
-                raise DraftValidationError(validation_errors)
-            else:
-                result.errors.extend(
-                    [{"validation_error": e} for e in validation_errors]
+                raise DraftValidationError(
+                    normalize_validation_errors(validation_errors)
+                )
+            elif validation_errors:
+                result.errors.append(
+                    {
+                        "validation_error": normalize_validation_errors(
+                            validation_errors
+                        )
+                    }
                 )
             result.status = result.record_created["status"]
             if result.record_created["status"] in [
@@ -640,24 +647,44 @@ class RecordLoader:
                 )
         except (PublicationValidationError, DraftValidationError) as e:
             app.logger.error(f"PublicationValidationError: {e}")
-            result.errors.append({"validation_error": e.message})
+            result.errors.append(
+                {"validation_error": normalize_validation_errors(e.message)}
+            )
             result.status = "error"
 
-            # Try to delete any draft records that were created
-            # FIXME: Why are some draft records no longer found when we try
-            # to delete them?
-            if result.record_created:
-                try:
-                    record_id = result.record_created["record_data"]["id"]
-                    RecordsHelper().delete_invenio_record(record_id)
-                    app.logger.error(f"Deleted draft record {record_id}")
-                except (NoResultFound, PIDDoesNotExistError):
-                    app.logger.error(f"No draft record found to delete: {record_id}")
+            # Cleanup only for drafts created in this import. Deleting on
+            # reused published/existing drafts would soft-delete live works
+            # (same guard as FileUploadError below).
+            if (
+                result.record_created
+                and result.record_created.get("status") == "new_record"
+            ):
+                record_id = result.record_created.get("record_data", {}).get("id")
+                if record_id:
+                    try:
+                        RecordsHelper().delete_invenio_record(record_id)
+                        app.logger.error(f"Deleted draft record {record_id}")
+                    except (NoResultFound, PIDDoesNotExistError):
+                        app.logger.error(
+                            f"No draft record found to delete: {record_id}"
+                        )
+                    except Exception as cleanup_err:
+                        app.logger.error(
+                            f"Could not delete draft record {record_id} after "
+                            f"validation failure: {cleanup_err}"
+                        )
                 result.record_created["record_data"] = {}
                 result.record_created["record_uuid"] = (
                     ""  # FIXME: Can we search by UUID?
                 )
                 result.record_created["status"] = "deleted"
+            elif result.record_created:
+                record_id = result.record_created.get("record_data", {}).get("id", "")
+                app.logger.error(
+                    f"Validation failed for existing record {record_id} "
+                    f"(status={result.record_created.get('status')}); "
+                    "not deleting the existing record."
+                )
             else:
                 result.record_created["status"] = "not_created"
         except DeletedRecordExistsError as e:
@@ -1084,6 +1111,7 @@ class RecordLoader:
                 f"There was a problem validating the record related to these "
                 f"fields: {msg}",
             ),
+            "ValidationErrorWithMessageAsList": msg,
         }
         if e.__class__.__name__ in error_reasons.keys():
             result.log_object.update({"reason": error_reasons[e.__class__.__name__]})
@@ -1093,11 +1121,23 @@ class RecordLoader:
             raise e
 
         if e.__class__.__name__ not in ["SkipRecord", "NoUpdates"]:
-            result.errors.append(
-                {
-                    "message": error_reasons[e.__class__.__name__],
-                }
-            )
+            validation_exception_names = {
+                "DraftValidationError",
+                "PublicationValidationError",
+                "UpdateValidationError",
+                "ValidationError",
+                "ValidationErrorWithMessageAsList",
+            }
+            if e.__class__.__name__ in validation_exception_names:
+                result.errors.append(
+                    {"validation_error": normalize_validation_errors(msg)}
+                )
+            else:
+                result.errors.append(
+                    {
+                        "message": error_reasons[e.__class__.__name__],
+                    }
+                )
             lists = self._log_failed_record(result=result, lists=lists)
         elif e.__class__.__name__ == "NoUpdates":
             lists["no_updates_records"].append(result.log_object)
@@ -1249,13 +1289,69 @@ class RecordLoader:
         return result.log_object
 
     def _roll_back_created_records(self, records: list[LoaderResult]) -> None:
-        """Roll back the created records."""
+        """Delete successfully created new records and drafts when `all_or_none` aborts.
+
+        This function aims to clean up as much as possible after an `all_or_none` 
+        import fails. For published records, we only delete them if there was no 
+        prior published version. We do not try to revert any changes made 
+        and re-published for records that did complete successfully during this 
+        import. For drafts, we distinguish import-created vs pre-existing drafts. 
+        
+        We distinguish between import-created and pre-existing records/drafts via 
+        **loader status** from `_reconcile_existing_record` (not from the record's 
+        `is_draft`/`is_published` fields alone):
+
+        - `new_record`: this is a batch-created work — delete it (draft or
+          published).
+        - `updated_published`: reconcile found a published work with **no**
+          open draft, called `edit()`, then updated that new edit draft.
+          If it is still a draft at rollback time, `delete_draft` only
+          (live published version remains). If this load already
+          re-published it, skip.
+        - `updated_draft` / `unchanged_existing_*`: a draft or published
+          work already existed before this batch — never delete on rollback.
+
+        Args:
+            records (list[LoaderResult]): the list of records to roll back
+        """
         for record in records:
-            record_id = record.record_created.get("record_data", {}).get("id")
-            record_status = record.record_created.get("record_data", {}).get("status")
-            if record_id:
-                assert RecordsHelper().delete_invenio_record(
-                    record_id, record_type=record_status
+            created = record.record_created or {}
+            record_data = created.get("record_data") or {}
+            record_id = record_data.get("id")
+            loader_status = created.get("status")
+            if not record_id:
+                continue
+
+            is_draft = bool(record_data.get("is_draft"))
+            is_published = bool(record_data.get("is_published"))
+
+            if loader_status == "new_record":
+                # Unpublished new create → draft delete; published new → soft-delete.
+                record_type = "draft" if (is_draft and not is_published) else None
+            elif loader_status == "updated_published" and is_draft:
+                # Import opened this edit draft via edit(); discard it only.
+                record_type = "draft"
+            else:
+                app.logger.error(
+                    f"Skipping rollback for record {record_id} "
+                    f"(status={loader_status}, is_draft={is_draft}, "
+                    f"is_published={is_published}); cannot undo "
+                    "update/unchanged import without a prior snapshot."
+                )
+                continue
+
+            try:
+                RecordsHelper().delete_invenio_record(
+                    record_id, record_type=record_type
+                )
+                app.logger.error(
+                    f"Rolled back record {record_id} "
+                    f"(loader_status={loader_status}, "
+                    f"record_type={record_type or 'published'})"
+                )
+            except Exception as rollback_err:
+                app.logger.error(
+                    f"Could not roll back record {record_id}: {rollback_err}"
                 )
 
     def _aggregate_stats(

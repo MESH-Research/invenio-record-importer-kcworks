@@ -18,7 +18,6 @@ from invenio_communities.errors import CommunityDeletedError
 from invenio_communities.members.records.api import Member
 from invenio_communities.proxies import current_communities
 from invenio_drafts_resources.resources.records.errors import DraftNotCreatedError
-from invenio_drafts_resources.services.records.uow import ParentRecordCommitOp
 from invenio_notifications.services.uow import NotificationOp
 from invenio_pidstore.errors import PIDDoesNotExistError, PIDUnregistered
 from invenio_rdm_records.proxies import (
@@ -28,16 +27,14 @@ from invenio_rdm_records.proxies import (
 from invenio_rdm_records.proxies import current_rdm_records_service as records_service
 from invenio_rdm_records.services.errors import (
     InvalidAccessRestrictions,
-    ReviewNotFoundError,
     ReviewStateError,
+    ValidationErrorWithMessageAsList,
 )
 from invenio_records_resources.services.uow import (
     RecordCommitOp,
-    RecordIndexOp,
     UnitOfWork,
     unit_of_work,
 )
-from invenio_requests.errors import CannotExecuteActionError
 from invenio_requests.proxies import current_requests_service
 from invenio_search.proxies import current_search_client
 from invenio_search.utils import prefix_index
@@ -63,7 +60,9 @@ from invenio_record_importer_kcworks.errors import (
     MultipleActiveCollectionsError,
     PublicationValidationError,
     RestrictedRecordPublicationError,
+    normalize_validation_errors,
 )
+from invenio_record_importer_kcworks.services.reviews import ReviewsHelper
 
 
 class CommunityRecordHelper:
@@ -468,55 +467,12 @@ class CommunitiesHelper:
             )
 
     def _handle_existing_review_request(self, draft_id: str, uow) -> str | None:
-        """Handle any existing review request for the record.
-
-        Tries to cancel any existing review request for the record with another
-        community, since it will conflict. If the review is closed, it's deleted.
-        If it's open, it's cancelled.
-
-        Parameters:
-            draft_id: The ID of the draft record
-            uow: The unit of work to use
+        """Clear any existing review that would conflict with a new community attach.
 
         Returns:
-            str | None: The request ID if an open request was found, None otherwise
+            The cancelled open request id, if any.
         """
-        try:
-            existing_review = records_service.review.read(system_identity, id_=draft_id)
-            app.logger.info(
-                "    cancelling existing review request for the record "
-                f"to the community...: {existing_review.id}"
-            )
-            if not existing_review.data["is_open"]:
-                try:
-                    records_service.review.delete(system_identity, id_=draft_id)
-                except (
-                    NotFoundError,
-                    CannotExecuteActionError,
-                ):  # already deleted
-                    # Sometimes the review request is already deleted but
-                    # hasn't been removed from the record's metadata
-                    draft_record = records_service.read_draft(
-                        system_identity, id_=draft_id
-                    )._record
-                    draft_record.parent.review = None
-                    uow.register(ParentRecordCommitOp(draft_record.parent))
-                    uow.register(RecordIndexOp(draft_record))
-                return None
-            else:
-                request_id = existing_review.id
-                current_requests_service.execute_action(
-                    system_identity,
-                    request_id,
-                    "cancel",
-                )
-                return str(request_id)  # type:ignore
-        except (ReviewNotFoundError, NoResultFound):
-            app.logger.info(
-                "    no existing review request found for the record to "
-                "the community..."
-            )
-            return None
+        return ReviewsHelper().clear_draft_review(draft_id, uow=uow)
 
     def _create_and_accept_submission_request(
         self, draft_id: str, community_id: str, uow
@@ -639,11 +595,13 @@ class CommunitiesHelper:
             return self._create_and_accept_submission_request(
                 draft_id, community_id, uow
             )
-        except ValidationError as e:
+        except (ValidationError, ValidationErrorWithMessageAsList) as e:
             app.logger.error(
                 f"    failed to validate record for publication: {e.messages}"
             )
-            raise PublicationValidationError(e.messages) from None
+            raise PublicationValidationError(
+                normalize_validation_errors(e.messages)
+            ) from None
         except (NoResultFound, ReviewStateError) as e:
             # If the record is already published, we need to create/retrieve
             # and accept a 'community-inclusion' request instead

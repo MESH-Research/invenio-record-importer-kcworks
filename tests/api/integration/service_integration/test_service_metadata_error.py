@@ -7,6 +7,7 @@
 """Integration tests for the RecordImportService.import_records with metadata errors."""
 
 import copy
+from typing import Any
 
 from tests.helpers.sample_records import (
     sample_metadata_chapter2_pdf,
@@ -21,9 +22,9 @@ class TestServiceErrorJArticleTitle(ServiceTest):
 
     @property
     def metadata_sources(self):  # noqa: D102
-        meta1 = copy.deepcopy(sample_metadata_chapter_pdf)
+        meta1: dict[str, Any] = copy.deepcopy(sample_metadata_chapter_pdf)
         meta1["metadata"]["title"] = ""
-        meta2 = copy.deepcopy(sample_metadata_chapter2_pdf)
+        meta2: dict[str, Any] = copy.deepcopy(sample_metadata_chapter2_pdf)
         return [meta1, meta2]
 
     @property
@@ -31,9 +32,12 @@ class TestServiceErrorJArticleTitle(ServiceTest):
         return [
             [
                 {
-                    "validation_error": {
-                        "metadata": {"title": ["Missing data for required field."]}
-                    }
+                    "validation_error": [
+                        {
+                            "field": "metadata.title",
+                            "messages": ["Missing data for required field."],
+                        }
+                    ]
                 }
             ],
             [],

@@ -295,7 +295,10 @@ class RecordImporterResource(Resource):
         - metadata(dict): The metadata to attach to the records.
         - review_required(bool): Whether to require review of the records.
         - strict_validation(bool): Whether to strictly validate the records.
-        - all_or_none(bool): Whether to import all records or none.
+        - all_or_none(bool): Abort on first failure and roll back earlier
+          successes where safe (new creates; edit drafts this import opened
+          on published works). Does not delete pre-existing drafts or reverse
+          re-published updates to pre-existing works.
         - notify_record_owners(bool): Whether to send email notifications to users
           identified as record owners.
         - no_updates(bool): When True, refuse to update existing matched records
@@ -388,7 +391,10 @@ class RecordImporterResource(Resource):
             return Response(
                 json.dumps(import_result, sort_keys=False), mimetype="application/json"
             ), 201
-        elif import_result.get("status") == "multi_status" and not all_or_none:
+        elif (
+            import_result.get("status") in ("partial_success", "multi_status")
+            and not all_or_none
+        ):
             return jsonify(import_result), 207
         else:
             return jsonify(import_result), 400

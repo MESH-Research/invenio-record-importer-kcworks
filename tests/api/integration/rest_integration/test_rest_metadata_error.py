@@ -6,12 +6,19 @@
 
 """Integration tests for the v1 API /import endpoint with metadata errors."""
 
+import copy
 
 from tests.fixtures.communities import make_community_member
+from tests.helpers.sample_records import (
+    sample_metadata_journal_article2_pdf,
+    sample_metadata_journal_article3_pdf,
+    sample_metadata_journal_article_pdf,
+)
 
 from ..service_integration.test_service_metadata_error import (
     TestServiceErrorJArticleTitle,
 )
+from ..service_integration.test_service_metadata_success import ServiceTest
 from .test_rest_metadata_success import TestAPIJArticle
 
 
@@ -105,3 +112,103 @@ class TestAPIErrorJArticleTitle(TestServiceErrorJArticleTitle):
     @property
     def by_api(self):  # noqa: D102
         return True
+
+
+def _metadata_only(sample: dict) -> dict:
+    """Return a deep copy with files disabled for a metadata-only import."""
+    meta = copy.deepcopy(sample)
+    meta["files"] = {"enabled": False}
+    return meta
+
+
+class MixedPublishValidationRESTTest(ServiceTest):
+    """One REST import with three publish outcomes in a single request.
+
+    Record 0: empty title → marshmallow ``ValidationError`` on publish.
+    Record 1: invalid external DOI → ``ValidationErrorWithMessageAsList``.
+    Record 2: valid metadata-only record → success when ``all_or_none`` is false.
+    """
+
+    @property
+    def by_api(self):  # noqa: D102
+        return True
+
+    @property
+    def with_files(self):  # noqa: D102
+        return False
+
+    @property
+    def metadata_sources(self):  # noqa: D102
+        bad_title = _metadata_only(sample_metadata_journal_article_pdf)
+        bad_title["metadata"]["title"] = ""
+
+        bad_pid = _metadata_only(sample_metadata_journal_article2_pdf)
+        bad_pid["pids"] = {
+            "doi": {
+                "identifier": "not-a-valid/doi",
+                "provider": "external",
+            }
+        }
+
+        good = _metadata_only(sample_metadata_journal_article3_pdf)
+        good.pop("pids", None)
+        good.pop("id", None)
+
+        return [bad_title, bad_pid, good]
+
+    @property
+    def title_validation_error(self):
+        """Expected per-record errors for the empty-title record."""
+        return [
+            {
+                "validation_error": [
+                    {
+                        "field": "metadata.title",
+                        "messages": ["Missing data for required field."],
+                    }
+                ]
+            }
+        ]
+
+    @property
+    def pid_validation_error(self):
+        """Expected per-record errors for the invalid external DOI record."""
+        return [
+            {
+                "validation_error": [
+                    {
+                        "field": "pids.doi",
+                        "messages": ["Invalid DOI"],
+                    }
+                ]
+            }
+        ]
+
+
+class TestAPIMixedPublishValidationAllOrNoneTrue(MixedPublishValidationRESTTest):
+    """Abort on first failure: only the title error; later records are not run."""
+
+    @property
+    def all_or_none(self):  # noqa: D102
+        return True
+
+    @property
+    def expected_errors(self):  # noqa: D102
+        # Only the first failure is reported when all_or_none is true.
+        return [self.title_validation_error, [], []]
+
+
+class TestAPIMixedPublishValidationAllOrNoneFalse(MixedPublishValidationRESTTest):
+    """Continue on error: both validation shapes plus one success in one response."""
+
+    @property
+    def all_or_none(self):  # noqa: D102
+        return False
+
+    @property
+    def expected_errors(self):  # noqa: D102
+        return [
+            self.title_validation_error,
+            self.pid_validation_error,
+            [],
+        ]

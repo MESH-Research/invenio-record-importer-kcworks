@@ -35,12 +35,32 @@ class TestAPIJArticle(ServiceTest):
         ]
 
 
+class TestAPIJArticleMetadataOnly(ServiceTest):
+    """Import succeeds for metadata-only records (no files) via the REST API."""
+
+    @property
+    def by_api(self):  # noqa: D102
+        return True
+
+    @property
+    def with_files(self):  # noqa: D102
+        return False
+
+    @property
+    def metadata_sources(self):  # noqa: D102
+        meta1 = copy.deepcopy(sample_metadata_journal_article_pdf)
+        meta1["files"] = {"enabled": False}
+        meta2 = copy.deepcopy(sample_metadata_journal_article2_pdf)
+        meta2["files"] = {"enabled": False}
+        return [meta1, meta2]
+
+
 class TestAPIJArticleHiddenOwner(TestAPIJArticle):
     """Import succeeds when the submitting owner's membership is hidden.
 
-    Member Visibility (``visible=False``) must not affect import permissions;
+    Member Visibility (`visible=False`) must not affect import permissions;
     only the community role matters. The submitter remains a community
-    ``owner`` after import.
+    `owner` after import.
     """
 
     @property

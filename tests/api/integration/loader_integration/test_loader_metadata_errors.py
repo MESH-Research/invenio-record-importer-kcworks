@@ -54,9 +54,12 @@ class TestLoaderErrorJArticleTitle(LoaderErrorTest):
     def check_result_errors(self, result: LoaderResult):  # noqa: D102
         assert result.errors == [
             {
-                "validation_error": {
-                    "metadata": {"title": ["Missing data for required field."]}
-                }
+                "validation_error": [
+                    {
+                        "field": "metadata.title",
+                        "messages": ["Missing data for required field."],
+                    }
+                ]
             }
         ]
 
@@ -79,8 +82,11 @@ class TestLoaderErrorJArticleIDScheme(LoaderErrorTest):
     def check_result_errors(self, result: LoaderResult):  # noqa: D102
         assert result.errors == [
             {
-                "validation_error": {
-                    "metadata": {"identifiers": {0: {"scheme": "Invalid scheme."}}}
-                }
+                "validation_error": [
+                    {
+                        "field": "metadata.identifiers.0.scheme",
+                        "messages": ["Invalid scheme."],
+                    }
+                ]
             }
         ]

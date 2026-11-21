@@ -1,5 +1,46 @@
 """Custom exceptions for invenio-record-importer-kcworks."""
 
+from __future__ import annotations
+
+from typing import Any
+
+from invenio_records_resources.errors import validation_error_to_list_errors
+from marshmallow import ValidationError
+
+
+def normalize_validation_errors(payload: Any) -> list[dict]:
+    """Normalize validation payloads to Invenio `{field, messages}` list form.
+
+    Accepts marshmallow nested dicts, an already-normalized list of
+    `{field, messages}` dicts, a single such dict, or a scalar message.
+
+    Args:
+        payload: Nested marshmallow messages, PID-style error list, or scalar.
+
+    Returns:
+        A list of `{"field": "...", "messages": [...]}` dicts.
+    """
+    if payload is None or payload == "" or payload == [] or payload == {}:
+        return []
+
+    if isinstance(payload, list):
+        if all(
+            isinstance(item, dict) and "field" in item and "messages" in item
+            for item in payload
+        ):
+            return payload
+        normalized: list[dict] = []
+        for item in payload:
+            normalized.extend(normalize_validation_errors(item))
+        return normalized
+
+    if isinstance(payload, dict):
+        if "field" in payload and "messages" in payload:
+            return [payload]
+        return validation_error_to_list_errors(ValidationError(payload))
+
+    return [{"field": "", "messages": [str(payload)]}]
+
 
 class CollectionDoesNotExistError(Exception):
     """Collection does not exist error."""

@@ -23,7 +23,7 @@ from invenio_rdm_records.proxies import current_rdm_records_service as records_s
 
 from invenio_record_importer_kcworks.proxies import current_record_importer_service
 from invenio_record_importer_kcworks.types import FileData
-from tests.fixtures.records import TestRecordMetadataWithFiles
+from tests.fixtures.records import TestRecordMetadata, TestRecordMetadataWithFiles
 from tests.helpers.sample_records import (
     sample_metadata_journal_article2_pdf,
     sample_metadata_journal_article_pdf,
@@ -36,6 +36,19 @@ class ServiceTest:
     @property
     def by_api(self):  # noqa: D102
         return False
+
+    @property
+    def with_files(self):
+        """Whether this test uploads files (False = metadata-only)."""
+        return True
+
+    @property
+    def all_or_none(self):
+        """Whether the import should abort and roll back on the first failure.
+
+        Matches the API form default (`true`). Override for partial-success cases.
+        """
+        return True
 
     @property
     def community_access_override(self):  # noqa: D102
@@ -54,7 +67,11 @@ class ServiceTest:
         """Override this in subclasses to provide different files to upload.
 
         The default defined here assumes two input records with two files each.
+        When `with_files` is False, returns empty file lists for metadata-only
+        imports.
         """
+        if not self.with_files:
+            return [], [], []
         test_sample_files_folder = getattr(self, "test_sample_files_folder", None)
         if test_sample_files_folder is None:
             # Fallback for when fixture isn't available
@@ -151,7 +168,10 @@ class ServiceTest:
         Returns:
             bool: True if status is as expected, False otherwise.
         """
-        if not any(e for e in self.expected_errors if e):
+        expected_fail_count = len([e for e in self.expected_errors if e])
+        expected_success_count = len(self.metadata_sources) - expected_fail_count
+
+        if expected_fail_count == 0:
             if self.by_api:
                 assert status_code == 201
             assert len(import_results["data"]) == len(self.metadata_sources)
@@ -160,28 +180,38 @@ class ServiceTest:
                 import_results.get("message")
                 == "All records were successfully imported"
             )
-        else:
-            if self.by_api:
-                assert status_code == 400
-            assert len(import_results["data"]) == 0
-            assert import_results.get("status") == "error"
+            return True
 
-            # if only some records are expected to fail
-            if len([e for e in self.expected_errors if e]) < len(self.metadata_sources):
-                assert import_results.get("message") == (
-                    "Some records could not be imported, and the 'all_or_none' flag "
-                    "was set to True, so the import was aborted and no records were "
-                    "created. Please check the list of failed records in the "
-                    "'errors' field for more information. Each failed item should have "
-                    "its own list of specific errors."
-                )
-            # if all records are expected to fail
-            else:
-                assert import_results.get("message") == (
-                    "No records were successfully imported. Please check the list of "
-                    "failed records in the 'errors' field for more information. Each "
-                    "failed item should have its own list of specific errors."
-                )
+        if not self.all_or_none and expected_success_count > 0:
+            if self.by_api:
+                assert status_code == 207
+            assert import_results.get("status") == "partial_success"
+            assert len(import_results["data"]) == expected_success_count
+            assert len(import_results["errors"]) == expected_fail_count
+            assert import_results.get("message") == (
+                "Some records were successfully imported, but some failed"
+            )
+            return True
+
+        if self.by_api:
+            assert status_code == 400
+        assert len(import_results["data"]) == 0
+        assert import_results.get("status") == "error"
+
+        if self.all_or_none:
+            assert import_results.get("message") == (
+                "Some records could not be imported, and the 'all_or_none' flag "
+                "was set to True, so the import was aborted and no records were "
+                "created. Please check the list of failed records in the "
+                "'errors' field for more information. Each failed item should have "
+                "its own list of specific errors."
+            )
+        else:
+            assert import_results.get("message") == (
+                "No records were successfully imported. Please check the list of "
+                "failed records in the 'errors' field for more information. Each "
+                "failed item should have its own list of specific errors."
+            )
         return True
 
     def _check_response_files(self, actual_files, record_files):
@@ -467,41 +497,42 @@ class ServiceTest:
         """Check the data of the import results."""
         assert self.app
         expected_error_count = len([e for e in self.expected_errors if e])
-        if expected_error_count > 0:
+        expected_success_count = len(metadata_sources) - expected_error_count
+
+        if expected_error_count > 0 and self.all_or_none:
             assert len(import_results["data"]) == 0
             return
-        assert (
-            len(import_results["data"]) == len(metadata_sources) - expected_error_count
+
+        assert len(import_results["data"]) == expected_success_count
+        files_per_item = (
+            len(files) // len(metadata_sources) if metadata_sources and files else 0
         )
-        files_per_item = len(files) // len(metadata_sources)
-        for idx, actual_record_result in enumerate(import_results["data"]):
-            expected_error_list = self.expected_errors[idx]
-            assert actual_record_result["item_index"] == idx
+        for actual_record_result in import_results["data"]:
+            idx = actual_record_result["item_index"]
+            assert not self.expected_errors[idx]
 
-            if expected_error_list:
-                self._check_failed_import(actual_record_result, expected_error_list)
-            else:
-                record_files = files[
-                    idx * files_per_item : (idx + 1)
-                    * files_per_item  # noqa: E203
-                ]
+            record_files = (
+                files[idx * files_per_item : (idx + 1) * files_per_item]
+                if files_per_item
+                else []
+            )
 
-                self._check_successful_import(
-                    actual_record_result,
-                    record_files,
-                    metadata_sources[idx],
-                    community,
-                    uploader_id,
-                    mailbox,
-                    mocker,
-                )
+            self._check_successful_import(
+                actual_record_result,
+                record_files,
+                metadata_sources[idx],
+                community,
+                uploader_id,
+                mailbox,
+                mocker,
+            )
 
     def _do_api_import(
         self,
         community: dict,
         file_streams: list,
         token: str,
-        metadata_source_objects: list[TestRecordMetadataWithFiles],
+        metadata_source_objects: list[TestRecordMetadata],
     ) -> tuple[dict | None, int]:
         assert self.app
         with self.app.test_client() as client:
@@ -515,7 +546,7 @@ class ServiceTest:
                     "id_scheme": "import-recid",
                     "review_required": "true",
                     "strict_validation": "true",
-                    "all_or_none": "true",
+                    "all_or_none": "true" if self.all_or_none else "false",
                     "notify_record_owners": "false",  # Will error otherwise
                     "files": file_streams,
                 },
@@ -577,21 +608,30 @@ class ServiceTest:
 
         # Remember to close the file streams after the import is complete
         files, file_list, file_streams = self.files_to_upload
-        files_per_item = len(file_list) // len(self.metadata_sources)
+        files_per_item = (
+            len(file_list) // len(self.metadata_sources) if self.metadata_sources else 0
+        )
 
-        metadata_source_objects = []
+        metadata_source_objects: list[TestRecordMetadata] = []
         for idx, metadata_source in enumerate(self.metadata_sources):
             item_files = file_list[
                 idx * files_per_item : (idx + 1)
                 * files_per_item  # noqa: E203
             ]
-            file_entries = {f["key"]: f for f in item_files}
-            test_metadata = TestRecordMetadataWithFiles(
-                metadata_in=metadata_source,
-                community_list=[community],
-                owner_id=importer_user_id,
-                file_entries=file_entries,
-            )
+            if self.with_files:
+                file_entries = {f["key"]: f for f in item_files}
+                test_metadata = TestRecordMetadataWithFiles(
+                    metadata_in=metadata_source,
+                    community_list=[community],
+                    owner_id=importer_user_id,
+                    file_entries=file_entries,
+                )
+            else:
+                test_metadata = TestRecordMetadata(
+                    metadata_in=metadata_source,
+                    community_list=[community],
+                    owner_id=importer_user_id,
+                )
 
             test_metadata.update_metadata({
                 "metadata|identifiers": [
@@ -624,6 +664,7 @@ class ServiceTest:
                     copy.deepcopy(m.metadata_in) for m in metadata_source_objects
                 ],
                 community_id=community["id"],
+                all_or_none=self.all_or_none,
             )
             status_code = None
 

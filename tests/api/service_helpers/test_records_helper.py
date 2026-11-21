@@ -220,6 +220,50 @@ def _minimal_import_recid_payload(import_recid: str, title: str = "Import recid 
     }
 
 
+def test_find_existing_by_doi_treats_blank_as_absent():
+    """Blank or malformed DOI values skip OpenSearch and return None."""
+    helper = RecordsHelper()
+    assert helper._find_existing_by_doi("") is None
+    assert helper._find_existing_by_doi("   ") is None
+    assert helper._find_existing_by_doi("noslash") is None
+    assert helper._find_existing_by_doi("/") is None
+    assert helper._find_existing_by_doi("/only-suffix") is None
+    assert helper._find_existing_by_doi("only-prefix/") is None
+
+
+def test_create_invenio_record_strips_empty_doi(
+    app,
+    db,
+    nested_unit_of_work,
+    monkeypatch,
+    create_records_custom_fields,
+    create_communities_custom_fields,
+    location,
+    admin,
+    search_clear,
+    resource_type_v,
+    creators_role_v,
+):
+    """Empty ``pids.doi.identifier`` is dropped so a managed DOI can be minted."""
+    monkeypatch.setattr(
+        "invenio_records_resources.services.uow.UnitOfWork", nested_unit_of_work
+    )
+    import_recid = f"empty-doi-{generate_random_string(8)}"
+    payload = _minimal_import_recid_payload(import_recid, title="Empty DOI import")
+    payload["pids"] = {
+        "doi": {
+            "identifier": "",
+            "provider": "external",
+        }
+    }
+
+    result = RecordsHelper().create_invenio_record(payload, no_updates=True)
+
+    assert result["status"] == "new_record"
+    assert "doi" not in result["record_data"].get("pids", {})
+    assert "doi" not in payload.get("pids", {})
+
+
 def test_source_ids_from_metadata_and_record_has_identifier():
     """Unit helpers extract and match configured source identifiers."""
     metadata = {
@@ -362,6 +406,7 @@ def test_create_invenio_record_errors_on_deleted_doi_match(
     search_clear,
     resource_type_v,
     creators_role_v,
+    removal_reason_v,
 ):
     """Re-importing a soft-deleted DOI match raises DeletedRecordExistsError."""
     monkeypatch.setattr(
@@ -406,6 +451,7 @@ def test_create_invenio_record_errors_on_deleted_import_recid_match(
     search_clear,
     resource_type_v,
     creators_role_v,
+    removal_reason_v,
 ):
     """Re-importing a soft-deleted import-recid match raises clearly."""
     monkeypatch.setattr(
