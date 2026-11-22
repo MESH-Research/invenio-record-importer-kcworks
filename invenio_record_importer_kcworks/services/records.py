@@ -311,7 +311,12 @@ class RecordsHelper:
             if existing_record
             else None
         )
-        if existing_owner_id is not None and new_owner.id == int(existing_owner_id):
+        # owned_by.user may be an int, numeric string, or system_user_id
+        # ("system"); compare as strings so system ownership does not crash.
+        if (
+            existing_owner_id is not None
+            and str(new_owner.id) == str(existing_owner_id)
+        ):
             app.logger.info("skipping re-assigning ownership of the record ")
             app.logger.info(f"(already belongs to owner {new_owner.id})")
             record: RDMRecord = records_service.read(

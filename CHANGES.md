@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.2 (2026-11-21)
+
+- **Bug fix**: Fix broken owner comparison if owner of a pre-existing record is
+  "system".
+
 ## 1.1.1 (2026-11-21)
 
 - **API response shape (breaking)**: Rename the successful-records array from

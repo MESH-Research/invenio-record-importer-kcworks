@@ -1,6 +1,6 @@
 # INVENIO RECORD IMPORTER for Knowledge Commons Works
 
-Version 1.1.1
+Version 1.1.2
 
 _ALPHA QUALITY SOFTWARE - USE AT OWN RISK_
 
