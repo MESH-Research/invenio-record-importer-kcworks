@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.3 (2026-11-25)
+
+- Switch import flag defaults:
+  - "all_or_none" now defaults to False: by default the importer will now
+    continue past failed records and report the mixed results.
+  - "clean_filenames" now defaults to True: by default the importer will
+    sanitize filenames to ensure they contain no invalid or problem characters.
+
 ## 1.1.2 (2026-11-21)
 
 - **Bug fix**: Fix broken owner comparison if owner of a pre-existing record is
