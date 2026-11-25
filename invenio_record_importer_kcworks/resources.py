@@ -216,8 +216,7 @@ class RecordImporterResourceConfig(ResourceConfig):
         json.JSONDecodeError: lambda e: (
             {
                 "message": (
-                    f"Invalid metadata JSON: {e.msg} "
-                    f"(line {e.lineno} column {e.colno})"
+                    f"Invalid metadata JSON: {e.msg} (line {e.lineno} column {e.colno})"
                 ),
                 "status": 400,
             },
@@ -342,7 +341,7 @@ class RecordImporterResource(Resource):
             resource_requestctx.data["form"].get("strict_validation", True)
         )
         all_or_none = bool_from_string(
-            resource_requestctx.data["form"].get("all_or_none", True)
+            resource_requestctx.data["form"].get("all_or_none", False)
         )
         notify_record_owners = bool_from_string(
             resource_requestctx.data["form"].get("notify_record_owners", False)

@@ -434,10 +434,10 @@ def load_records(
         aggregate=bool(named_params.get("aggregate", False)),
         start_date=str(named_params.get("start_date", "")),
         end_date=str(named_params.get("end_date", "")),
-        clean_filenames=bool(named_params.get("clean_filenames", False)),
+        clean_filenames=bool(named_params.get("clean_filenames", True)),
         verbose=bool(named_params.get("verbose", False)),
         stop_on_error=bool(named_params.get("stop_on_error", False)),
-        all_or_none=bool(named_params.get("all_or_none", True)),
+        all_or_none=bool(named_params.get("all_or_none", False)),
     )
 
     # Make alert sound to signal end of loading process
