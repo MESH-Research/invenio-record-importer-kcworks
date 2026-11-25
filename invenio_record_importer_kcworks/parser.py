@@ -69,9 +69,24 @@ class RequestMultipartParser:
     def parse(self):
         """Parse the request multipart data.
 
+        Raises Flask/Werkzeug request body limits for this import request
+        before `request.form` / `request.files` are read. Defaults match
+        nginx `client_max_body_size` on `/api/import` (500G) and a 10 MiB
+        cap on non-file multipart fields (e.g. JSON `metadata`).
+
         Returns:
-            Description of the return value.
+            Dict with `form` and `files` from the multipart body.
         """
+        # Must run before any access to form/files (triggers Werkzeug parse).
+        request.max_content_length = app.config.get(
+            "RECORD_IMPORTER_MAX_CONTENT_LENGTH",
+            500 * (1024**3),
+        )
+        request.max_form_memory_size = app.config.get(
+            "RECORD_IMPORTER_MAX_FORM_MEMORY_SIZE",
+            10 * (1024**2),
+        )
+
         form_keys = sorted(request.form.keys()) if request.form else []
         file_meta = {
             name: {
